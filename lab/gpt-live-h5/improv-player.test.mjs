@@ -25,6 +25,11 @@ test('spoken invitations keep editing, search, negation and quoted examples out 
  for(const text of ['搜索直播','教我怎么开直播','比如说，开播吧','先别开直播','结束直播','帮我生成一段视频','我刚才没开成功','可以找个比赛直播吗']) assert.equal(invited(text),false,text);
  assert.equal(openingImageFor({action:'start',openingImage:'a9'},'用这张图开场直播'),'current');
  assert.equal(openingImageFor({action:'start',openingImage:'a1'},'开个直播，不用图片。'),'');
+ const exact='你，你用这个开始做个直播吧？';
+ assert(invited(exact));
+ assert.equal(openingImageFor({action:'start'},exact),'current');
+ assert.equal(openingImageFor({action:'start',openingImage:'v'},exact),'current');
+ assert.equal(openingImageFor({action:'start',openingImage:'a2'},'开始直播吧，纯文字开场。'),'');
  assert.match(openingShot('开个直播，不用图片，拍一场玩具猫的音乐会。',false),/玩具猫/);
 });
 
@@ -54,4 +59,22 @@ test('reference edits use the actual caller upload or canonical avatar within th
  assert.match(own,/--image v /);
  shelf.share=async()=>({url:'https://cdn.example/avatar.jpg',until:Infinity});
  assert.equal(await shelf.openingImage('call','v','用你的形象开场'),'https://cdn.example/avatar.jpg');
+});
+
+test('opening on this picture preserves its shape and excludes invented opening scenery',async()=>{
+ const {createAssetShelf}=await import('./board-assets.mjs');
+ const shelf=createAssetShelf(),url='https://cdn.example/basketball.png';
+ const {id}=shelf.add('call',{url});
+ shelf.seen('call',[id],{[id]:1});
+ const words='你，你用这个开始做个直播吧？';
+ const image=await shelf.openingImage('call',openingImageFor({action:'start'},words),words);
+ const events=[],calls=[];
+ const api=createImprovShow({run:async args=>{calls.push(args);return {id:'s',phase:'waiting',playerPath:'/director/player.html#s.'+'x'.repeat(43)};}});
+ await api.command({action:'start',shot:'切换到虚构的控制室'},{text:words},e=>events.push(e),image,shelf.openingAspect('call',image));
+ assert.equal(events[0].imageUrl,url);
+ assert.equal(calls[0].at(-1),url);
+ assert.equal(calls[0][calls[0].indexOf('--aspect-ratio')+1],'1:1');
+ assert.doesNotMatch(calls[0][2],/控制室/);
+ shelf.begin('call',{command:"makaron edit --image-model gemini-2.1 '另一幅画'"});
+ assert.equal(await shelf.openingImage('call','current',words),'');
 });

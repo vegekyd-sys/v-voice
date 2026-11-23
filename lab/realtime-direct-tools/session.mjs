@@ -332,7 +332,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if (!current(s) || s.latestUserTurn !== turn) return;
         if (reference && !image) throw Error('请先在这通电话中添加或点选要开场的图');
         args.shot=openingShot(turn.text,Boolean(image));
-        await s.improv.command(args,turn,event=>emit(s,event),image);
+        await s.improv.command(args,turn,event=>emit(s,event),image,image && assets.openingAspect?.(s.id,image));
       } catch(error) { emit(s,{type:'improv.notice',text:error.message}); }
     }, existing ? 0 : 3200).unref();
   }
@@ -775,7 +775,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           const imageUrl=reference && shelfFor(s) ? await assets.openingImage(s.id,reference,turn.text) : '';
           if(reference && !imageUrl)throw Error('这张图还不能用来开场，请用户点选本通话中已显示的图片。');
           if(reference && (turn!==s.latestUserTurn || !current(s) || s.epoch!==epoch))throw Error('开场请求已过期。');
-          result=await s.improv.command(call.args,turn,event=>emit(s,event),imageUrl);
+          result=await s.improv.command(call.args,turn,event=>emit(s,event),imageUrl,imageUrl && assets.openingAspect?.(s.id,imageUrl));
           s.mediaRecovery?.started();
         }
         if(call.name==='get_current_location'){if(!s.location)throw Error('当前终端不支持定位');result=await s.location.request(controller.signal);}
@@ -935,7 +935,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播主持：用户明确要求按上传的参考图或你的形象改图时，本通话会直接提交 Makaron，依画布制作状态回应，不另搜图，不重做。开场请求只表示正在连接。观众说出一个角色或动作时，Makaron 会把它交给导演。简短接住这个创意，例如“让它从云里冲下来”，把呈现交给画面。你没有看到视频帧，不能说“已经出现了”。观众收播后继续当前通话。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播主持：用户明确要求按上传的参考图或你的形象改图时，本通话会直接提交 Makaron，依画布制作状态回应，不另搜图，不重做。开场请求只表示正在连接。观众说出一个角色或动作时，Makaron 会把它交给导演。简短接住这个创意，例如“让它从云里冲下来”，把呈现交给画面。你听到观众的编导意图，无法观察直播帧。只用将来式简短复述观众指定的动作，例如“好，让她干拔投三分”。禁止自行添加玩偶、庆祝细节或充当正在画面上发生的事来解说。观众收播后继续当前通话。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),

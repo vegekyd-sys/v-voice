@@ -155,7 +155,7 @@ export function Work({block, view}) {
         )}
         {ready && shown.kind === 'image' && (
           <img key={shown.id} className="board-work-print" data-loaded={loaded || undefined} src={shown.url} alt={name} decoding="async"
-            onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id); }} />
+            onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id,event.currentTarget.naturalWidth/event.currentTarget.naturalHeight); }} />
         )}
         {ready && shown.kind === 'video' && !still && (
           <video key={shown.id} ref={film} className="board-work-print" data-loaded={loaded && !waiting || undefined} src={shown.url} muted loop autoPlay playsInline preload="auto"

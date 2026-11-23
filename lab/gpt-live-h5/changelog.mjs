@@ -197,9 +197,9 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const DIRECTOR_CANDIDATE_UPDATE = {
-  version:'voice-makaron-director.20261123.2',date:'2026-11-23',status:'candidate-validation',
+  version:'voice-makaron-director.20261123.3',date:'2026-11-23',status:'candidate-validation',
   title:'在讲解画布中主持即兴直播',
-  items:['可以添加自己的参考图，也可以用 V 的形象作图。','直播和图片在同一讲解画布里分开翻页。开播后直接说下一幕，画面下方会显示导演采用的指令。','说“直播结束”就能收播，留在原来的电话里继续聊。'],
+  items:['可以添加自己的参考图，也可以用 V 的形象作图。','直播和图片在同一讲解画布里分开翻页。开播后直接说下一幕，开场时保留选定的图片，下一幕播到时才会显示镜头文字。','说“直播结束”就能收播，留在原来的电话里继续聊。'],
 };
 export const VOICE_UPDATES = [
   {

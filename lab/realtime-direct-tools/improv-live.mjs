@@ -5,7 +5,7 @@ const execute=promisify(execFile);
 
 export const IMPROV_TOOL = {
   type: 'function', name: 'improv_live',
-  description: '通话内即兴直播。只有用户明确请你开一场娱乐直播时才 start。从刚聊的话题取一个具体的梗，写一幕有动作和意外的虚构开场。镜头提示只写可见场景，不含私人信息。用户指定用屏幕上的图开场时带 openingImage，当前这张填 current，指定素材填它的编号。等工具确认提交后再说正在连接。开播后每句用户语音由 Makaron 分辨剧情、聊天和收播。新的角色、动作或场景自然算下一幕，画面由导演呈现，你可以简短接话。不要重复提交或声称看见尚未播出的改动。结束直播用 end，继续通话。图片、短片、查找真实直播仍走原路径。返回 requested 表示已交给屏幕，不代表已经播出。',
+  description: '通话内即兴直播。只有用户明确请你开一场娱乐直播时才 start。从刚聊的话题取一个具体的梗，写一幕有动作和意外的虚构开场。镜头提示只写可见场景，不含私人信息。用户指定用屏幕上的图开场时带 openingImage，“用这个”“用它”也指当前画面，填 current，指定素材填它的编号。以图开场时保留图中人物、场景与构图，再让动作发展。等工具确认提交后再说正在连接。开播后每句用户语音由 Makaron 分辨剧情、聊天和收播。新的角色、动作或场景自然算下一幕，画面由导演呈现，你可以简短接话。不要重复提交或声称看见尚未播出的改动。结束直播用 end，继续通话。图片、短片、查找真实直播仍走原路径。返回 requested 表示已交给屏幕，不代表已经播出。',
   parameters: {type:'object', additionalProperties:false, required:['action'], properties:{
     action:{type:'string',enum:['start','direct','end']}, shot:{type:'string',description:'start 或 direct 的镜头描述，最多 600 字'},
     openingImage:{type:'string',description:'仅 start，用户指定的屏幕参考图，current 或本次电话中的图片编号'}
@@ -36,18 +36,22 @@ export function openingShot(words, image) {
     .filter(part=>part && !/直播|开播|不用图|不要图|^(?:小何|小V|谢谢|好了|好吧)$/iu.test(part))
     .filter(part=>/场景|镜头|画面|拍|看到|出现|走|飞|跑|变成|站在|一[只座辆场群]|故事/u.test(part))
     .join('，').slice(0,420);
-  if (image) return '从指定图片原样开场，保留主体和构图。'+(scene || '镜头缓缓推进，让画面中的主体自然动起来。');
+  if (image) {
+    const instructions=words.split(/直播|开播/u).at(-1)?.replace(/^[吧啊呀好吗呢什么的？?！!，,。\s]+/u,'').trim();
+    return '从这张图开始，保留原来的人物、场景和构图。'+(instructions || scene || '让画面中的主体自然动起来。').slice(0,420);
+  }
   return scene || '一辆玩具火车开进微缩剧场，帷幕升起，一个纸做的月亮向观众鞠躬。';
 }
 
 export function openingImageFor({action, openingImage}, text) {
   if (action !== 'start' || !invited(text)) return '';
-  if (/(?:不用|不要|别用|不需要)[^，。,.]{0,8}(?:图|照片|海报)/u.test(text)) return '';
+  if (/纯文字|只用文字|(?:不用|不要|别用|不需要)[^，。,.]{0,8}(?:图|照片|海报)/u.test(text)) return '';
   if (/(?:你的|你自己的|小何的|V的)(?:形象|头像|照片|图)/iu.test(text)) return 'v';
+  if (/(?:用|拿|以|接着|照着|从|根据)(?:刚刚|刚才|画面上|屏幕上)?(?:这个|这幅|这张|它|这幅画)|(?:这个|它)(?:当|做|作为)(?:首帧|开场)/u.test(text)) return 'current';
   if (/(?:用|拿|以|让)[^，。？！?]{0,30}(?:这张|那张|图片|照片|海报|幅图|张图)/u.test(text)) {
     return /这张|刚(?:才)?(?:画|生成|上传)|我上传/u.test(text) ? 'current' : /^[ap]\d+$/.test(openingImage) ? openingImage : 'current';
   }
-  return '';
+  return openingImage === 'current' || /^(?:[ap]\d+|v)$/.test(openingImage) ? openingImage : '';
 }
 
 
@@ -106,7 +110,7 @@ export function createImprovShow({run}) {
     observe,
     get active(){return Boolean(show || opening);},
     decision:turn=>turns.get(turn),
-    async command({action,shot},turn,send,imageUrl=''){
+    async command({action,shot},turn,send,imageUrl='',aspect=''){
       if(closed)throw Error('这通电话已结束');
       if(action==='start'){
         if(!invited(turn?.text))throw Error('请先确认是否开播');
@@ -115,12 +119,13 @@ export function createImprovShow({run}) {
         if(!shot?.trim() || shot.length>600)throw Error('需要简短的开场描述');
         opening=true;lastStart=turn;emit=send;
         try{
-          const result=await run(['start','--prompt',shot.trim(),'--request-id',randomUUID(),...(imageUrl?['--image',imageUrl]:[])]);
+          const prompt=imageUrl ? openingShot(turn.text,true) : shot.trim();
+          const result=await run(['start','--prompt',prompt,'--request-id',randomUUID(),...(imageUrl && aspect?['--aspect-ratio',aspect]:[]),...(imageUrl?['--image',imageUrl]:[])]);
           if(closed){await run(['stop',result.id]);throw Error('这通电话已结束');}
           if(result.phase!=='waiting'||!/^\/director\/player\.html#[a-z0-9-]+\.[a-zA-Z0-9_-]{43}$/.test(result.playerPath))throw Error('Makaron 未返回有效的播放票据');
-          show={id:result.id};send({type:'improv.live',action,id:show.id,playerPath:result.playerPath});
+          show={id:result.id};send({type:'improv.live',action,id:show.id,playerPath:result.playerPath,...(imageUrl?{imageUrl}:{})});
         }finally{opening=false;}
-      }else if(action==='direct'){return observe(turn);}
+      }else if(action==='direct'){const result=await observe(turn);return {...result,instruction:'只确认收到用户指定的动作，不播报画面、不添加新的角色或情节。'};}
       else if(action==='end'){if(!show)return {requested:true,action};const result=await observe(turn);return {requested:result.action==='end',action:result.action};}
       else throw Error('当前没有直播');
       return {requested:true,action};

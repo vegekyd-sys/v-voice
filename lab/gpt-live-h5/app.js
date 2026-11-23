@@ -43,7 +43,7 @@ if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   loadBoardPhoto: Object.assign(query => loadBoardPhoto(query), {missing: query => loadBoardPhoto.missing(query)}),
   // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
-  boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: id => call?.boardAssets?.shown(id), save: item => saveBoardPicture(item)},
+  boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: (id, ratio) => call?.boardAssets?.shown(id, ratio), save: item => saveBoardPicture(item)},
   actions: {
     uploadReference: async file => {
       const active=call;

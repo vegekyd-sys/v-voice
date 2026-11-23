@@ -560,7 +560,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       const value = owners.get(owner);
       if (!value) return '';
       const item = reference === 'current'
-        ? pointedAt(value, words) ?? (value.picked ? find(value, value.picked) : value.assets.filter(item => item.state === 'ready').at(-1))
+        ? pointedAt(value, words) ?? (value.picked ? find(value, value.picked) : value.assets.at(-1))
         : [...pictures(value), ...value.assets].find(item => item.id === reference);
       if (item?.kind !== 'image' || item.state !== 'ready' || item.fits === false) return '';
       return https(await api.address(owner, item.id));
@@ -575,9 +575,18 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       return photo?.url && photo.until >= now() ? photo.url : '';
     },
     /** The page has the thing on screen (its picture loaded). */
-    seen(owner, ids) {
+    openingAspect(owner,url) {
+      const value=owners.get(owner), asset=value?.assets.find(item=>item.url===url && item.kind==='image');
+      if(!asset)return '';
+      const [w,h]=String(asset.aspect??'').split(':').map(Number);
+      const ratio=asset.displayRatio || w/h;
+      if(!Number.isFinite(ratio) || ratio<=0)return '';
+      const threshold=4/3;
+      return ratio>threshold?'16:9':ratio<1/threshold?'9:16':'1:1';
+    },
+    seen(owner, ids, shapes) {
       const value = owners.get(owner);
-      for (const id of Array.isArray(ids) ? ids.slice(0, 12) : []) { const asset = value?.assets.find(item => item.id === id); if (asset && asset.state === 'ready') asset.shown = true; }
+      for (const id of Array.isArray(ids) ? ids.slice(0, 12) : []) { const asset = value?.assets.find(item => item.id === id); if (asset && asset.state === 'ready') {asset.shown=true;const ratio=shapes?.[id];if(Number.isFinite(ratio)&&ratio>0&&ratio<100)asset.displayRatio=ratio;} }
     },
     shown(owner, id) { return owners.get(owner)?.assets.find(asset => asset.id === id)?.shown === true; },
     watch(owner, watcher) { const value = row(owner); value.watchers.add(watcher); return () => value.watchers.delete(watcher); },

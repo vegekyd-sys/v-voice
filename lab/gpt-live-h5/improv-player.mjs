@@ -3,7 +3,7 @@
 export function createImprovPlayer({update,ended,notice}){
   let current;
   function publish(show) {
-    update({id:show.id,stream:show.stream,caption:show.caption,note:show.note,focus:show.focus});
+    update({id:show.id,stream:show.stream,imageUrl:show.imageUrl,cue:show.cue,note:show.note,focus:show.focus});
   }
   function detach(show) {
     if(current===show){current=null;update(null);}
@@ -32,7 +32,7 @@ export function createImprovPlayer({update,ended,notice}){
     if(url.origin!==location.origin || !url.pathname.endsWith('/director/player.html'))return;
     url.searchParams.set('embed','1');
     const frame=document.createElement('iframe');frame.hidden=true;frame.title='Makaron Director 直播连接';frame.allow='autoplay';
-    const show={id:event.id,frame,listener:e=>{
+    const show={id:event.id,imageUrl:event.imageUrl,frame,listener:e=>{
       if(e.source!==frame.contentWindow || e.origin!==location.origin || e.data?.source!=='makaron-director' || e.data.id!==event.id)return;
       if(e.data.action==='ended'){
         if(current===show){ended(event.id);notice(e.data.failed?'直播连接失败，可以重新开播':'直播结束，通话继续',e.data.failed);}
@@ -41,15 +41,15 @@ export function createImprovPlayer({update,ended,notice}){
       if(current!==show)return;
       if(e.data.action==='playing'){show.stream=frame.contentDocument.querySelector('video')?.srcObject;publish(show);}
       if(e.data.action==='direction'){
-        if(e.data.state==='applied' && Number.isInteger(e.data.version) && e.data.version>(show.version||0)){
-          show.version=e.data.version;show.caption=String(e.data.text||'').slice(0,2000);show.note='';
-        } else if(e.data.state==='sent')show.note='正在调整镜头';
+        if(e.data.state==='playing' && Number.isInteger(e.data.version) && e.data.version>(show.version||0)){
+          show.version=e.data.version;show.cue={version:e.data.version,text:String(e.data.text||'').slice(0,2000),rtp:e.data.rtpTimestamp};show.note='';
+        } else if(e.data.state==='sent')return;
         else if(e.data.state==='rejected')show.note='这条指令未被采用';
         publish(show);
       }
     }};
     current=show;window.addEventListener('message',show.listener);
-    update({id:show.id});frame.src=url.href;document.body.append(frame);
+    publish(show);frame.src=url.href;document.body.append(frame);
   }
   return {receive,finish};
 }

@@ -496,7 +496,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
       // The player authenticates its own single-show ticket at Makaron. No phone cookie or API key crosses this relay.
-      const directorAsset = req.method==='GET' && ['/director/player.html','/director/player.js','/director/transport.mjs'].includes(pathname);
+      const directorAsset = req.method==='GET' && ['/director/player.html','/director/player.js','/director/transport.mjs','/director/playout.mjs'].includes(pathname);
       const directorOp = req.method==='POST' && /^\/api\/director\/player\/(poll|signal|recording|stop)$/.test(pathname);
       if(director && directorOrigin && (directorAsset || directorOp)){
         const target=new URL(pathname,directorOrigin);
@@ -1060,7 +1060,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if (typeof params.pick === 'string' && (params.pick === '' || SHELF_ID.test(params.pick))) boardAssets.pick(owner, params.pick);
         // (`address`: where the thing can be saved from. A found photograph is lent out for it.)
         const address = typeof params.address === 'string' && SHELF_ID.test(params.address) ? {id: params.address, url: await boardAssets.address(owner, params.address)} : null;
-        if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && ASSET_ID.test(id)));
+        if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && ASSET_ID.test(id)),params.shapes);
         const state = board.state(owner);
         return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&(params.rev!==state.scene.rev||typeof params.call==='string'&&params.call!==owner.slice(0,8))?{sync:state}:{})});
       }

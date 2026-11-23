@@ -21,7 +21,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
   setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
   let assets = new Map(), photos = new Map(), picked = '', stamp = -1, busy = false, closed = false, timer = null, asking = false, again = false, changedAt = -Infinity, refusals = 0, had = false, call = '';
   let wantPick = null;
-  const seen = new Set(), told = new Set();
+  const seen = new Set(), told = new Set(), shapes = new Map();
   // (`photos`: the photographs the board found, by what was searched for: {id, name}.)
   const view = () => ({assets, photos, picked});
   const schedule = wait => { if (closed || timer !== null) return; timer = setTimer(ask, wait); };
@@ -34,6 +34,8 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
     if (wantPick !== null) { body.pick = wantPick; wantPick = null; }
     const fresh = [...seen].filter(id => !told.has(id));
     if (fresh.length) body.seen = fresh;
+    const sized=fresh.filter(id=>shapes.has(id));
+    if(sized.length)body.shapes=Object.fromEntries(sized.map(id=>[id,shapes.get(id)]));
     try {
       const reply = await request(body);
       refusals = 0; had = true;
@@ -41,7 +43,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
       if (closed || !isCurrent() || !reply || !Array.isArray(reply.assets)) return;
       if (reply.sync) onSync(reply.sync);
       // (The call went on as another session after its connection was lost: its shelf is taken whole.)
-      if (typeof reply.call === 'string' && reply.call !== call) { if (call) { stamp = -1; seen.clear(); told.clear(); } call = reply.call; }
+      if (typeof reply.call === 'string' && reply.call !== call) { if (call) { stamp = -1; seen.clear(); told.clear(); shapes.clear(); } call = reply.call; }
       busy = reply.busy === true;
       if (reply.stamp !== stamp || reply.picked !== picked) {
         stamp = reply.stamp; changedAt = now();
@@ -85,7 +87,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
       try { const reply = await request({rev: rev(), address: id}); return reply?.address?.id === id && typeof reply.address.url === 'string' ? reply.address.url : ''; } catch { return ''; }
     },
     /** A thing's picture is on screen. */
-    shown(id) { if (closed || seen.has(id)) return; seen.add(id); if (!asking && timer === null) schedule(300); },
+    shown(id,ratio) { if (closed || seen.has(id)) return; if(Number.isFinite(ratio) && ratio>0)shapes.set(id,ratio); seen.add(id); if (!asking && timer === null) schedule(300); },
     dispose() { closed = true; clearTimer(timer); timer = null; },
   };
 }

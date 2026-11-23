@@ -2285,12 +2285,12 @@ video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 
 .board-live-media { padding: 12px 18px 28px; }
 .improv-stage { width: 100%; margin: 0; color: inherit; }
-.improv-picture { position: relative; overflow: hidden; border-radius: 14px; background: #241f2b; }
-.improv-picture video { display: block; width: 100%; aspect-ratio: 16/9; object-fit: contain; }
-.improv-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: #302638bf; padding: 5px 10px; border-radius: 8px; }
-.improv-stage figcaption { margin: .65em 0; line-height: 1.55; overflow-wrap: anywhere; }
+.improv-picture { margin: 0 auto; }
+.board-work-frame.improv-picture > :is(img,video) { object-fit: contain; background: #fffdfb; }
+.improv-picture:not([data-playing]) video { opacity: 0; }
+.improv-stage figcaption { margin: .75em 0; line-height: 1.55; overflow-wrap: anywhere; }
 .improv-stage figcaption p { margin: 0; }
-.improv-stage figcaption strong { color: var(--pen); }
+.improv-stage figcaption small { color: var(--pencil); }
 .board-dots { pointer-events: auto; gap: 0; bottom: 0; }
 .board-dots button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .reference-picker { position: relative; display: grid; place-items: center; width: 40px; color: inherit; cursor: pointer; }

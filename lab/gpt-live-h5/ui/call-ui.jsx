@@ -429,22 +429,51 @@ function ImprovStage({show, actions}) {
   const video = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [caption,setCaption] = useState('');
+  const [shape,setShape] = useState(16 / 9);
+  const nextCue = useRef(null);
+  useLayoutEffect(()=>{nextCue.current=show.cue;},[show.cue]);
   useEffect(() => {
     const element = video.current;
-    let active = true;
-    setPlaying(false);
-    setBlocked(false);
+    let active = true, frame, version=0;
+    setPlaying(false);setBlocked(false);
     element.srcObject = show.stream ?? null;
-    if (show.stream) element.play().catch(() => { if (active) setBlocked(true); });
-    return () => { active = false; element.srcObject = null; };
+    if(!show.stream)return;
+    // The embedded peer and this visible video share the RTP clock. A cue
+    // arriving between two paints stays hidden until its frame reaches here.
+    const present = (_now, metadata) => {
+      if(!active || !element.videoWidth)return;
+      setPlaying(true);setBlocked(false);setShape(element.videoWidth/element.videoHeight);
+      const cue=nextCue.current;
+      if(cue && cue.version>version && (cue.rtp==null || metadata?.rtpTimestamp==null ||
+          ((metadata.rtpTimestamp-cue.rtp)>>>0)<0x80000000)){
+        version=cue.version;setCaption(cue.text);
+      }
+    };
+    const tick=(time,metadata)=>{present(time,metadata);if(active)frame=element.requestVideoFrameCallback(tick);};
+    const fallback=()=>{if(element.readyState>=2 && !element.paused)present();};
+    if(element.requestVideoFrameCallback) frame=element.requestVideoFrameCallback(tick);
+    else element.addEventListener('timeupdate',fallback);
+    element.play().catch(()=>{if(active)setBlocked(true);});
+    return () => {
+      active=false;
+      if(frame!=null)element.cancelVideoFrameCallback(frame);
+      element.removeEventListener('timeupdate',fallback);
+      element.srcObject=null;
+    };
   }, [show.stream]);
   return <figure className="improv-stage" aria-label="即兴直播">
-    <div className="improv-picture">
-      <video ref={video} id="improvVideo" playsInline muted autoPlay onPlaying={() => {setPlaying(true); setBlocked(false);}} />
-      {blocked ? <button type="button" className="improv-center" onClick={() => video.current.play().catch(() => setBlocked(true))}>播放画面</button>
-        : !playing && <span className="improv-center" role="status">正在准备第一幕…</span>}
+    <div className="board-work-frame improv-picture" data-playing={playing || undefined} style={{'--shape':shape}}>
+      {show.imageUrl && !playing && <img className="improv-cover" src={show.imageUrl} alt="开场参考图" onLoad={e=>{if(!video.current?.videoWidth)setShape(e.target.naturalWidth/e.target.naturalHeight);}}/>}
+      {!show.imageUrl && !playing && <div className="board-work-sketch" aria-hidden="true"><i/><i/><i/></div>}
+      <video ref={video} id="improvVideo" playsInline muted autoPlay />
     </div>
-    <figcaption aria-live="polite">{show.caption && <p><strong>导演已采用</strong> {show.caption}</p>}{show.note && <small>{show.note}</small>}</figcaption>
+    <figcaption aria-live="polite">
+      {blocked ? <button type="button" className="board-report" onClick={()=>video.current.play().catch(()=>setBlocked(true))}>播放画面</button>
+        : !playing && <small>正在准备第一幕…</small>}
+      {playing && caption && <p>{caption}</p>}
+      {show.note && <small>{show.note}</small>}
+    </figcaption>
     <button className="board-report" type="button" onClick={actions.endImprov}>结束直播</button>
   </figure>;
 }
