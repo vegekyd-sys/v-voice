@@ -38,3 +38,20 @@ test('reopening a playing show refocuses its single player and never buys a seco
  assert.equal(starts.length,1);
  assert.deepEqual(events,['start','focus']);
 });
+
+test('reference edits use the actual caller upload or canonical avatar within this call',async()=>{
+ const {createAssetShelf,SELF_IMAGE}=await import('./board-assets.mjs');
+ const shelf=createAssetShelf({standing:[SELF_IMAGE]});
+ const command="makaron edit --image-model gemini-2.1 '画成水彩'";
+ assert.throws(()=>shelf.bindUserReference('call',command,'用我的图片改成水彩'),/添加参考图/);
+ shelf.add('other',{source:'upload',url:'https://cdn.example/unrelated.png'});
+ assert.throws(()=>shelf.bindUserReference('call',command,'用我上传的图改成水彩'),/添加参考图/);
+ const uploaded=shelf.add('call',{source:'upload',url:'https://cdn.example/train.png'});
+ const bound=shelf.bindUserReference('call',command,'用我上传的图改成水彩');
+ assert.match(bound,new RegExp('--image '+uploaded.id+' '));
+ assert.match(shelf.begin('call',{command:bound}).command,/cdn.example\/train.png/u);
+ const own=shelf.bindUserReference('call',command,'用你自己的形象画一张图');
+ assert.match(own,/--image v /);
+ shelf.share=async()=>({url:'https://cdn.example/avatar.jpg',until:Infinity});
+ assert.equal(await shelf.openingImage('call','v','用你的形象开场'),'https://cdn.example/avatar.jpg');
+});

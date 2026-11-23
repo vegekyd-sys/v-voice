@@ -1952,6 +1952,17 @@ test('improv tool joins a display call and steers its existing show without a ga
  assert(!ordinary.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
 });
 
+test('a final spoken opening request reaches the player even if the host never calls the tool',async t=>{
+ const calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'帮我开个直播吧，拍一场玩具猫的音乐会。',item_id:'first'});
+ await delay(3300);
+ assert.equal(calls.filter(c=>c[0]==='start').length,1);
+ assert.match(calls[0][2],/玩具猫/);
+ assert(f.client.sent.some(event=>event.type==='improv.live' && event.action==='start'));
+});
+
 test('a spoken invitation can open on the picture selected in this call',async t=>{
  const {createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
  const assets=createAssetShelf({}), calls=[],improv=fakeDirector(calls);

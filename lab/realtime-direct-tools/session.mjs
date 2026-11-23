@@ -685,7 +685,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     });
     if (s.improv && s.mediaCliAvailable && shelfFor(s)) s.referenceEdit = turn => {
       const words=turn.text;
-      if (s.referenceJob?.turn===turn || words.length>600 || /如果|假如|不要|先别|不用|如何|怎么(?:做|用|改)|教程|视频|直播|开播|多少钱|报价|贵不贵|模型|Seedream|GPT|Midjourney|Flux|能做什么|[“”「」]/u.test(words)) return;
+      if (s.referenceJob?.turn===turn || words.length>600 || /如果|假如|不要|先别|别画|别改|别做|别生成|不想|不需要|不是让|先不|不用|如何|怎么(?:做|用|改)|教程|视频|直播|开播|多少钱|报价|贵不贵|模型|Seedream|GPT|Midjourney|Flux|能做什么|[“”「」]/u.test(words)) return;
       if (!/我(?:刚刚?|刚才)?上传的|我自己的(?:图片|照片)|我的(?:图片|照片)|(?:你的|你自己的|小何的|V的)(?:形象|头像|图片|照片)/iu.test(words) ||
           !/改图|画(?:一张|张|个)|画成|改成|换成|生成(?:一张|张|图片)|做成/u.test(words)) return;
       const id = 'reference-'+randomUUID(), controller=new AbortController();

@@ -54,6 +54,10 @@ export function openingImageFor({action, openingImage}, text) {
 export function directorCommand(environment=process.env) {
   const binary=environment.VOICE_MAKARON_DIRECTOR_CLI;
   if(!binary?.startsWith('/') || !environment.MAKARON_API_KEY || !environment.MAKARON_DIRECTOR_URL)return null;
+  let endpoint;
+  try {endpoint=new URL(environment.MAKARON_DIRECTOR_URL);} catch {return null;}
+  if (endpoint.username || endpoint.password || !(endpoint.protocol==='https:' ||
+      endpoint.protocol==='http:' && ['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname))) return null;
   const env=Object.fromEntries(['PATH','LANG','MAKARON_API_KEY','MAKARON_DIRECTOR_URL'].filter(k=>environment[k]).map(k=>[k,environment[k]]));
   const run = async args=>{
     try{
@@ -64,7 +68,7 @@ export function directorCommand(environment=process.env) {
   run.uploadReference = async (bytes, contentType) => {
     const ext = {'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[contentType];
     if (!ext || !bytes.length || bytes.length > 8 * 1024 * 1024) throw Error('参考图格式或大小不支持');
-    const signed = await fetch(new URL('/api/storage/upload-url',env.MAKARON_DIRECTOR_URL),{
+    const signed = await fetch(new URL('/api/storage/upload-url',endpoint.origin),{
       method:'POST', redirect:'error', signal:AbortSignal.timeout(20000),
       headers:{authorization:'Bearer '+env.MAKARON_API_KEY,'content-type':'application/json'},
       body:JSON.stringify({filename:'reference.'+ext,contentType})
@@ -105,9 +109,9 @@ export function createImprovShow({run}) {
     async command({action,shot},turn,send,imageUrl=''){
       if(closed)throw Error('这通电话已结束');
       if(action==='start'){
+        if(!invited(turn?.text))throw Error('请先确认是否开播');
         if(show){send({type:'improv.live',action:'focus',id:show.id});return {requested:true,action};}
         if(opening || turn===lastStart)return {requested:opening,action};
-        if(!invited(turn?.text))throw Error('请先确认是否开播');
         if(!shot?.trim() || shot.length>600)throw Error('需要简短的开场描述');
         opening=true;lastStart=turn;emit=send;
         try{
