@@ -1,0 +1,29 @@
+{
+  "version": "voice-session-media.20261122.1",
+  "verifiedAt": "2026-11-22T21:06:39+08:00",
+  "sourceCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
+  "mergePRs": [
+    253,
+    254
+  ],
+  "previousRunningCommit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
+  "filesSha256": "92bc285e6a6923a508faa42f7dd8d6833974105e7c20c546b304b608151d8c2c",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45025400187",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "7263da5e3155a4961a5b110c94742923551551fd12ab03250ffe0ae879d51d9d",
+  "webBundleSha256": "e2159770ff7d1b83b368f5e2fa637e215a53ca401eaad12dbe81fcaba391d6e3",
+  "acceptance": [
+    "两个运行节点的提交和文件哈希已核对，均已恢复接入。",
+    "正式 HTTPS 返回的网页包与发布产物逐字节一致，首页更新日志已在浏览器核对。"
+  ]
+}

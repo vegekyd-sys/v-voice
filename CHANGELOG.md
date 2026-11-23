@@ -4,6 +4,10 @@
 
 The web call uses the private Makaron CLI Director session. Scene directions and requests to end the broadcast use the active session. The board shares its existing space with the live picture and keeps the call connected.
 
+## 2026-11-22 — 语音创作使用当前飞书会话的 Makaron 账号
+
+- 已核验的群聊和私聊使用各自绑定的账号生成图片和视频。首次使用时先注册并确认绑定，图片保存与视频查询沿用原提交账号。
+- 积分不足时，V 在通话中说明回原群或私聊认领和充值，到账后由用户明确继续。
 
 ## 2026-11-22 — A video does not cut an iPhone call; a call connected again keeps its board
 
