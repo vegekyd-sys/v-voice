@@ -271,3 +271,13 @@ test('an item with only a name takes the mark when V says the whole name, two ch
   assert.deepEqual(spokenProgress(scene, said, at('虾饺')).ahead, []);
   assert.equal(spokenProgress(scene, '虾仁很嫩,叉子别用。', 10).focus, '');
 });
+
+test('the title of a page can be written again without touching what is on it', () => {
+  let scene = emptyScene();
+  for (const op of [{op: 'scene', title: 'La vieille ville'}, {op: 'put', block: {id: 'a', t: 'list', items: [{id: 'a1', h: '老城'}]}}]) scene = applyOp(scene, normalizeOp(op));
+  const renamed = applyOp(scene, normalizeOp({op: 'title', title: '老城'}));
+  assert.equal(renamed.title, '老城');assert.equal(renamed.serial, scene.serial);assert.deepEqual(renamed.blocks, scene.blocks);assert.equal(renamed.rev, scene.rev + 1);
+  assert.equal(applyOp(renamed, normalizeOp({op: 'title', title: '老城'})), renamed, 'the same title changes nothing');
+  assert.equal(normalizeOp({op: 'title', title: ''}), null);
+  assert.equal(applyOp(emptyScene(), normalizeOp({op: 'title', title: '老城'})).title, '', 'an empty page is not given a title this way');
+});

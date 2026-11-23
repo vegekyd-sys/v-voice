@@ -332,6 +332,8 @@ export function normalizeOp(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   switch (raw.op) {
     case 'none': case 'clear': return {op: raw.op};
+    // The page's title written again (it was written before V spoke, in another language than V then spoke).
+    case 'title': { const title = text(raw.title, 40); return title ? {op: 'title', title} : null; }
     case 'scene': { const from = typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}; return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true, ...(raw.late === true ? {late: true} : {}), ...from} : {op: 'scene', title: text(raw.title, 40), ...from}; }
     case 'del': { const id = ident(raw.id, ''); return id ? {op: 'del', id} : null; }
     // Back to an earlier page of the canvas (its id is "z" and its number).
@@ -473,6 +475,7 @@ export const spokenFocus = (scene, spoken, index) => spokenProgress(scene, spoke
 export function applyOp(scene, op) {
   const next = change => ({...scene, ...change, rev: scene.rev + 1});
   switch (op?.op) {
+    case 'title': return op.title && op.title !== scene.title && scene.blocks.length && scene.pending === null ? next({title: op.title}) : scene;
     case 'scene':
       // Announcing the picture already on screen is not a new picture.
       if (scene.blocks.length && scene.pending === null && op.title === scene.title) return scene;

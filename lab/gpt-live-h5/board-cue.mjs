@@ -121,7 +121,7 @@ export function cueQuote(said, cue) {
 export function refineCueOp(op, {said = '', trigger = '', raw = null, unscripted = false} = {}) {
   if (!op) return null;
   if (op.op === 'scene') return {op: 'scene', title: op.title, lesson: true, late: true, ...(op.from ? {from: op.from} : {})};
-  if (op.op === 'zone' || op.op === 'none') return op;
+  if (op.op === 'zone' || op.op === 'none' || op.op === 'title') return op;
   // The page's eye follows the voice through the cues; a fixed focus would fight it.
   if (op.op === 'focus' || op.op === 'del' || op.op === 'clear') return null;
   const quote = cue => cueQuote(said, cue);
