@@ -576,13 +576,10 @@ export class GptLiveBridge {
       this.append(`你刚才说要去想、去查或让用户等一下，但后台并没有任何事在进行，用户正在等你。你不能在后台思考：现在二选一——真的需要查资料或办事，就立刻委派给后台；否则马上把内容讲出来，直接回答用户刚才的话${asked?`：“${bound(asked,160)}”`:''}。不要再说“等一下”“还在想”“快好了”。`,{channel:'speakable'});
     };
     this.netTimer=setTimeout(()=>void check(),NET_MS);this.netTimer.unref?.();
-    // The caller's own words were already read as a goodbye when they stopped speaking: a hang-up the model
-    // meant to delegate would be here by the time its reply has been said, so that case is not kept waiting.
-    const guess=this.guess;
-    if(canEnd&&guess&&asked&&same(guess.text,asked))void guess.choice.then(choice=>{
-      if(choice?.name!=='end_call'||choice.via==='fallback'||moot()||this.now()-began>=NET_MS-FAREWELL_MS)return;
-      clearTimeout(this.netTimer);this.netTimer=setTimeout(()=>void check(true),FAREWELL_MS);this.netTimer.unref?.();
-    }).catch(()=>{});
+    // A goodbye is looked at early: a hang-up the model meant to delegate would be here by the time its own
+    // goodbye has been said, a late one is not a second one, and a hang-up can still be undone by speaking.
+    // (Only a goodbye is acted on then; a promise keeps the full wait.)
+    if(canEnd){clearTimeout(this.netTimer);this.netTimer=setTimeout(()=>void check(true),FAREWELL_MS);this.netTimer.unref?.();}
   }
   // While the call is being hung up the caller speaks: only their own goodbye, or a change of mind?
   // (Asked by the session; without a judge it is a change of mind, as for every other voice.)

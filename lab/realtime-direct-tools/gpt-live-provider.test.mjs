@@ -531,10 +531,13 @@ test('a goodbye the caller plainly said is hung up on soon after V\'s own, not a
   const f=await fixture({tools:END,route:async({text})=>/拜拜/u.test(text)?{name:'end_call',args:{}}:{name:'answer_directly',args:{}},replyJudge:judge});await ready(f);
   userSays(f,'u1','好了今天先这样,拜拜');await pause(10);vSays(f,'a1','拜拜。');await pause(300);assert.equal(f.calls.length,0);
   await pause(500);assert.equal(f.calls.length,1);assert.equal(f.calls[0].name,'end_call');assert(f.events.some(e=>e.diag?.stage==='farewell-unprompted'));
-  // Words that were not read as a goodbye keep the full wait before V's own goodbye ends the call.
+  // The same for a goodbye too short to have been read ahead ("拜拜"), and for closing words read as something else.
   const g=await fixture({tools:END,route:async()=>({name:'answer_directly',args:{}}),replyJudge:judge});await ready(g);
-  userSays(g,'u1','好嘞我们先这样好吗');await pause(10);vSays(g,'a1','好啊,有需要再找我喔。');await pause(900);assert.equal(g.calls.length,0);
-  await pause(1500);assert.equal(g.calls.length,1);
+  userSays(g,'u1','拜拜');await pause(10);vSays(g,'a1','拜拜。');await pause(300);assert.equal(g.calls.length,0);await pause(500);assert.equal(g.calls.length,1);
+  // A promise is still given the full wait before it is repaired.
+  const p=await fixture({tools:END,route:async()=>({name:'answer_directly',args:{}}),replyJudge:judging([['想想看',{promise:.9}]])});await ready(p);
+  userSays(p,'u1','这个怎么推广比较好');await pause(10);vSays(p,'a1','嗯,我想想看。');await pause(1200);assert.equal(appends(p).filter(e=>/后台并没有任何事在进行/u.test(e.content[0].text)).length,0);
+  await pause(1300);assert.equal(appends(p).filter(e=>/后台并没有任何事在进行/u.test(e.content[0].text)).length,1);
 });
 
 test('a call that follows one whose connection was cut is not greeted: V says it is back and goes on from where it stopped',async()=>{
