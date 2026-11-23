@@ -588,6 +588,9 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     visible(owner,ids) {
       const value=row(owner);value.visible=[...new Set(ids.slice(0,16))].filter(id=>typeof id==='string' && SHELF_ID.test(id) && find(value,id));
     },
+    openingName(owner,url) {
+      const value=owners.get(owner);return value && [...value.assets,...pictures(value)].find(item=>item.url===url)?.name || '';
+    },
     openingAspect(owner,url) {
       const value=owners.get(owner), asset=value && [...value.assets,...pictures(value)].find(item=>item.url===url && item.kind==='image');
       if(!asset)return '';

@@ -5,7 +5,7 @@ const execute=promisify(execFile);
 
 export const IMPROV_TOOL = {
   type: 'function', name: 'improv_live',
-  description: '通话内即兴直播。只有用户明确请你开一场娱乐直播时才 start。从刚聊的话题取一个具体的梗，写一幕有动作和意外的虚构开场。镜头提示只写可见场景，不含私人信息。用户指定用屏幕上的图开场时带 openingImage，“用这个”“用它”也指当前画面，填 current，指定素材填它的编号。以图开场时保留图中人物、场景与构图，再让动作发展。等工具确认提交后再说正在连接。开播后每句用户语音由 Makaron 分辨剧情、聊天和收播。新的角色、动作或场景自然算下一幕，画面由导演呈现，你可以简短接话。不要重复提交或声称看见尚未播出的改动。结束直播用 end，继续通话。图片、短片、查找真实直播仍走原路径。返回 requested 表示已交给屏幕，不代表已经播出。',
+  description: '通话内即兴直播。只有用户明确请你开一场娱乐直播时才 start。从刚聊的话题取一个具体的梗，写一幕有动作和意外的虚构开场。镜头提示只写可见场景，不含私人信息。用户指定用屏幕上的图开场时带 openingImage，“用这个”“用它”也指当前画面，填 current，指定素材填它的编号。以图开场时保留图中人物、场景与构图，再让动作发展。等工具确认后再说正在连接。开场用的图片以回执 openingImageName 为准，没返回名称时只说“选中的图”。开播后每句用户语音由 Makaron 分辨剧情、聊天和收播。新的角色、动作或场景自然算下一幕，画面由导演呈现，你可以简短接话。不要重复提交或声称看见尚未播出的改动。结束直播用 end，继续通话。图片、短片、查找真实直播仍走原路径。返回 requested 表示已交给屏幕，不代表已经播出。',
   parameters: {type:'object', additionalProperties:false, required:['action'], properties:{
     action:{type:'string',enum:['start','direct','end']}, shot:{type:'string',description:'start 或 direct 的镜头描述，最多 600 字'},
     openingImage:{type:'string',description:'仅 start，用户指定的屏幕参考图，current 或本次电话中的图片编号'}
@@ -111,11 +111,11 @@ export function createImprovShow({run}) {
     observe,
     get active(){return Boolean(show || opening);},
     decision:turn=>turns.get(turn),
-    async command({action,shot},turn,send,imageUrl='',aspect=''){
+    async command({action,shot},turn,send,imageUrl='',aspect='',imageName=''){
       if(closed)throw Error('这通电话已结束');
       if(action==='start'){
         if(!invited(turn?.text))throw Error('请先确认是否开播');
-        if(show){send({type:'improv.live',action:'focus',id:show.id});return {requested:true,action};}
+        if(show){send({type:'improv.live',action:'focus',id:show.id});return {requested:true,action,openingImageName:show.imageName};}
         if(opening || turn===lastStart)return {requested:opening,action};
         if(!shot?.trim() || shot.length>600)throw Error('需要简短的开场描述');
         opening=true;lastStart=turn;emit=send;
@@ -124,12 +124,12 @@ export function createImprovShow({run}) {
           const result=await run(['start','--prompt',prompt,'--request-id',randomUUID(),...(imageUrl && aspect?['--aspect-ratio',aspect]:[]),...(imageUrl?['--image',imageUrl]:[])]);
           if(closed){await run(['stop',result.id]);throw Error('这通电话已结束');}
           if(result.phase!=='waiting'||!/^\/director\/player\.html#[a-z0-9-]+\.[a-zA-Z0-9_-]{43}$/.test(result.playerPath))throw Error('Makaron 未返回有效的播放票据');
-          show={id:result.id};send({type:'improv.live',action,id:show.id,playerPath:result.playerPath,...(imageUrl?{imageUrl}:{})});
+          show={id:result.id,imageName};send({type:'improv.live',action,id:show.id,playerPath:result.playerPath,...(imageUrl?{imageUrl}:{})});
         }finally{opening=false;}
       }else if(action==='direct'){const result=await observe(turn);return {...result,instruction:'只确认收到用户指定的动作，不播报画面、不添加新的角色或情节。'};}
       else if(action==='end'){if(!show)return {requested:true,action};const result=await observe(turn);return {requested:result.action==='end',action:result.action};}
       else throw Error('当前没有直播');
-      return {requested:true,action};
+      return {requested:true,action,...(action==='start' && imageName?{openingImageName:imageName,instruction:'用这个已核实的图片名称确认开场。'}:{})};
     },
     end:stop,
     close(){closed=true;if(show)void stop(show.id).catch(()=>{});}

@@ -332,7 +332,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if (!current(s) || s.latestUserTurn !== turn) return;
         if (reference && !image) throw Error('请先在这通电话中添加或点选要开场的图');
         args.shot=openingShot(turn.text,Boolean(image));
-        await s.improv.command(args,turn,event=>emit(s,event),image,image && assets.openingAspect?.(s.id,image));
+        await s.improv.command(args,turn,event=>emit(s,event),image,image && assets.openingAspect?.(s.id,image),image && assets.openingName?.(s.id,image));
       } catch(error) { emit(s,{type:'improv.notice',text:error.message}); }
     }, existing ? 0 : 3200).unref();
   }
@@ -777,7 +777,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           const imageUrl=reference && shelfFor(s) ? await assets.openingImage(s.id,reference,turn.text) : '';
           if(reference && !imageUrl)throw Error('这张图还不能用来开场，请用户点选本通话中已显示的图片。');
           if(reference && (turn!==s.latestUserTurn || !current(s) || s.epoch!==epoch))throw Error('开场请求已过期。');
-          result=await s.improv.command(call.args,turn,event=>emit(s,event),imageUrl,imageUrl && assets.openingAspect?.(s.id,imageUrl));
+          result=await s.improv.command(call.args,turn,event=>emit(s,event),imageUrl,imageUrl && assets.openingAspect?.(s.id,imageUrl),imageUrl && assets.openingName?.(s.id,imageUrl));
           s.mediaRecovery?.started();
         }
         if(call.name==='get_current_location'){if(!s.location)throw Error('当前终端不支持定位');result=await s.location.request(controller.signal);}
