@@ -260,3 +260,14 @@ test('the things named on a page are listed in the order they are laid out, once
   assert.deepEqual(namedThings({blocks: [{id: 'l', t: 'list', items: Array.from({length: 9}, (_, i) => ({id: 'i' + i, h: '第' + i + '样'}))}]}).length, 6);
   assert.deepEqual(namedThings(null), []);
 });
+
+test('an item with only a name takes the mark when V says the whole name, two characters included', () => {
+  const scene = {blocks: [{id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '白灼虾', img: 'x'}, {id: 'b', h: '虾饺', img: 'y'}, {id: 'c', h: '叉烧', img: 'z'}]}]};
+  const said = '先说白灼虾,清水一烫就很鲜。虾饺呢,皮薄。';
+  const at = phrase => Array.from(said.slice(0, said.indexOf(phrase) + phrase.length)).length;
+  assert.equal(spokenProgress(scene, said, at('先说白灼虾')).focus, 'g/a');
+  assert.equal(spokenProgress(scene, said, at('虾饺')).focus, 'g/b');
+  // Not yet said: still to come, and never by a single character of its name.
+  assert.deepEqual(spokenProgress(scene, said, at('虾饺')).ahead, []);
+  assert.equal(spokenProgress(scene, '虾仁很嫩,叉子别用。', 10).focus, '');
+});

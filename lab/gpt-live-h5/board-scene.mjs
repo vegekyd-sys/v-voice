@@ -391,7 +391,9 @@ function anchorOf(item, all) {
   const quote = item.q ? loose(item.q) : '';
   if (quote && all.includes(quote)) return quote;
   const name = loose(String(item.h ?? item.label ?? ''));
-  for (let length = name.length; length >= 3; length--) if (all.includes(name.slice(0, length))) return name.slice(0, length);
+  // (A name of two characters counts when V says the whole of it: 虾饺, 故宫. A page put up before V speaks has
+  // only names to go by, and without this such an item waited for a quote from a later drawing, seconds behind.)
+  for (let length = name.length; length >= Math.min(3, Math.max(2, name.length)); length--) if (all.includes(name.slice(0, length))) return name.slice(0, length);
   const figure = item.value === undefined ? '' : loose(String(item.value));
   if (figure.length >= 2) for (const text of [figure + loose(String(item.unit ?? '')), figure]) if (all.includes(text)) return text;
   return '';
