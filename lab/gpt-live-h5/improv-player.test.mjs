@@ -11,7 +11,7 @@ test('one invited live show owns its signaling, heartbeat and retirement',async 
     return Response.json({session_id:'provider-fixture'});
   }});
   const start = {action:'start',shot:'雨夜，猫在店门前撑开小伞'};
-  for (const text of ['生成一段视频','找一场直播','他说“给我们来场直播”','别开直播','怎么开直播']) {
+  for (const text of ['生成一段视频','找一场直播','他说“给我们来场直播”','别开直播','怎么开直播','如果我选这张图，然后开始一场直播呢？','还直播。','先别用这张图开直播']) {
     assert.throws(()=>show.command(start,{text},send));
   }
   const invite = {text:'刚才那只猫挺有意思，给我们搞场直播什么的。'};
@@ -40,12 +40,14 @@ test('early directions coalesce, first media is independent of acknowledgments, 
     callbacks = cb;
     return {ready:Promise.resolve(),send:value=>messages.push(value),close:async()=>{closed++;}};
   },update:v=>{view=v;},ended:id=>ended.push(id),notice:()=>{},keep:()=>{keeps++;}});
-  const command = (action,shot) => player.receive({action,id:'show',shot});
+  const command = (action,shot) => player.receive({action,id:'show',shot,...(action === 'start' ? {imageUrl:'https://test.example/scene.png'} : {})});
   await command('start','猫在守夜');
   await command('direct','看门口');
   await command('direct','看对面的小狗');
   callbacks.onData({type:'configured'});
   assert.deepEqual(messages.map(m=>m.type),['configure','prompt']);
+  assert.equal(messages[0].image_url,'https://test.example/scene.png');
+  assert.equal(Object.hasOwn(messages[1],'image_url'),false);
   assert.equal(messages[1].prompt,'看对面的小狗');
   assert.equal(view.stream,null);
   callbacks.onMedia('video-stream');

@@ -1,4 +1,4 @@
-import {IMPROV_TOOL} from './improv-live.mjs';
+import {IMPROV_TOOL, openingImageFor} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
@@ -712,7 +712,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         validateTool(call.name,call.args);
         if(call.name===IMPROV_TOOL.name){
           if(!s.improv)throw Error('当前通话没有即兴直播');
-          result=s.improv.command(call.args,s.latestUserTurn,event=>emit(s,event));
+          const turn=s.latestUserTurn, reference=openingImageFor(call.args,turn?.text);
+          const imageUrl=reference && shelfFor(s) ? await assets.openingImage(s.id,reference,turn.text) : '';
+          if(reference && !imageUrl)throw Error('这张图还不能用来开场，请用户点选本通话中已显示的图片。');
+          if(reference && (turn!==s.latestUserTurn || !current(s) || s.epoch!==epoch))throw Error('开场请求已过期。');
+          result=s.improv.command(call.args,turn,event=>emit(s,event),imageUrl);
         }
         if(call.name==='get_current_location'){if(!s.location)throw Error('当前终端不支持定位');result=await s.location.request(controller.signal);}
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');

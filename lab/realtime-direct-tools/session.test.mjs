@@ -1939,3 +1939,29 @@ test('improv tool joins a display call and steers its existing show without a ga
  t.after(()=>ordinary.service.dispose());
  assert(!ordinary.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
 });
+
+test('a spoken invitation can open on the picture selected in this call',async t=>{
+ const {createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
+ const assets=createAssetShelf({}), improv=createImprovShow({key:'fixture'});
+ const f=await fixture(undefined,'grok',{assets,improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ const owner=f.reservation.voiceSessionId, image='https://cdn.example/lighthouse.png';
+ assets.add('different-call',{url:'https://cdn.example/other.png'});
+ const say=text=>f.event({type:'conversation.item.input_audio_transcription.completed',transcript:text,item_id:'fixture-input'});
+ const start=id=>f.call('improv_live',{action:'start',shot:'灯塔的光扫过港湾'},id);
+ say('请用这张海报，然后开始一场直播好吗？');
+ start('missing');
+ await delay(0);
+ assert(!f.client.sent.some(e=>e.type==='improv.live'));
+ const first=assets.add(owner,{url:image});
+ assets.add(owner,{url:'https://cdn.example/harbor.png'});
+ assets.pick(owner,first.id);
+ say('你可以用这张图开始一场直播吗？');
+ start('with-image');
+ await delay(0);
+ assert.equal(f.client.sent.find(e=>e.type==='improv.live')?.imageUrl,image);
+ assert.equal(await assets.openingImage(owner,'a999',''),'');
+ assert.equal(await assets.openingImage(owner,'https://cdn.example/unlisted.png',''),'');
+ assets.pick(owner,'');
+ assert.equal(await assets.openingImage(owner,'current','用这张图'),'https://cdn.example/harbor.png');
+});

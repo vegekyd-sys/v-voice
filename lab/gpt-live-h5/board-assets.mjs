@@ -537,6 +537,15 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       value.picked = id; changed(owner, value);
       return true;
     },
+    async openingImage(owner, reference, words) {
+      const value = owners.get(owner);
+      if (!value) return '';
+      const item = reference === 'current'
+        ? pointedAt(value, words) ?? (value.picked ? find(value, value.picked) : value.assets.filter(item => item.state === 'ready').at(-1))
+        : [...value.photos, ...value.assets].find(item => item.id === reference);
+      if (item?.kind !== 'image' || item.state !== 'ready' || item.fits === false) return '';
+      return https(await api.address(owner, item.id));
+    },
     /** Where a thing can be fetched from outside the call (to save it): a made thing's own link, a found photograph lent out. */
     async address(owner, id) {
       const value = owners.get(owner), asset = value?.assets.find(item => item.id === id && item.state === 'ready');

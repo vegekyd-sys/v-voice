@@ -26,7 +26,7 @@ export function createImprovPlayer({open, update, ended, keep, notice}) {
     current.handle.send({type:'prompt', prompt_version:++current.version, prompt:shot, replan:true});
     publish(current,{note:'正在调整镜头'});
   }
-  async function receive({id, action, shot}) {
+  async function receive({id, action, shot, imageUrl}) {
     if (action !== 'start') {
       if (id !== show?.id) return;
       if (action === 'end') finish();
@@ -62,7 +62,7 @@ export function createImprovPlayer({open, update, ended, keep, notice}) {
       void handle.ready.catch(() => { if (show === current) finish('直播暂时连不上，通话继续'); });
       if (show !== current) { await handle.close(); return; }
       current.handle = handle;
-      handle.send({type:'configure',protocol_version:1,prompt_version:1,prompt:shot,resolution:'768p',aspect_ratio:'16:9',memory:12});
+      handle.send({type:'configure',protocol_version:1,prompt_version:1,prompt:shot,...(imageUrl ? {image_url:imageUrl} : {}),resolution:'768p',aspect_ratio:'16:9',memory:12});
     } catch { if (show === current) finish('直播暂时连不上，通话继续'); }
   }
   return {receive, finish, keep};
