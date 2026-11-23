@@ -1289,7 +1289,7 @@ test('a GPT Live 1.1 call whose connection is cut is dialled again by itself wit
  const contexts=f.contexts.length;
  // Held for 40 s, then the socket closes without a close frame.
  f.setNow(40000);relays[0].onClosed({code:1006,clean:false,quietMs:300});await settle();
- assert.equal(dials.length,2,'dialled again');assert.deepEqual([dials[1].resumed.code,dials[1].resumed.clean,dials[1].resumed.quietMs,dials[1].resumed.heldMs>=39000],[1006,false,300,true]);
+ assert.equal(dials.length,2,'dialled again');assert(!f.requests.some(r=>r.route==='close'),'and the lost call is not hung up on the service: its board is for the call that follows');assert.deepEqual([dials[1].resumed.code,dials[1].resumed.clean,dials[1].resumed.quietMs,dials[1].resumed.heldMs>=39000],[1006,false,300,true]);
  assert.equal(f.contexts.length,contexts,'the audio context made in the tap is kept: no new one');assert.equal(f.sounds.at(-1).dialing,0,'no ringing for a call that is coming back');
  // Cut again within seconds of coming back, twice: the second is still tried, the third is left to the caller.
  f.setNow(45000);relays[1].onClosed({code:1006,clean:false,quietMs:0});await settle();assert.equal(dials.length,3);

@@ -696,6 +696,9 @@ async function redialLostCall(active, failure, closed = {}) {
   const lost = {code: closed.code ?? null, clean: closed.clean === true, quietMs: closed.quietMs ?? null, heldMs, online: navigator.onLine !== false, hidden: document.hidden === true, net: String(navigator.connection?.effectiveType ?? '').slice(0, 12)};
   // The audio context is kept: one made without a tap may never start on a phone.
   const context = active.context; active.context = null;
+  // The lost call is not closed from here: the service saw its socket go, and an explicit close is a hang-up
+  // there (it lets the call's board go, which the call that follows is to carry on).
+  active.voiceSessionId = null;
   await stopCall({failure: Object.assign(Error('连接断了一下，正在接回…'), {code: 'RELAY_REDIALING'})});
   if (call || starting) { await context?.close().catch(() => {}); return; }
   await startCall({context, resumed: lost});
