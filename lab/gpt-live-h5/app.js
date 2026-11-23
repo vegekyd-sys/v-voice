@@ -58,6 +58,7 @@ if (document.querySelector) mountCallUi(document, view, {
         if(call===active){active.boardAssets?.poke?.();setStatus('参考图已放到画布上',{tone:'success'});}
       } catch(error){if(call===active)setStatus(error.message||'添加参考图失败',{tone:'problem'});}
     },
+    toggleImprovSound: () => call?.improv?.toggleSound(),
     endImprov: () => call?.improv?.finish(),
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
@@ -135,6 +136,7 @@ function setMuted(muted) {
 function setOutputMuted(outputMuted) {
   if (!call) return;
   call.relay?.setOutputMuted(outputMuted);
+  call.improv?.setOutputMuted(outputMuted);
   $("remoteAudio").muted = outputMuted || Boolean(call.duplex?.snapshot().localPlaybackMuted);
   view.set({outputMuted});
 }
@@ -785,7 +787,7 @@ async function startCall() {
     active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if(captureError)throw captureError;
-    if (improvLive) active.improv = createImprovPlayer({
+    if (improvLive) active.improv = createImprovPlayer({context:active.context,
       update: improv => { if (call === active) view.set({improv}); },
       ended: id => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id}).catch(()=>{}); },
       notice: (text,failed) => { if (call === active) setStatus(text,{tone:failed?'problem':'success'}); }
@@ -884,7 +886,7 @@ async function startCall() {
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall({failure:error});},
         onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},
-        onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
+        onPlaybackActivity:speaking=>{if(call===active){active.improv?.setHostSpeaking(speaking);setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
           if(active.deviceAdapter?.handle(value))return;
@@ -894,6 +896,8 @@ async function startCall() {
           // Its caption row must not be reused for the answer to the next turn.
           if(value.type==='improv.notice'){setStatus(value.text,{tone:'problem'});return;}
           if(value.type==='improv.live'){void active.improv?.receive(value);return;}
+          if(value.type==='input.speech.started')active.improv?.setCallerSpeaking(true);
+          if(value.type==='input.speech.stopped' || value.type==='input.speech.ignored' || (value.type==='transcript' && value.role==='user' && value.final))active.improv?.setCallerSpeaking(false);
           if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
             // Close only the display row, preserving its received text in
             // history. This is not provider completion or playback proof.

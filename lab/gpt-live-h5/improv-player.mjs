@@ -1,11 +1,45 @@
 // The playback peer belongs to the call. The lesson board can collapse, move
 // to another sheet or reopen while Makaron continues recording the same peer.
-export function createImprovPlayer({update,ended,notice}){
-  let current;
+export function createImprovPlayer({context,update,ended,notice}){
+  let current, callerSpeaking=false, hostSpeaking=false, outputMuted=false;
+  function mix(show) {
+    if(!show?.gain)return;
+    const duck=callerSpeaking || hostSpeaking;
+    const level=outputMuted || show.muted ? 0 : duck ? 0.18 : 0.85;
+    const gain=show.gain.gain;
+    if(!show.mixed)gain.value=level;
+    else gain.setTargetAtTime(level,context.currentTime,level===0?0.008:duck?0.025:0.09);
+    show.mixed=true;
+  }
+  function attachSound(show,stream) {
+    if(show.stream===stream)return;
+    disconnectSound(show);
+    show.stream=stream;
+    if(!stream || !context)return;
+    // Use the call's unlocked output. Flipping a lesson page or muting the
+    // preview must never disable the provider track shared with the recorder.
+    const bind=()=>{
+      const track=stream.getAudioTracks().find(t=>t.readyState==='live');
+      if(current!==show || !track || show.track===track)return;
+      show.source?.disconnect();show.track=track;
+      show.gain??=context.createGain();
+      if(!show.mixed)show.gain.connect(context.destination);
+      mix(show);
+      show.source=context.createMediaStreamSource(new MediaStream([track]));
+      show.source.connect(show.gain);
+    };
+    show.bind=bind;stream.addEventListener('addtrack',bind);bind();
+  }
+  function disconnectSound(show) {
+    if(show.bind)show.stream?.removeEventListener('addtrack',show.bind);
+    show.source?.disconnect();show.gain?.disconnect();
+    show.gain=show.source=show.track=show.bind=null;show.mixed=false;
+  }
   function publish(show) {
-    update({id:show.id,stream:show.stream,imageUrl:show.imageUrl,cue:show.cue,note:show.note,focus:show.focus});
+    update({id:show.id,stream:show.stream,muted:!!show.muted,imageUrl:show.imageUrl,cue:show.cue,note:show.note,focus:show.focus});
   }
   function detach(show) {
+    disconnectSound(show);
     if(current===show){current=null;update(null);}
   }
   function close(show){
@@ -39,7 +73,7 @@ export function createImprovPlayer({update,ended,notice}){
         close(show);return;
       }
       if(current!==show)return;
-      if(e.data.action==='playing'){show.stream=frame.contentDocument.querySelector('video')?.srcObject;publish(show);}
+      if(e.data.action==='playing'){attachSound(show,frame.contentDocument.querySelector('video')?.srcObject);publish(show);}
       if(e.data.action==='direction'){
         if(e.data.state==='playing' && Number.isInteger(e.data.version) && e.data.version>(show.version||0)){
           show.version=e.data.version;show.cue={version:e.data.version,text:String(e.data.text||'').slice(0,2000),rtp:e.data.rtpTimestamp};show.note='';
@@ -51,5 +85,10 @@ export function createImprovPlayer({update,ended,notice}){
     current=show;window.addEventListener('message',show.listener);
     publish(show);frame.src=url.href;document.body.append(frame);
   }
-  return {receive,finish};
+  return {receive,finish,
+    toggleSound(){if(current){current.muted=!current.muted;mix(current);publish(current);}},
+    setOutputMuted(value){outputMuted=value;mix(current);},
+    setHostSpeaking(value){hostSpeaking=value;mix(current);},
+    setCallerSpeaking(value){callerSpeaking=value;mix(current);},
+  };
 }

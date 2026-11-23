@@ -78,3 +78,35 @@ test('opening on this picture preserves its shape and excludes invented opening 
  shelf.begin('call',{command:"makaron edit --image-model gemini-2.1 '另一幅画'"});
  assert.equal(await shelf.openingImage('call','current',words),'');
 });
+
+test('late Director audio joins the call once, ducks under overlapping speech and detaches without muting the recorder', async t=>{
+ const {createImprovPlayer}=await import('./improv-player.mjs');
+ const origin='https://voice.example', page=new EventTarget(), stream=new EventTarget();
+ const track={readyState:'live',enabled:true}, tracks=[];
+ stream.getAudioTracks=()=>tracks;
+ const frame={contentWindow:{},contentDocument:{querySelector:()=>({srcObject:stream})},remove(){}};
+ const browser={window:page,location:{origin},document:{baseURI:origin+'/voice/',createElement:()=>frame,body:{append(){}}},MediaStream:class{constructor(tracks){this.tracks=tracks;}}};
+ for(const [key,value] of Object.entries(browser)){
+   const previous=Object.getOwnPropertyDescriptor(globalThis,key);
+   Object.defineProperty(globalThis,key,{configurable:true,value});
+   t.after(()=>previous?Object.defineProperty(globalThis,key,previous):Reflect.deleteProperty(globalThis,key));
+ }
+ const destination={}, param={value:0,setTargetAtTime(level){this.value=level;}};
+ let sources=0, disconnected=false, soundOutput=null;
+ const context={currentTime:0,destination,createGain:()=>({gain:param,connect(node){soundOutput=node;},disconnect(){soundOutput=null;}}),
+   createMediaStreamSource(input){sources++;assert.deepEqual(input.tracks,[track]);return {connect(){},disconnect(){disconnected=true;}};}};
+ const player=createImprovPlayer({context,update(){},notice(){},ended(){}});
+ player.receive({action:'start',id:'s',playerPath:'/director/player.html'});
+ const signal=action=>page.dispatchEvent(Object.assign(new Event('message'),{origin,source:frame.contentWindow,data:{source:'makaron-director',id:'s',action}}));
+ signal('playing');assert.equal(sources,0);
+ tracks.push(track);stream.dispatchEvent(new Event('addtrack'));signal('playing');
+ assert.equal(sources,1);assert.equal(soundOutput,destination);
+ const normal=param.value;assert.ok(normal>0);
+ player.setCallerSpeaking(true);const reduced=param.value;assert.ok(reduced>0 && reduced<normal);
+ player.setHostSpeaking(true);player.setCallerSpeaking(false);assert.equal(param.value,reduced);
+ player.toggleSound();player.setHostSpeaking(false);assert.equal(param.value,0);
+ player.setOutputMuted(true);player.toggleSound();assert.equal(param.value,0);
+ player.setOutputMuted(false);assert.equal(param.value,normal);
+ signal('ended');assert.equal(soundOutput,null);assert.equal(disconnected,true);assert.equal(track.enabled,true);
+ stream.dispatchEvent(new Event('addtrack'));assert.equal(sources,1);
+});

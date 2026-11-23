@@ -474,7 +474,10 @@ function ImprovStage({show, actions}) {
       {playing && caption && <p>{caption}</p>}
       {show.note && <small>{show.note}</small>}
     </figcaption>
-    <button className="board-report" type="button" onClick={actions.endImprov}>结束直播</button>
+    <div className="improv-controls">
+      <button className="board-report improv-sound" type="button" aria-label={show.muted?'恢复直播声音':'静音直播声音'} aria-pressed={show.muted} title={show.muted?'恢复直播声音':'静音直播声音'} onClick={actions.toggleImprovSound}><Icon d={show.muted?SPEAKER_OFF:SPEAKER}/></button>
+      <button className="board-report" type="button" onClick={actions.endImprov}>结束直播</button>
+    </div>
   </figure>;
 }
 

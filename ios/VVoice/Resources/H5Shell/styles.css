@@ -2297,3 +2297,6 @@ video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 .reference-picker input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .reference-picker:focus-within { outline: 2px solid var(--pen); border-radius: 12px; }
 .reference-picker svg { width: 20px; height: 20px; }
+
+.improv-controls{display:flex;align-items:center;gap:.45rem}
+.improv-sound svg{width:1em;height:1em;vertical-align:middle}
