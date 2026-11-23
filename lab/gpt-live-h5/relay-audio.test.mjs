@@ -132,8 +132,10 @@ test('a voice that falls behind has its own pauses held a little longer; a word 
  const long=slow();long.push(speech(400));long.push(quiet(300));play(long,320+400+130+800);assert.equal(long.frames,0);assert.equal(long.stretched,24000+128-24000%128);
  // The short quiet inside a word (a stop consonant) is played straight through.
  const word=slow();word.push(speech(400));word.push(quiet(70));word.push(speech(100));play(word,320+400+70+100+50);assert.equal(word.stretched,0);assert.equal(word.frames,0);
+ // With its window full, a pause still puts a little by for a long stretch without one: 200 ms at most.
+ const by=slow();by.push(speech(400));by.push(quiet(300));by.push(speech(450));play(by,320+400+300+450+300);assert.equal(by.frames,0);assert.ok(by.stretched>=9600&&by.stretched<9600+128,`held ${by.stretched/48} ms`);
  // Enough waiting, or a reply that is complete: nothing to wait for.
- const full=slow();full.push(speech(400));full.push(quiet(300));full.push(speech(600));play(full,320+400+300+300);assert.equal(full.stretched,0);
+ const full=slow();full.push(speech(400));full.push(quiet(300));full.push(speech(900));play(full,320+400+300+300);assert.equal(full.stretched,0);
  const done=slow();done.push(speech(400));done.push(quiet(300));done.end();play(done,900);assert.equal(done.stretched,0);assert.equal(done.frames,0);
  // The other voices arrive ahead of time and are left alone.
  const plain=queue(48000,320);plain.push(speech(400));plain.push(quiet(300));play(plain,1200);assert.equal(plain.stretched,0);assert.equal(plain.frames,0);

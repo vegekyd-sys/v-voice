@@ -13,7 +13,7 @@ export class PcmPlaybackQueue {
     // A pause held for a voice that is behind (see `quietAhead`): what counts as quiet (about -42 dBFS), how
     // much quiet must already have played before it counts as a pause, and how long one pause may be held.
     // Kept on the instance: this class is also the source of the audio thread's copy.
-    this.quietSample=260;this.pauseMin=Math.ceil(rate*.12);this.holdMax=Math.ceil(rate*.5);this.stretched=0;this.clear();
+    this.quietSample=260;this.pauseMin=Math.ceil(rate*.12);this.holdMax=Math.ceil(rate*.5);this.reserveMax=Math.ceil(rate*.2);this.stretched=0;this.clear();
   }
   starved(){this.underflows++;if(this.grow)this.prefill=Math.min(this.maxPrefill,this.prefill+this.grow);}
   // GPT Live's voice is sent a little slower than it plays (measured: 91 to 98 packets for every 100 due,
@@ -23,6 +23,9 @@ export class PcmPlaybackQueue {
   // longer instead: while less than the window is waiting, 120 ms of quiet have just played and what comes
   // next is quiet too, nothing is taken from the queue (half a second at most for one pause). The 120 ms
   // keep it out of words: the closure of a stop consonant is quiet as well, but shorter.
+  // The window a reply starts with (a third of a second) lasts six seconds of speech at the slowest speed
+  // measured, and a story can go longer than that without a pause. So a pause is also used to put a
+  // little by: with the window full, up to 200 ms more of one pause, until the largest window is waiting.
   quietAhead(){
     const span=Math.min(this.frames,240); // 10 ms of the 24 kHz stream
     for(let i=0;i<span;i+=6)if(Math.abs(this.peek(i))>=this.quietSample)return false;
@@ -44,7 +47,8 @@ export class PcmPlaybackQueue {
     // A complete response can start immediately: no more network frames await.
     if(!this.playing){this.wait+=out.length;if(!this.complete&&this.wait<this.prefill)return;this.playing=true;this.wait=0;}
     const step=24000/this.rate;
-    if(this.grow&&!this.complete&&this.quietRun>=this.pauseMin&&this.frames*this.rate/24000<this.prefill&&this.held<this.holdMax&&this.quietAhead()){this.held+=out.length;this.stretched+=out.length;return;}
+    const waiting=this.frames*this.rate/24000;
+    if(this.grow&&!this.complete&&this.quietRun>=this.pauseMin&&this.held<(waiting<this.prefill?this.holdMax:waiting<this.maxPrefill?this.reserveMax:0)&&this.quietAhead()){this.held+=out.length;this.stretched+=out.length;return;}
     if(this.held&&!this.quietAhead())this.held=0;
     for(let i=0;i<out.length;i++){
       if(!this.frames){if(!this.complete)this.starved();this.playing=false;this.wait=0;break;}
