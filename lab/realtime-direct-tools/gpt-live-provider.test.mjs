@@ -524,3 +524,15 @@ test('a promise to look something up that nobody delegated is kept for the model
   // A delegation for the same words that still comes is already served.
   say(f,idOf(3),'我今天有什么日程安排');await pause(20);assert.equal(f.calls.length,1);
 });
+
+test('a goodbye the caller plainly said is hung up on soon after V\'s own, not after the full wait',async()=>{
+  const judge=judging([['拜拜',{farewell:.95}],['有需要再找我',{farewell:.9}]]);
+  // The caller's words are read as a hang-up as they stop speaking; the model says goodbye and delegates nothing.
+  const f=await fixture({tools:END,route:async({text})=>/拜拜/u.test(text)?{name:'end_call',args:{}}:{name:'answer_directly',args:{}},replyJudge:judge});await ready(f);
+  userSays(f,'u1','好了今天先这样,拜拜');await pause(10);vSays(f,'a1','拜拜。');await pause(300);assert.equal(f.calls.length,0);
+  await pause(500);assert.equal(f.calls.length,1);assert.equal(f.calls[0].name,'end_call');assert(f.events.some(e=>e.diag?.stage==='farewell-unprompted'));
+  // Words that were not read as a goodbye keep the full wait before V's own goodbye ends the call.
+  const g=await fixture({tools:END,route:async()=>({name:'answer_directly',args:{}}),replyJudge:judge});await ready(g);
+  userSays(g,'u1','好嘞我们先这样好吗');await pause(10);vSays(g,'a1','好啊,有需要再找我喔。');await pause(900);assert.equal(g.calls.length,0);
+  await pause(1500);assert.equal(g.calls.length,1);
+});

@@ -33,7 +33,7 @@ const SCRIPT_MATCH=6,SCRIPT_LOOSE=36,SCRIPT_WINDOW_MS=120_000,SCRIPT_SOURCE='V-b
 // until the caller ended it), and "let me think" / "I'll go and check" with nothing delegated (it cannot
 // work in the background; a real call had three such lines in a row). What a reply is, is judged by a
 // model (`judge`), not matched against words; these are only how long to wait and how sure to be.
-const HOLD_QUIET_MS=2000,HOLD_SETTLE_MS=400,HOLD_MAX_MS=12000,LOUD_PEAK=2500,LOUD_RUN_MS=160,LOUD_GAP_MS=300,NET_MS=2200,NET_MAX_CHARS=64,SURE_FAREWELL=0.7,SURE_PROMISE=0.6,SURE_STAYS=0.5;
+const FAREWELL_MS=500,HOLD_QUIET_MS=2000,HOLD_SETTLE_MS=400,HOLD_MAX_MS=12000,LOUD_PEAK=2500,LOUD_RUN_MS=160,LOUD_GAP_MS=300,NET_MS=2200,NET_MAX_CHARS=64,SURE_FAREWELL=0.7,SURE_PROMISE=0.6,SURE_STAYS=0.5;
 function scriptOf(text,at){
   const chars=Array.from(String(text)),map=[];let letters='';
   chars.forEach((character,index)=>{for(const letter of loose(character)){letters+=letter;map.push(index);}});
@@ -526,13 +526,16 @@ export class GptLiveBridge {
     const verdict=Promise.resolve().then(()=>this.judge({reply:text,userText:asked,history:this.history.slice(-6),signal:this.abort.signal})).catch(()=>null);
     // A delegation that came after all, a new reply, the caller speaking, work in flight: nothing to repair.
     const moot=()=>this.closed||this.ending||this.turnId!==turn||this.delegated_!==seen||this.userSpeaking||this.busy;
-    const check=async()=>{
+    const began=this.now();
+    const check=async early=>{
       if(moot())return;
       // Something has just come back: the model is given the time to answer from it first.
       const wait=NET_MS-(this.now()-(this.resultAt??0));
       if(wait>0){this.netTimer=setTimeout(check,wait);this.netTimer.unref?.();return;}
       const judged=await verdict;
       if(!judged||moot())return;
+      // (Looked at early only for a goodbye; anything else keeps its full wait.)
+      if(early===true&&!(canEnd&&judged.farewell>=SURE_FAREWELL)){this.netTimer=setTimeout(()=>void check(),Math.max(0,NET_MS-(this.now()-began)));this.netTimer.unref?.();return;}
       if(canEnd&&judged.farewell>=SURE_FAREWELL){
         const id=`host_${++this.ownCalls}`;this.ending=true;this.endingAt=this.now();
         this.delegations.set(id,{text:'',state:'running',polls:0,name:'end_call',own:true});
@@ -562,6 +565,13 @@ export class GptLiveBridge {
       this.append(`你刚才说要去想、去查或让用户等一下，但后台并没有任何事在进行，用户正在等你。你不能在后台思考：现在二选一——真的需要查资料或办事，就立刻委派给后台；否则马上把内容讲出来，直接回答用户刚才的话${asked?`：“${bound(asked,160)}”`:''}。不要再说“等一下”“还在想”“快好了”。`,{channel:'speakable'});
     };
     this.netTimer=setTimeout(()=>void check(),NET_MS);this.netTimer.unref?.();
+    // The caller's own words were already read as a goodbye when they stopped speaking: a hang-up the model
+    // meant to delegate would be here by the time its reply has been said, so that case is not kept waiting.
+    const guess=this.guess;
+    if(canEnd&&guess&&asked&&same(guess.text,asked))void guess.choice.then(choice=>{
+      if(choice?.name!=='end_call'||choice.via==='fallback'||moot()||this.now()-began>=NET_MS-FAREWELL_MS)return;
+      clearTimeout(this.netTimer);this.netTimer=setTimeout(()=>void check(true),FAREWELL_MS);this.netTimer.unref?.();
+    }).catch(()=>{});
   }
   // While the call is being hung up the caller speaks: only their own goodbye, or a change of mind?
   // (Asked by the session; without a judge it is a change of mind, as for every other voice.)

@@ -198,7 +198,7 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 // Candidate only: the model is off in production until its login is configured and the switch is set.
 export const GPT_LIVE_11_CANDIDATE_UPDATE = {
-  version:'voice-gpt-live-11.20261121.4',date:'2026-11-20',
+  version:'voice-gpt-live-11.20261123.1',date:'2026-11-23',
   title:'GPT Live 1.1：是 V 本人，查东西当场答，讲解有画面（Candidate）',status:'candidate-validation',
   items:[
     '模型列表新增 GPT Live 1.1，走 Codex 套餐登录，不另外按量付费。',
@@ -206,7 +206,9 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
     '查时间、上网搜索、查记忆和日程这类短任务当场办完；追问「再看一下」会接着刚才那件事查，不会查偏。',
     '讲解和讲故事：V 自己讲，听完就开口，不再念稿；画面跟着它说的话出现。',
     '修复：你说到一半的话不再出现在 V 的气泡里，也不会被画到画面上。',
-    '修复：V 不再说“我想想、等我一下”然后没有下文；说了再见就真的挂断。',
+    '修复：V 说“我去看一下”却没去查时，会直接替它把该查的查了再告诉你；说了再见就真的挂断。',
+    '修复：通话时间一长反应变慢（网络卡顿后你的声音会一直晚到，最多晚两秒），现在会自动追平。',
+    '挂断时你还在说话，会先听你说完：只是回一句再见就照常挂，说“等一下”就不挂了。',
     '说话更像聊天：一两句就停下来听你说；声音不再一顿一顿（播放缓冲加大）。',
     '讲“今年、现在”的事先按今天的日期去查，再按查到的最新资料讲，不拿旧印象补。',
     '仅候选验证：真实手机收音、打断、锁屏和长时间通话还没验收，机器人和音箱暂未接入。',
