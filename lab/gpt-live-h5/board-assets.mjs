@@ -281,7 +281,9 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     if (/(?:你自己|你的|小何的|V的)(?:的)?(?:形象|头像|照片|图片)/iu.test(words)) return value.standing.find(item=>item.id==='v') ?? null;
     if (/(?:我(?:刚刚?|刚才)?上传的[^，。]{0,6}(?:图|照片)|我自己的(?:照片|图片)|我的(?:照片|图片))/u.test(words)) return here.filter(item=>item.source==='upload').at(-1) ?? null;
     for (const match of words.matchAll(/[那这]\s*(?:个|张|幅|只|份)?\s*([^，。,.！？!?、那这]{2,12}?)的?\s*(?:那张|这张)?\s*(?:图片|照片|图|海报)/gu)) {
-      const named = here.filter(item => nameFit(match[1], item.name) >= 1 || item.query && nameFit(match[1], item.query) >= 1).at(-1);
+      const matches = here.filter(item => nameFit(match[1], item.name) >= 1 || item.query && nameFit(match[1], item.query) >= 1);
+      const portrait = /你那[张幅]/u.test(words) && matches.findLast(item => item.from === 'v' || item.refs?.includes('v'));
+      const named = portrait || matches.at(-1);
       if (named) return named;
     }
     if (/这张|这个图|这幅/u.test(words) && value.picked) return here.find(item => item.id === value.picked) ?? null;

@@ -316,7 +316,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   function observeImprov(s, turn) {
     if (!s.improv) return;
     s.referenceEdit?.(turn);
-    if (!invited(turn.text)) {
+    const previous = s.improvOpening?.turn;
+    const question = s.answers?.at(-1);
+    const confirmsOpening = previous && !s.improv.active && question &&
+      question.at >= Date.parse(previous.receivedAt) && Date.now() - Date.parse(previous.receivedAt) < 45000 &&
+      /(?:开[^。！？?]{0,10}直播|开播)(?:吧|呢|吗|么)?[？?]$/u.test(question.text.trim()) &&
+      /^(?:是的?|对的?|好[的啊呀]?|可以|确认|开始吧|开吧)[。！!，,\s]*$/u.test(turn.text.trim());
+    const openingTurn = confirmsOpening ? {...turn,text:previous.text} : turn;
+    s.improvOpening = invited(openingTurn.text) ? {source:turn,turn:openingTurn} : null;
+    if (!s.improvOpening) {
       void s.improv.observe(turn).catch(()=>audit({type:'improv.direction-failed',voiceSessionId:s.id}));
       return;
     }
@@ -327,12 +335,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if (!current(s) || s.latestUserTurn !== turn || (!existing && s.improv.active)) return;
       try {
         const args = {action:'start'};
-        const reference = openingImageFor(args,turn.text);
-        const image = reference && shelfFor(s) ? await assets.openingImage(s.id,reference,turn.text) : '';
+        const reference = openingImageFor(args,openingTurn.text);
+        const image = reference && shelfFor(s) ? await assets.openingImage(s.id,reference,openingTurn.text) : '';
         if (!current(s) || s.latestUserTurn !== turn) return;
         if (reference && !image) throw Error('请先在这通电话中添加或点选要开场的图');
-        args.shot=openingShot(turn.text,Boolean(image));
-        await s.improv.command(args,turn,event=>emit(s,event),image,image && assets.openingAspect?.(s.id,image),image && assets.openingName?.(s.id,image));
+        args.shot=openingShot(openingTurn.text,Boolean(image));
+        await s.improv.command(args,openingTurn,event=>emit(s,event),image,image && assets.openingAspect?.(s.id,image),image && assets.openingName?.(s.id,image));
+        s.mediaRecovery?.started();
       } catch(error) { emit(s,{type:'improv.notice',text:error.message}); }
     }, existing ? 0 : 3200).unref();
   }
@@ -773,10 +782,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         validateTool(call.name,call.args);
         if(call.name===IMPROV_TOOL.name){
           if(!s.improv)throw Error('当前通话没有即兴直播');
-          const turn=s.latestUserTurn, reference=openingImageFor(call.args,turn?.text);
+          const latest=s.latestUserTurn;
+          const turn=call.args.action==='start' && s.improvOpening && s.improvOpening.source===latest ? s.improvOpening.turn : latest;
+          const reference=openingImageFor(call.args,turn?.text);
           const imageUrl=reference && shelfFor(s) ? await assets.openingImage(s.id,reference,turn.text) : '';
           if(reference && !imageUrl)throw Error('这张图还不能用来开场，请用户点选本通话中已显示的图片。');
-          if(reference && (turn!==s.latestUserTurn || !current(s) || s.epoch!==epoch))throw Error('开场请求已过期。');
+          if(reference && (latest!==s.latestUserTurn || !current(s) || s.epoch!==epoch))throw Error('开场请求已过期。');
           result=await s.improv.command(call.args,turn,event=>emit(s,event),imageUrl,imageUrl && assets.openingAspect?.(s.id,imageUrl),imageUrl && assets.openingName?.(s.id,imageUrl));
           s.mediaRecovery?.started();
         }

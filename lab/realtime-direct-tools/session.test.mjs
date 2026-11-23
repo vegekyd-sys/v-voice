@@ -2045,3 +2045,22 @@ test('a partial actor catalog cannot fall through to native Makaron exec',async 
   assert.equal(f.invocations.length,0);
   assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/未开放前台创作/);
 });
+
+test('the spoken Paris shop invitation carries its named V image through a direct confirmation',async t=>{
+ const {createAssetShelf,SELF_IMAGE}=await import('../gpt-live-h5/board-assets.mjs');
+ const assets=createAssetShelf({standing:[SELF_IMAGE]}), calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{assets,improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ const owner=f.reservation.voiceSessionId;
+ const portrait=assets.add(owner,{url:'https://cdn.example/portrait.jpg',name:'巴黎巧克力店的小老板',from:'v'});
+ const street=assets.add(owner,{url:'https://cdn.example/street.jpg',name:'巴黎巧克力店门口'});
+ assets.visible(owner,[portrait.id,street.id]);
+ const say=(text,id)=>f.event({type:'conversation.item.input_audio_transcription.completed',transcript:text,item_id:id});
+ const start=id=>f.call('improv_live',{action:'start',shot:'开门营业',openingImage:street.id},id);
+ say('是的。','unrelated');start('unrelated');await delay(0);
+ assert.equal(calls.length,0);
+ say('把那张，你那张巧克力店的图片开个直播。','opening');
+ f.event({type:'response.output_audio_transcript.done',transcript:'要现在用这张雪夜巧克力店的图，开一场娱乐直播吗？'});
+ say('是的。','approved');start('start');await delay(0);
+ assert.deepEqual(calls.filter(c=>c[0]==='start').map(c=>c.at(-1)),['https://cdn.example/portrait.jpg']);
+});
