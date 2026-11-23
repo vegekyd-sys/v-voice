@@ -936,6 +936,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const gone = new AbortController();
         res.once('close', () => gone.abort());
         const [status, value] = await active.improv.proxy(url.searchParams.get('show'),req.headers['x-fal-target-url'],params,gone.signal);
+        const target=req.headers['x-fal-target-url'];
+        const phase=target==='https://wma.fal.run/session'?'offer':target==='https://wma.fal.run/session/heartbeat'?'heartbeat':'ice';
+        if(phase!=='heartbeat'||status!==200)callControlAudit({type:'improv.signal',voiceSessionId:active.reservation.voiceSessionId,phase,status,upstreamStatus:value.upstreamStatus,issue:value.issue});
         if (!res.destroyed) return json(res,status,value);
         return;
       }

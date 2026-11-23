@@ -66,9 +66,9 @@ const Portrait = memo(function Portrait() {
   );
 });
 
-function Avatar({onTap, tone, label}) {
+function Avatar({onTap, tone, label, hidden}) {
   return (
-    <div className="avatar" data-tone={tone ?? undefined} onClick={onTap} role={onTap ? 'button' : undefined}
+    <div className="avatar" hidden={hidden} data-tone={tone ?? undefined} onClick={onTap} role={onTap ? 'button' : undefined}
       aria-label={label} tabIndex={onTap ? 0 : undefined}
       onKeyDown={onTap ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onTap(); } } : undefined}>
       <span className="avatar-aura" aria-hidden="true" />
@@ -523,7 +523,8 @@ function CallPage({view, actions, options}) {
           {inCall && state.improvStill && <a className="improv-download" href={state.improvStill} download="即兴直播.jpg"><img src={state.improvStill} alt="" />保存留影</a>}
         </header>
         <section className="stage" aria-label="V">
-          {inCall && state.improv ? <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/> : <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />}
+          {inCall && state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>}
+          <Avatar key="portrait" hidden={Boolean(inCall && state.improv)} onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
           {!inCall && (
             <div className="home">
               <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>

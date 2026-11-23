@@ -717,6 +717,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(reference && !imageUrl)throw Error('这张图还不能用来开场，请用户点选本通话中已显示的图片。');
           if(reference && (turn!==s.latestUserTurn || !current(s) || s.epoch!==epoch))throw Error('开场请求已过期。');
           result=s.improv.command(call.args,turn,event=>emit(s,event),imageUrl);
+          s.mediaRecovery?.started();
         }
         if(call.name==='get_current_location'){if(!s.location)throw Error('当前终端不支持定位');result=await s.location.request(controller.signal);}
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');

@@ -71,7 +71,15 @@ export function createImprovShow({key, fetcher = fetch}) {
       try {
         const res = await fetcher(target, {method:'POST',redirect:'error',headers:{authorization:'Key '+key,'content-type':'application/json'},
           body:JSON.stringify(input),signal:AbortSignal.any([current.cancel.signal,signal,AbortSignal.timeout(90000)])});
-        if (!res.ok) { await res.body?.cancel(); return [502,{error:'直播服务暂时不可用'}]; }
+        if (!res.ok) {
+          // Classify the failure without exposing provider text, credentials or SDP.
+          const reason = (await res.text()).slice(0,3000);
+          const issue = /credit|balance|billing|payment/i.test(reason) ? 'billing'
+            : /capacity|runner|unavailable|overload/i.test(reason) ? 'capacity'
+            : /sdp|transceiver|m-line|offer/i.test(reason) ? 'offer'
+            : res.status === 401 || res.status === 403 ? 'access' : 'upstream';
+          return [424,{error:'直播服务未能建立连接',upstreamStatus:res.status,issue}];
+        }
         const data = await res.json();
         if (current !== show) return [409,{error:'直播已经结束'}];
         if (target === bridge+'/session') {

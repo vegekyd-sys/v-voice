@@ -39,6 +39,11 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owners.get(id),type:'call.created'});
     }
     const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.|call\.report-|call\.summary-styled)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
+    if(event.type==='improv.signal' && ['ice','offer','heartbeat'].includes(event.phase) && Number.isInteger(event.status)){
+      return enqueue({...owner,type:event.type,phase:event.phase,status:event.status,
+        ...(Number.isInteger(event.upstreamStatus)?{upstreamStatus:event.upstreamStatus}:{}),
+        ...(['billing','capacity','offer','access','upstream'].includes(event.issue)?{issue:event.issue}:{})});
+    }
     if(event.type==='call.media'){
       if(!['phone','speaker'].includes(event.surface)||!['standard','courtesy','provider','assisted'].includes(event.playbackPolicy)||
         typeof event.nativeDuplex!=='boolean'||![16000,24000].includes(event.inputSampleRate))return false;
