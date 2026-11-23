@@ -21,6 +21,8 @@ const SIDEBAND_URL='wss://api.openai.com/v1/live/';
 const CALL_ID=/^rtc_[\w-]{1,128}$/u;
 const APPEND_MAX_BYTES=480,RESULT_MAX_CHARS=2400,SCRIPT_MAX_CHARS=3200,SEARCH_MAX_CHARS=6000;
 // Digital silence still arrives as packets; only audible frames are V speaking.
+// (V's voice before its turn is known of, see `audio`: begun after this much quiet, kept this long at most, and passed on if V was still speaking this short a time ago.)
+const EARLY_PAUSE_MS=200,EARLY_MAX_MS=4000,EARLY_FRESH_MS=1000;
 const AUDIBLE=200,TAIL_MS=700,POLL_MS=5000,MAX_POLLS=48,MEDIA_TIMEOUT_MS=8000;
 // The model is not certain to speak when asked to open the call: ask again until it does.
 const GREETING_RETRY_MS=1900,GREETING_TRIES=3,HISTORY_TURNS=12,GUESS_MS=8000,TURN_WAIT_MS=1500,UNPROMPTED_MS=2500,SERVED_MS=30000;
@@ -168,6 +170,7 @@ export class GptLiveBridge {
   constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',judge=null,resume=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
     Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,judge,resume,display,connectTimeoutMs,pollGapMs,now});
     this.delegations=new Map();this.background=new Set();this.follows=new Map();this.abort=new AbortController();
+    this.early=[];this.earlyMs=0;this.earlyLoudAt=-Infinity;this.pauseMs=Infinity;this.lateMs=0;
     this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.judging=0;this.loudMs=0;this.loudAt=-Infinity;this.callerLoudAt=-Infinity;this.userDoneAt=-Infinity;this.skippedReported=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;
     this.history=[];this.spoke=false;this.heard=false;this.greeting=null;this.ownCalls=0;
   }
@@ -262,6 +265,9 @@ export class GptLiveBridge {
     this.request.onDiagnostic?.({stage:'greeting-requested',attempt:greeting.tries,elapsedMs:Math.round(this.now()-this.startedAt)});
     // A call dialled again after its connection was cut is not greeted: V says it is back and goes on.
     const back=this.resume;
+    // What was looked up before the cut is given again first, as it was given then: after a cut in the middle of a talk about a
+    // search result, V answered the next question from its own knowledge and said the opposite of what had been found (11/24).
+    if(back?.found?.length&&!greeting.foundGiven){greeting.foundGiven=true;this.append(`断线前已经查到的资料（还有效，接着用，不用再查，不要和它说相反的话）：\n${back.found.map(item=>`${item.name}：${item.text}`).join('\n')}`,{channel:'commentary'});}
     this.append(back?`电话刚才断了一下，现在接回来了，对方还在等你。现在就开口，用对方刚才跟你说话的语言（他说法语你就说法语，说英语就说英语）：先用半句话说接回来了（意思是“刚才断了一下，接回来了”），不重新打招呼，然后${back.unfinished?'接着把刚才没讲完的内容讲下去，从断掉的地方往后讲，不要从头重讲':'问一句要不要接着刚才的说，然后停下来听'}。${back.user?`对方最后说的是：“${bound(back.user,200)}”。`:''}${back.reply?`你刚才讲到：“…${Array.from(back.reply).slice(-220).join('')}”${back.unfinished?'（话在这里断了）':''}。`:''}不委派，不等对方先说话。`
       :`${greeting.text}现在就开口，只说一句很短的问候（十个字以内，比如“嗨，我是 V，在呢”），说完就停下来听。不提问，不提以前聊过的事，不委派，不等对方先说话。`,{channel:'speakable'});
     this.greetingTimer=setTimeout(()=>this.greet(),GREETING_RETRY_MS);this.greetingTimer.unref?.();
@@ -343,6 +349,7 @@ export class GptLiveBridge {
       const id=event.turn.id,transcript=String(event.turn.transcript??'');
       this.finishReply();
       this.turnOpen=true;this.turnId=id;this.turnLoud=false;this.muted=false;this.spoke=true;this.replyText=transcript;
+      this.sayEarly(id);
       // While a script is waiting to be read, a reply is not shown until it is known whether it is the script.
       if(this.script&&this.now()-this.script.at>SCRIPT_WINDOW_MS)this.script=null;
       this.reading=this.script?null:false;
@@ -438,22 +445,42 @@ export class GptLiveBridge {
   finishReply(){this.finishing?.();}
   // V's voice. Between turns the stream is digital silence, which is not V speaking.
   audio(pcm){
-    if(this.closed||this.muted)return;
-    // In-flight audio of the reply that was just cut off.
-    if(this.now()-this.bargeAt<250)return;
-    if(!this.turnLoud){
-      let loud=false;for(let i=0;i+1<pcm.length;i+=2)if(Math.abs(pcm.readInt16LE(i))>AUDIBLE){loud=true;break;}
-      if(!loud)return;
-      this.turnLoud=true;
+    if(this.closed)return;
+    let loud=false;for(let i=0;i+1<pcm.length;i+=2)if(Math.abs(pcm.readInt16LE(i))>AUDIBLE){loud=true;break;}
+    const ms=pcm.length/48,pause=this.pauseMs;this.pauseMs=loud?0:pause+ms;
+    // (Within 250 ms of a reply being cut off: its audio still in flight.)
+    if((this.turnOpen||this.now()-this.turnDoneAt<TAIL_MS)&&!this.muted&&this.now()-this.bargeAt>=250){
+      if(!this.turnLoud){if(!loud)return;this.turnLoud=true;}
+      this.request.onAudio?.(pcm,{responseId:this.turnId});return;
     }
-    if(this.turnOpen||this.now()-this.turnDoneAt<TAIL_MS)this.request.onAudio?.(pcm,{responseId:this.turnId});
+    // V's voice is here before the event that says V has begun a reply: the events of a reply come when
+    // the caller's words have been transcribed, and V answers sooner than that. What was said until
+    // then used to be dropped, and every reply began some characters in (in a real call the first sound
+    // passed on came 1 to 14 ms after the event in 11 replies of 14, with up to eight characters of
+    // caption already there). It is kept from where V begins after a pause, and passed on when the reply
+    // is announced. Sound that goes straight on from a reply that is over or was cut off is its end, not
+    // a beginning, and is still dropped.
+    if(this.early.length){
+      this.early.push(pcm);this.earlyMs+=ms;if(loud)this.earlyLoudAt=this.now();
+      if(this.earlyMs>EARLY_MAX_MS){this.lateMs+=this.earlyMs;this.early=[];this.earlyMs=0;}
+    // (Not the reply the caller has just cut off: its last packets are still on their way for a moment.)
+    }else if(loud&&pause>=EARLY_PAUSE_MS&&this.now()-this.bargeAt>=500){this.early=[pcm];this.earlyMs=ms;this.earlyLoudAt=this.now();}
+    else if(loud)this.lateMs+=ms;
+  }
+  // What was kept of V's voice before this reply was announced goes out as its beginning.
+  sayEarly(id){
+    const early=this.early,ms=this.earlyMs,fresh=this.now()-this.earlyLoudAt<EARLY_FRESH_MS;this.early=[];this.earlyMs=0;
+    if(!early.length)return;
+    if(!fresh){this.lateMs+=ms;return;}
+    this.turnLoud=true;for(const pcm of early)this.request.onAudio?.(pcm,{responseId:id});
+    this.request.onDiagnostic?.({stage:'media-early',earlyMs:Math.round(ms),lateMs:Math.round(this.lateMs),elapsedMs:Math.round(this.now()-this.startedAt)});
   }
   // What was just said and done: a follow-up ("再看一下") is routed with its subject.
   // For the call that follows one whose connection was cut: what the caller last said and where V was.
   lastWords(){
     const last=role=>this.history.findLast?.(turn=>turn.role===role)?.text??'';
     const open=this.turnOpen&&gptLiveText(this.replyText);
-    return {user:gptLiveText(this.userText)||last('user'),reply:open||this.cutReply||last('assistant'),unfinished:Boolean(open||this.cutReply)};
+    return {user:gptLiveText(this.userText)||last('user'),reply:open||this.cutReply||last('assistant'),unfinished:Boolean(open||this.cutReply),found:this.found??[]};
   }
   remember(role,text,extra={}){
     const value=String(text??'').trim();
@@ -638,6 +665,8 @@ export class GptLiveBridge {
       return;
     }
     const text=gptLiveResultText(entry.name,result);
+    // (Kept for a call that follows this one if it is cut: what was found is not looked up again, nor contradicted from memory.)
+    this.found=[...(this.found??[]),{name:entry.name,text:Array.from(text).slice(0,1500).join('')}].slice(-2);
     this.append(`${entry.name}：${text}${Array.from(text).length>=200?this.answerNow():''}`,{...this.on(id),channel:'speakable',whole:true});
   }
   fail(message){if(this.closed)return;this.reject?.(Error(message));this.request.onError?.(Error(message));this.close();}

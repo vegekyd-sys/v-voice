@@ -288,6 +288,36 @@ test('the caller\'s unfinished words are never passed on as a transcript',async(
 });
 const LESSON=[{type:'function',name:'explain_on_board',parameters:{type:'object',properties:{topic:{type:'string'}},required:['topic']}},{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'}},required:['question']}}];
 const assistant=f=>f.text.filter(a=>a[0]==='assistant').map(a=>[a[1],a[2],a[3]]);
+test('V begins speaking before its reply is announced: the beginning is kept and goes out with the reply',async()=>{
+  let clock=1000;const f=await fixture({now:()=>clock});await ready(f);f.ws.peer.connectionStateChange.emit('connected');
+  const rtp=(n,v)=>f.ws.peer.track.onReceiveRtp.emit({header:{sequenceNumber:n,timestamp:n*960},payload:Buffer.from([v])});
+  let seq=0;const say=v=>{rtp(++seq,v);clock+=20;};
+  // A reply said and over.
+  f.bridge.receive({type:'turn.created',turn:{id:'a1',role:'assistant'}});say(1);f.bridge.receive({type:'turn.done',turn:{id:'a1',role:'assistant',transcript:'好。'}});f.bridge.finishReply();
+  assert.equal(f.audio.length,1);clock+=2000;
+  // V's next reply is heard after a pause, before the event that announces it: nothing goes out yet ...
+  const quiet=n=>{for(let i=0;i<n;i++)say(0);};
+  quiet(12);say(2);say(3);say(0);say(4);
+  assert.equal(f.audio.length,1);
+  // ... and all of it from where V began goes out first when the reply is announced, as that reply's.
+  f.bridge.receive({type:'turn.created',turn:{id:'a2',role:'assistant'}});
+  assert.deepEqual(f.audio.slice(1).map(a=>a[1]),['a2','a2','a2','a2']);
+  const early=f.events.find(e=>e.diag?.stage==='media-early');assert.ok(early.diag.earlyMs>0);
+  say(5);assert.equal(f.audio.length,6);assert.equal(f.audio.at(-1)[1],'a2');
+  f.bridge.receive({type:'turn.done',turn:{id:'a2',role:'assistant',transcript:'嗯，我想想。'}});f.bridge.finishReply();
+  // Sound that goes straight on from a reply that is over is its end, not a beginning: still dropped.
+  say(6);say(7);f.bridge.receive({type:'turn.created',turn:{id:'a3',role:'assistant'}});assert.equal(f.audio.length,6);
+  f.bridge.receive({type:'turn.done',turn:{id:'a3',role:'assistant',transcript:'一'}});f.bridge.finishReply();
+  // A beginning heard long before any reply is announced is not one.
+  clock+=1000;quiet(12);say(8);clock+=1500;
+  f.bridge.receive({type:'turn.created',turn:{id:'a4',role:'assistant'}});assert.equal(f.audio.length,6);
+  f.bridge.receive({type:'turn.done',turn:{id:'a4',role:'assistant',transcript:'二'}});f.bridge.finishReply();
+  // Nor the reply the caller has just cut off, whose last packets are still arriving.
+  clock+=2000;f.bridge.receive({type:'turn.created',turn:{id:'a5',role:'assistant'}});say(1);assert.equal(f.audio.length,7);
+  f.bridge.receive({type:'turn.created',turn:{id:'u9',role:'user'}});
+  quiet(12);say(9);
+  f.bridge.receive({type:'turn.created',turn:{id:'a6',role:'assistant'}});assert.equal(f.audio.length,7);
+});
 test('a script being read is captioned as it was written, as far as the voice has got',async()=>{
   const f=await fixture({tools:LESSON});await ready(f);say(f,idOf(3),'给我讲解一下为什么天空是蓝色的');await new Promise(r=>setTimeout(r,5));
   f.bridge.beginBackgroundTool(idOf(3),'天空');
@@ -546,7 +576,7 @@ test('a call that follows one whose connection was cut is not greeted: V says it
   userSays(f,'u1','给我讲讲这座桥是怎么建起来的');
   f.bridge.receive({type:'turn.created',turn:{id:'a1',role:'assistant'}});f.bridge.receive({type:'turn.delta',turn_id:'a1',delta:'先打桥墩,再从两边往中间一段一段地架梁,最后'});
   f.bridge.close();
-  const words=f.bridge.lastWords();assert.deepEqual(words,{user:'给我讲讲这座桥是怎么建起来的',reply:'先打桥墩,再从两边往中间一段一段地架梁,最后',unfinished:true});
+  const words=f.bridge.lastWords();assert.deepEqual(words,{user:'给我讲讲这座桥是怎么建起来的',reply:'先打桥墩,再从两边往中间一段一段地架梁,最后',unfinished:true,found:[]});
   // The call dialled again: its first words are asked for with what was cut off.
   const g=await fixture({tools:END,resume:words});await ready(g);g.bridge.triggerGreeting('电话已接通。');await pause(10);
   // (A long line goes as consecutive pieces of one append.)
@@ -556,9 +586,18 @@ test('a call that follows one whose connection was cut is not greeted: V says it
   assert.doesNotMatch(first.content[0].text,/只说一句很短的问候/u);
   // A reply that had been said to its end: V only says it is back and asks.
   const h=await fixture({tools:END});await ready(h);userSays(h,'u1','今天星期几');vSays(h,'a1','今天星期一。');h.bridge.close();
-  assert.deepEqual(h.bridge.lastWords(),{user:'今天星期几',reply:'今天星期一。',unfinished:false});
+  assert.deepEqual(h.bridge.lastWords(),{user:'今天星期几',reply:'今天星期一。',unfinished:false,found:[]});
   const k=await fixture({tools:END,resume:h.bridge.lastWords()});await ready(k);k.bridge.triggerGreeting('电话已接通。');await pause(10);
   assert.match(whole(k),/问一句要不要接着刚才的说，然后停下来听/u);
+  // What was looked up before the cut is given again first, as background, and the line is asked for after it.
+  const s=await fixture({tools:END});await ready(s);userSays(s,'u1','最近那个数学难题是什么');
+  s.bridge.delegations.set('item_q1',{text:'查最近的数学难题',state:'running',polls:0,name:'web_search'});
+  s.bridge.submitToolResult('item_q1',{content:[{type:'text',text:'某大学的团队宣布证明了一个百年猜想，同行还在核验。'}]});s.bridge.close();
+  const lost=s.bridge.lastWords();assert.equal(lost.found.length,1);assert.equal(lost.found[0].name,'web_search');assert.match(lost.found[0].text,/百年猜想/u);
+  const r=await fixture({tools:END,resume:lost});await ready(r);r.bridge.triggerGreeting('电话已接通。');await pause(10);
+  const given=appends(r).map(e=>[e.channel,e.content[0].text]);
+  assert.equal(given[0][0],'commentary');assert.match(given[0][1],/^断线前已经查到的资料[\s\S]*web_search：[\s\S]*百年猜想/u);assert.equal(given.at(-1)[0],'speakable');
+  r.bridge.triggerGreeting('电话已接通。');await pause(10);assert.equal(appends(r).filter(e=>/断线前已经查到的资料/u.test(e.content[0].text)).length,1,'given once');
   // An ordinary call is greeted as before.
   const n=await fixture({tools:END});await ready(n);n.bridge.triggerGreeting('电话已接通。');await pause(10);assert.match(whole(n),/只说一句很短的问候/u);
 });
