@@ -18,7 +18,7 @@ const judge=async({tools,user})=>{
   return null;
 };
 class Socket extends EventEmitter{constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
-async function fixture({tools,route,resolveAuth,model,now}={}){
+async function fixture({tools,route,resolveAuth,model,now,replyJudge}={}){
   const events=[],calls=[],audio=[],text=[],closes=[],ws=new Socket();
   const request={instructions:'你是 V。',tools:tools??[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}},{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'},context:{type:'string'}},required:['question']}},{type:'function',name:'exec',parameters:{type:'object',properties:{command:{type:'string'}},required:['command']}},{type:'function',name:'explain_on_board',parameters:{type:'object',properties:{topic:{type:'string'}},required:['topic']}},{type:'function',name:'end_call',parameters:{type:'object',properties:{},required:[]}}],inputSampleRate:24000,
     onToolCall:c=>calls.push(c),onAudio:(b,m)=>audio.push([b.length,m?.responseId]),onTranscript:(...a)=>text.push(a),onEvent:e=>events.push(e),onReady:()=>events.push({ready:true}),
@@ -26,7 +26,7 @@ async function fixture({tools,route,resolveAuth,model,now}={}){
   const fetches=[];
   const fetchImpl=async(url,init)=>{fetches.push({url,init});return {ok:true,status:201,headers:new Headers({location:'/v1/realtime/calls/rtc_u23_Em7Mvp3oMOyinaFyEylD7nKHGz6ZmT38'}),text:async()=>'v=0\r\nanswer'};};
   const bridge=new GptLiveBridge(request,{createWebSocket:async(url,options)=>{ws.url=url;ws.options=options;return ws;},resolveAuth:resolveAuth??(async()=>({token:'tok',accountId:'acct'})),loadMedia:async()=>media(ws),fetchImpl,model,
-    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{})});
+    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{}),...(replyJudge?{judge:replyJudge}:{})});
   return {bridge,ws,events,calls,audio,text,closes,fetches,request};
 }
 const item=(id,textValue)=>({type:'delegation.created',item:{id,type:'delegation',target:'client',content:[{type:'input_text',text:textValue}]},offset_ms:5000});
@@ -405,26 +405,35 @@ test('a long result is given in pieces and asked about once, with nothing left t
   g.bridge.submitToolResult(idOf(8),{results:[]});assert.deepEqual(appends(g).map(e=>[e.channel,e.content[0].text]),[['speakable','memory_search：个人记忆里没有找到相关记录。']]);
   f.bridge.close();g.bridge.close();
 });
+// Stands in for the model that judges what was just said: sure of whatever the test names.
+const judging=verdicts=>{const asked=[];const judge=async request=>{asked.push(request);const hit=verdicts.find(([said])=>(request.reply||request.userText).includes(said));return {farewell:0,promise:0,stays:0,...(hit?.[1]??{})};};judge.asked=asked;return judge;};
 test('a promise to think or look, with nothing delegated, is called out once; never while work is in flight',async()=>{
-  const f=await fixture({tools:END,route:async()=>({name:'memory_search',args:{query:'推广'}})});await ready(f);
-  userSays(f,'u1','你有在做吗');vSays(f,'a1','有啊,还在想,再给我一点点时间。');
+  const judge=judging([['还在想',{promise:.9}],['快好了',{promise:.9}],['想想看',{promise:.9}]]);
+  const f=await fixture({tools:END,route:async()=>({name:'memory_search',args:{query:'推广'}}),replyJudge:judge});await ready(f);
+  userSays(f,'u1','你有在做吗');vSays(f,'a1','有啊,还在想,再给我一点点时间。');await pause(5);
+  // What V said is judged with what the caller said and the turns before it, never matched against words.
+  assert.equal(judge.asked[0].reply,'有啊,还在想,再给我一点点时间。');assert.equal(judge.asked[0].userText,'你有在做吗');assert(judge.asked[0].history.some(turn=>turn.role==='user'));
   await pause(2400);
   const nudge=appends(f).at(-1);assert.equal(nudge.channel,'speakable');assert.match(nudge.content[0].text,/后台并没有任何事在进行[\s\S]*直接回答用户刚才的话：“你有在做吗”/u);
   assert(f.events.some(e=>e.diag?.stage==='promise-unkept'));
   // Once for what the caller said: a second such line is left alone.
   const count=appends(f).length;vSays(f,'a2','快好了,再一下下。');await pause(2400);assert.equal(appends(f).length,count);
   // With a lookup in flight "let me see" is true, and after its result the model is given time to answer.
-  const g=await fixture({tools:END,route:async()=>({name:'memory_search',args:{query:'推广'}})});await ready(g);
+  const g=await fixture({tools:END,route:async()=>({name:'memory_search',args:{query:'推广'}}),replyJudge:judging([['想想看',{promise:.9}]])});await ready(g);
   userSays(g,'u1','帮我查一下推广的记录');say(g,idOf(9),'帮我查一下推广的记录');await pause(10);vSays(g,'a1','好啊,我来想想看。');
   await pause(2400);assert.equal(appends(g).length,0);
-  // A real answer that happens to contain such words is not a promise.
-  const h=await fixture({tools:END});await ready(h);userSays(h,'u1','这个怎么推广');
-  vSays(h,'a1','我想想哈,其实最顺的讲法是先说它记得你、懂你,再说它能替你盯住每天固定要做的小事,这样别人一听就知道它和普通聊天机器人不一样在哪里。');
-  await pause(2400);assert.equal(appends(h).length,0);
-  f.bridge.close();g.bridge.close();h.bridge.close();
+  // Not sure enough, a long answer (never asked about), no judge at all, a judge that fails: nothing is said.
+  const unsure=judging([['我想想哈',{promise:.4}]]);
+  const h=await fixture({tools:END,replyJudge:unsure});await ready(h);userSays(h,'u1','这个怎么推广');vSays(h,'a1','嗯,我想想哈。');await pause(2400);assert.equal(appends(h).length,0);assert.equal(unsure.asked.length,1);
+  vSays(h,'a2','我想想哈,其实最顺的讲法是先说它记得你、懂你,再说它能替你盯住每天固定要做的小事,这样别人一听就知道它和普通聊天机器人不一样在哪里。');
+  await pause(2400);assert.equal(appends(h).length,0);assert.equal(unsure.asked.length,1);
+  const none=await fixture({tools:END});await ready(none);userSays(none,'u1','你有在做吗');vSays(none,'a1','有啊,还在想。');await pause(2400);assert.equal(appends(none).length,0);
+  const broken=await fixture({tools:END,replyJudge:async()=>{throw Error('decisions HTTP 500');}});await ready(broken);userSays(broken,'u1','你有在做吗');vSays(broken,'a1','有啊,还在想。');await pause(2400);assert.equal(appends(broken).length,0);
+  f.bridge.close();g.bridge.close();h.bridge.close();none.bridge.close();broken.bridge.close();
 });
-test('V saying goodbye without a hang-up delegated ends the call; the caller\'s goodbye over it is not an interruption',async()=>{
-  const f=await fixture({tools:END,route:async({text})=>/先这样|拜拜/u.test(text)?{name:'end_call',args:{}}:{name:'delegate_to_v',args:{question:text}}});await ready(f);
+test('V saying goodbye without a hang-up delegated ends the call; the caller\'s goodbye over it is not a change of mind',async()=>{
+  const judge=judging([['有需要再找我',{farewell:.93}],['拜拜',{farewell:.9,stays:.95}],['还有个事',{stays:.05}],['talk to you later',{farewell:.1}]]);
+  const f=await fixture({tools:END,route:async()=>({name:'delegate_to_v',args:{question:'x'}}),replyJudge:judge});await ready(f);
   userSays(f,'u1','好嘞,我们先这样好吗,谢谢你');await pause(10);vSays(f,'a1','好啊,那我们就先这样,有需要再找我喔。');
   assert.equal(f.calls.length,0);await pause(2400);
   assert.equal(f.calls.length,1);assert.equal(f.calls[0].name,'end_call');assert.match(f.calls[0].callId,/^host_/u);assert(f.events.some(e=>e.diag?.stage==='farewell-unprompted'));
@@ -434,17 +443,18 @@ test('V saying goodbye without a hang-up delegated ends the call; the caller\'s 
   const clears=f.events.filter(e=>e.clear).length;
   f.bridge.receive({type:'turn.created',turn:{id:'a2',role:'assistant'}});f.bridge.receive({type:'turn.created',turn:{id:'u2',role:'user'}});f.bridge.handleBargeIn();
   assert.equal(f.events.filter(e=>e.clear).length,clears);
-  f.bridge.receive({type:'turn.done',turn:{id:'u2',role:'user',transcript:'拜拜'}});say(f,idOf(10),'拜拜');await pause(10);assert.equal(f.calls.length,1);
-  // Just "拜拜", whatever the caller's words were (their own goodbye is not always transcribed).
-  const g=await fixture({tools:END});await ready(g);userSays(g,'u1','今天天气不错');vSays(g,'a1','拜拜。');await pause(2400);
-  assert.deepEqual(g.calls.map(c=>c.name),['end_call']);
-  // A goodbye in passing, in a long reply or without the caller closing, ends nothing; nor does one that was delegated.
-  const h=await fixture({tools:END,route:async({text})=>/先这样|拜拜/u.test(text)?{name:'end_call',args:{}}:{name:'delegate_to_v',args:{question:text}}});await ready(h);
+  // The session asks whether the caller's words are only their goodbye; anything else undoes the hang-up there.
+  assert.equal(await f.bridge.keepsEnding('拜拜'),true);assert.equal(await f.bridge.keepsEnding('等等,还有个事'),false);
+  f.bridge.endingCancelled();assert.equal(await f.bridge.keepsEnding('拜拜'),false,'no hang-up in progress');
+  f.bridge.handleBargeIn();assert.equal(f.events.filter(e=>e.clear).length,clears+1,'interruptions count again');
+  // A goodbye in passing ends nothing; one that was delegated is not doubled; nor is one judged by nobody.
+  const h=await fixture({tools:END,route:async({text})=>/拜拜/u.test(text)?{name:'end_call',args:{}}:{name:'delegate_to_v',args:{question:text}},replyJudge:judge});await ready(h);
   userSays(h,'u1','“下次聊”用英文怎么说');vSays(h,'a1','“下次聊”可以说 talk to you later 喔。');await pause(2400);assert.equal(h.calls.length,0);
   userSays(h,'u2','那先这样,拜拜');say(h,idOf(11),'那先这样,拜拜');await pause(10);vSays(h,'a2','好,拜拜~');await pause(2400);
   assert.equal(h.calls.length,1);assert.equal(h.calls[0].callId,idOf(11));
   h.bridge.submitToolResult(idOf(11),{ok:true});assert.match(appends(h).at(-1).content[0].text,/^电话马上挂断。现在只说一句很短的告别/u);assert.equal(appends(h).at(-1).delegation_item_id,idOf(11));
-  f.bridge.close();g.bridge.close();h.bridge.close();
+  const none=await fixture({tools:END});await ready(none);userSays(none,'u1','拜拜');vSays(none,'a1','拜拜。');await pause(2400);assert.equal(none.calls.length,0);assert.equal(await none.bridge.keepsEnding('拜拜'),false);
+  f.bridge.close();h.bridge.close();none.bridge.close();
 });
 test('a cough transcribed as a marker is not a turn of the caller\'s',async()=>{
   const f=await fixture();await ready(f);

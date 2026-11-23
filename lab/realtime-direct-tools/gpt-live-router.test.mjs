@@ -79,3 +79,24 @@ test('the quick choice settles a tool that takes no arguments; everything else w
   await assert.rejects(createDecisionsChooser({apiKey:'k',fetchImpl:async()=>({ok:false,status:401})})({system:'',user:'',tools}),/decisions HTTP 401/u);
   assert.equal(decisionsChooserFromEnv({}),null);assert.equal(typeof decisionsChooserFromEnv({VOICE_GPT_LIVE_DECISIONS_API_KEY:'k'}),'function');
 });
+
+test('what was just said is judged by a model: probabilities with a Decisions key, yes or no from the routing model without',async()=>{
+  const {createReplyJudge,replyJudgeFromEnv}=await import('./gpt-live-router.mjs');
+  const history=[{role:'user',text:'今天先聊到这儿吧'},{role:'assistant',text:'好呀。'}];
+  let sent;
+  const judge=createReplyJudge({apiKey:'k',fetchImpl:async(url,init)=>{sent={url,init,body:JSON.parse(init.body)};return {ok:true,json:async()=>({answers:[{type:'predicate',name:'farewell',probability:.91},{type:'predicate',name:'promise',probability:.02},{type:'predicate',name:'stays',probability:.88}]})};}});
+  assert.deepEqual(await judge({reply:'那就先这样，有事再找我。',userText:'谢谢你',history}),{farewell:.91,promise:.02,stays:.88});
+  assert.equal(sent.url,'https://api.openai.com/v1/decisions');assert.equal(sent.body.model,'gpt-6-luna');
+  assert.deepEqual(sent.body.questions.map(q=>[q.type,q.name]),[['predicate','farewell'],['predicate','promise'],['predicate','stays']]);
+  assert.match(sent.body.input[1].content[0].text,/用户：今天先聊到这儿吧\nV：好呀。\n对方最后说：“谢谢你”\nV 刚才说：“那就先这样，有事再找我。”$/u);
+  await assert.rejects(createReplyJudge({apiKey:'k',fetchImpl:async()=>({ok:false,status:429})})({reply:'x'}),/decisions HTTP 429/u);
+  // Without the key the routing model answers each as yes or no.
+  let asked;
+  const plain=createReplyJudge({complete:async request=>{asked=request;return {name:'verdict',args:{farewell:false,promise:true,stays:false}};}});
+  assert.deepEqual(await plain({reply:'我想想再告诉你。',userText:'这个怎么做'}),{farewell:0,promise:1,stays:0});
+  assert.deepEqual(asked.tools[0].parameters.required,['farewell','promise','stays']);assert.match(asked.user,/V 刚才说：“我想想再告诉你。”$/u);
+  await assert.rejects(createReplyJudge({complete:async()=>null})({reply:'x'}),/no verdict/u);
+  // Neither: there is nobody to judge, and nothing is repaired.
+  assert.equal(createReplyJudge({}),null);assert.equal(replyJudgeFromEnv({}),null);
+  assert.equal(typeof replyJudgeFromEnv({VOICE_GPT_LIVE_DECISIONS_API_KEY:'k'}),'function');assert.equal(typeof replyJudgeFromEnv({},{complete:async()=>null}),'function');
+});

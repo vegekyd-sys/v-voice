@@ -29,13 +29,11 @@ const same=(a,b)=>a.replace(/[\s\p{P}]/gu,'')===b.replace(/[\s\p{P}]/gu,'');
 // spaces aside) where that letter stands, so what the model has said can be found in it.
 const loose=text=>String(text??'').replace(/[\s\p{P}\p{S}]/gu,'').toLowerCase();
 const SCRIPT_MATCH=6,SCRIPT_LOOSE=36,SCRIPT_WINDOW_MS=120_000,SCRIPT_SOURCE='V-backend-summary';
-// The model cannot work in the background: "let me think", "I'll go and check" with nothing delegated
-// is a promise nobody keeps (a real call: three such lines in a row, the caller asking "are you on it?").
-const STALL=/想想|想一下|想一想|捋捋|捋一下|理一下|整理一下|查一下|查查|核一下|确认一下|找一下|稍等|等一下|等我|马上(?:回来|就好|给你)|很快(?:回来|就好|给你|讲|说|跟你)|快好了|再(?:给我)?(?:一点|一下|一会|几秒)|还在(?:想|查|看|弄|找|整理)|我(?:这就)?去(?:查|看|找|问|核|弄|准备)|接着想/u;
-// V's own goodbye. Said without a hang-up delegated, the call stayed open until the caller ended it.
-const BYE=/拜拜|再见|回头见|下次(?:再)?聊|晚安|有需要(?:再|随时)(?:找|叫)我|先这样/u,BYE_ONLY=/^[\s嗯好呀啊哦喔那行的，,。.!！~、]*(?:拜拜|再见|晚安|回头见|下次(?:再)?聊)[\s啊呀啦哦喔咯，,。.!！~]*$/u;
-const CLOSING=/先这样|先这个样子|就这样吧|先到这|聊到这|拜拜|再见|挂了|晚安|回头见|下次(?:再)?聊|\bbye\b/iu;
-const NET_MS=2200,STALL_MAX=64,BYE_MAX=40;
+// Two things the model says and does not do: a goodbye with no hang-up asked for (the call stayed open
+// until the caller ended it), and "let me think" / "I'll go and check" with nothing delegated (it cannot
+// work in the background; a real call had three such lines in a row). What a reply is, is judged by a
+// model (`judge`), not matched against words; these are only how long to wait and how sure to be.
+const NET_MS=2200,NET_MAX_CHARS=64,SURE_FAREWELL=0.7,SURE_PROMISE=0.6,SURE_STAYS=0.5;
 function scriptOf(text,at){
   const chars=Array.from(String(text)),map=[];let letters='';
   chars.forEach((character,index)=>{for(const letter of loose(character)){letters+=letter;map.push(index);}});
@@ -164,10 +162,10 @@ export function gptLiveInitialItems(instructions){
 const verbatim=text=>`原样念出 <say> 里的内容，不加开场白，不解释，不改写，不省略：<say>${text}</say>`;
 
 export class GptLiveBridge {
-  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
-    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,display,connectTimeoutMs,pollGapMs,now});
+  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',judge=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
+    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,judge,display,connectTimeoutMs,pollGapMs,now});
     this.delegations=new Map();this.background=new Set();this.follows=new Map();this.abort=new AbortController();
-    this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;this.lastChoice=null;
+    this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;
     this.history=[];this.spoke=false;this.heard=false;this.greeting=null;this.ownCalls=0;
   }
   connect(){
@@ -338,10 +336,8 @@ export class GptLiveBridge {
         this.userSpeaking=false;this.userTurn?.done();this.userTurn=null;
         // A cough or a noise, transcribed as a marker and nothing else, is not something the caller said.
         if(!transcript.replace(/[\s\p{P}\p{S}]/gu,'')){this.request.onInputSpeech?.(false,{recognized:false});return;}
-        this.userText=transcript;this.remember('user',transcript);this.lastChoice=null;this.speculate(transcript);
+        this.userText=transcript;this.remember('user',transcript);this.speculate(transcript);
         clearTimeout(this.netTimer);this.nudged=false;
-        // Anything but a goodbye while the call is being hung up is a change of mind.
-        if(this.ending&&!CLOSING.test(transcript))this.ending=false;
         this.request.onTranscript?.('user',transcript,true,undefined,{turnId:id});
         this.request.onInputSpeech?.(false,{recognized:true});
       }
@@ -444,7 +440,6 @@ export class GptLiveBridge {
     const working=this.working,guess={text,working,at:this.now()};
     guess.choice=this.route({text,userText:text,tools:this.offered(working),notes:this.notes,history:this.history.slice(),running:working,signal:this.abort.signal,speculative:true});
     guess.choice.catch(()=>{});this.guess=guess;
-    void guess.choice.then(choice=>{if(this.guess===guess||this.lastChoice?.text!==text)this.lastChoice={text,name:choice?.name??null,at:this.now()};},()=>{});
     // The model sometimes answers "好，我讲讲" and never delegates. When the caller's own words ask for an
     // explanation, the lesson is prepared anyway; a delegation that still comes for them is already served.
     void guess.choice.then(choice=>{
@@ -499,38 +494,45 @@ export class GptLiveBridge {
     this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
   }
   get busy(){return this.working||Boolean(this.script)||[...this.delegations.values()].some(entry=>entry.state==='routing'||entry.state==='running');}
-  // After an ordinary reply: two things the model says and does not do.
+  // After an ordinary reply: was it a goodbye nobody acted on, or a promise nobody is keeping?
   afterReply(text){
     clearTimeout(this.netTimer);
-    if(this.closed||this.ending)return;
-    const length=Array.from(text).length,has=name=>(this.request.tools??[]).some(tool=>tool.name===name);
-    // Whether the caller was closing the call is the router's reading of their words (or a bare "拜拜"),
-    // not a word list: "“下次聊”用英文怎么说" is not a goodbye.
-    const closing=this.lastChoice?.name==='end_call'&&this.now()-this.lastChoice.at<20000||BYE_ONLY.test(gptLiveText(this.userText));
-    const bye=has('end_call')&&length<=BYE_MAX&&(BYE_ONLY.test(text)||BYE.test(text)&&closing);
-    const stall=!bye&&!this.nudged&&length<=STALL_MAX&&STALL.test(text);
-    if(!bye&&!stall)return;
-    const turn=this.turnId,seen=this.delegated_;
-    const check=()=>{
-      // A delegation that came after all, a new reply, the caller speaking, work in flight: nothing to repair.
-      if(this.closed||this.ending||this.turnId!==turn||this.delegated_!==seen||this.userSpeaking||this.busy)return;
+    if(this.closed||this.ending||!this.judge||Array.from(text).length>NET_MAX_CHARS)return;
+    const canEnd=(this.request.tools??[]).some(tool=>tool.name==='end_call'),canNudge=!this.nudged;
+    if(!canEnd&&!canNudge)return;
+    const turn=this.turnId,seen=this.delegated_,asked=gptLiveText(this.userText);
+    // Asked now, acted on only if nothing has made it moot by the time the wait is over.
+    const verdict=Promise.resolve().then(()=>this.judge({reply:text,userText:asked,history:this.history.slice(-6),signal:this.abort.signal})).catch(()=>null);
+    // A delegation that came after all, a new reply, the caller speaking, work in flight: nothing to repair.
+    const moot=()=>this.closed||this.ending||this.turnId!==turn||this.delegated_!==seen||this.userSpeaking||this.busy;
+    const check=async()=>{
+      if(moot())return;
       // Something has just come back: the model is given the time to answer from it first.
       const wait=NET_MS-(this.now()-(this.resultAt??0));
       if(wait>0){this.netTimer=setTimeout(check,wait);this.netTimer.unref?.();return;}
-      if(bye){
+      const judged=await verdict;
+      if(!judged||moot())return;
+      if(canEnd&&judged.farewell>=SURE_FAREWELL){
         const id=`host_${++this.ownCalls}`;this.ending=true;
         this.delegations.set(id,{text:'',state:'running',polls:0,name:'end_call',own:true});
         this.request.onDiagnostic?.({stage:'farewell-unprompted',elapsedMs:Math.round(this.now()-this.startedAt)});
         this.request.onToolCall?.({callId:id,name:'end_call',args:{}});
         return;
       }
+      if(!canNudge||this.nudged||!(judged.promise>=SURE_PROMISE))return;
       this.nudged=true;
       this.request.onDiagnostic?.({stage:'promise-unkept',elapsedMs:Math.round(this.now()-this.startedAt)});
-      const asked=bound(gptLiveText(this.userText),160);
-      this.append(`你刚才说要去想、去查或让用户等一下，但后台并没有任何事在进行，用户正在等你。你不能在后台思考：现在二选一——真的需要查资料或办事，就立刻委派给后台；否则马上把内容讲出来，直接回答用户刚才的话${asked?`：“${asked}”`:''}。不要再说“等一下”“还在想”“快好了”。`,{channel:'speakable'});
+      this.append(`你刚才说要去想、去查或让用户等一下，但后台并没有任何事在进行，用户正在等你。你不能在后台思考：现在二选一——真的需要查资料或办事，就立刻委派给后台；否则马上把内容讲出来，直接回答用户刚才的话${asked?`：“${bound(asked,160)}”`:''}。不要再说“等一下”“还在想”“快好了”。`,{channel:'speakable'});
     };
-    this.netTimer=setTimeout(check,NET_MS);this.netTimer.unref?.();
+    this.netTimer=setTimeout(()=>void check(),NET_MS);this.netTimer.unref?.();
   }
+  // While the call is being hung up the caller speaks: only their own goodbye, or a change of mind?
+  // (Asked by the session; without a judge it is a change of mind, as for every other voice.)
+  async keepsEnding(text){
+    if(!this.ending||!this.judge)return false;
+    try{return (await this.judge({userText:gptLiveText(text),history:this.history.slice(-6),signal:this.abort.signal})).stays>=SURE_STAYS;}catch{return false;}
+  }
+  endingCancelled(){this.ending=false;}
   submitToolResult(callId,result){
     if(this.closed)return;
     const follow=this.follows.get(callId);if(follow)this.follows.delete(callId);

@@ -78,7 +78,6 @@ export function directInstructions(catalog,context='',model='',options={}) {
 /** One real provider connection per dial; tool authorization stays in OpenClaw. */
 // Pacing of task narration (ms). A stage must hold for settleMs before it is
 // announced, so a burst of quick tool calls becomes one line.
-const FAREWELL_ONLY=/^[\s嗯好呀啊哦喔那行的，,。.!！~、]*(?:(?:拜拜|再见|晚安|回头见|下次(?:再)?聊|挂了|bye(?:[\s-]?bye)?)[\s啊呀啦哦喔咯，,。.!！~]*)+$/iu;
 export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageGapMs:15000,factGapMs:6000,idleMs:45000,idleMax:2,quietAfterUserMs:4000,startMs:2500,max:12,correctionDelayMs:400,abandonedResponseMs:8000});
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
@@ -248,7 +247,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     else throw Error('执行会话退出尚未确认');
   };
   const clearEnding=s=>{clearTimeout(s.ending?.fallbackTimer);clearTimeout(s.ending?.noAudioTimer);clearTimeout(s.ending?.backstopTimer);s.ending=null;};
-  const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();clearEnding(s);emit(s,{type:'end.cancelled'});
+  const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();
     await s.localExecutions?.cancelAll();
     s.progress=null;s.backendResult?.resolve();s.backendResult=null;
     const backend=await Promise.allSettled([includeBackend?s.backend?.cancel():undefined]);
@@ -798,13 +797,18 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
-        // (The caller's own goodbye over V's is not a change of mind.)
-        if(role==='user'&&final&&s.ending&&!FAREWELL_ONLY.test(text)){clearEnding(s);emit(s,{type:'end.cancelled'});}
+        // Speech from the caller while the call is being hung up is a change of mind, unless the voice path
+        // can tell that it is only their own goodbye (a judgement it makes, never a list of words).
+        if(role==='user'&&final&&s.ending){
+          const ending=s.ending,undo=()=>{if(current(s)&&s.ending===ending){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}};
+          const keeps=s.bridge?.keepsEnding?.(text);
+          if(typeof keeps?.then==='function')void keeps.then(yes=>{if(yes!==true)undo();},undo);else undo();
+        }
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
         if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:(reason,metadata)=>routeOutput('clear',null,()=>{s.audioDelivery?.finish('clear');s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
+      onClearAudio:(reason,metadata)=>routeOutput('clear',null,()=>{s.audioDelivery?.finish('clear');s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.audioDelivery?.finish('segment-done');s.responseActive=false;}),
       onResponseDone:e=>routeOutput('done',e,()=>{s.audioDelivery?.finish('done');void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
       onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.responseActivityAt=Date.now();s.replyDelivery?.begin(e.responseId);}
@@ -828,7 +832,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const generation=wrap?null:s.providerGeneration=(s.providerGeneration??0)+1;
       const owned={...request,instructions};
       for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
-      if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,
+      if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,judge:gptLive.judge??null,
         notes:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):'',
         route:createDelegationRouter({complete:gptLive.complete??null,choose:gptLive.choose??null,audit:event=>audit({...event,voiceSessionId:s.id})})});
       return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
@@ -861,7 +865,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
         s.bridge.handleBargeIn({confirmed});audit({type:'client.barge-in',voiceSessionId:s.id,...(device?{deviceId:device,confirmed}:{})});}
-      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
+      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','droppedInputFrames','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
@@ -901,7 +905,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       forward:audio=>s.bridge.sendAudio(audio),context:text=>s.bridge.sendUserMessage(text),clarify:(text,options)=>s.bridge.speakProgress(text,{caption:true,...options}),interrupt:()=>s.bridge.handleBargeIn(),
       cancel:()=>s.bridge.cancelPendingResponse(),invalidate:()=>{s.personaKey=null;},
       end:({turnId})=>{if(!current(s)||!s.bridge.ready)return;s.ending={callId:'speaker-end-'+turnId,hasAudio:false,source:'speaker'};emit(s,{type:'end.accepted',callId:s.ending.callId});s.bridge.speakProgress('好，拜拜，下次聊。',{caption:true});},
-      cancelEnd:()=>{if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}},
+      cancelEnd:()=>{if(s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}},
       rejectNativeEnd:call=>{if(current(s))s.bridge.submitToolResult(call.callId,{accepted:false,instruction:'主机未确认结束电话。不要说再见或再次请求挂断；继续回答最新的用户问题。'});},
       // A bounded speculative lane hears new audio without replacing the live
       // reply or executing a tool. Only semantic admission can promote it.

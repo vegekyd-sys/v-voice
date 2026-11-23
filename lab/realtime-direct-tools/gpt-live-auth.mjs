@@ -1,5 +1,5 @@
 import {readFile} from 'node:fs/promises';
-import {routerCompletionFromEnv,decisionsChooserFromEnv} from './gpt-live-router.mjs';
+import {routerCompletionFromEnv,decisionsChooserFromEnv,replyJudgeFromEnv} from './gpt-live-router.mjs';
 
 // The ChatGPT (Codex) login this service may call GPT Live with. The file is
 // private and maintained outside this process (never committed, never logged);
@@ -22,12 +22,15 @@ export function createGptLiveAuth({file,readFileImpl=readFile,now=Date.now,margi
 // Off unless named: the model, its media stack and its login are all opt-in.
 export function gptLiveFromEnv(env=process.env,{fetchImpl}={}){
   if(env.VOICE_ENABLE_GPT_LIVE_11!=='1'||!env.VOICE_GPT_LIVE_AUTH_FILE)return null;
+  const complete=routerCompletionFromEnv(env,{fetchImpl});
   return {
     resolveAuth:createGptLiveAuth({file:env.VOICE_GPT_LIVE_AUTH_FILE}),
     // Loaded on the first call only; a service that never offers the model never loads a WebRTC stack.
     loadMedia:async()=>{const [werift,opus]=await Promise.all([import('werift'),import('opusscript')]);return {werift,OpusScript:opus.default??opus};},
-    complete:routerCompletionFromEnv(env,{fetchImpl}),
+    complete,
     choose:decisionsChooserFromEnv(env,{fetchImpl}),
+    // What was just said, judged (a goodbye with no hang-up, a promise with nothing running): see the router.
+    judge:replyJudgeFromEnv(env,{fetchImpl,complete}),
     ...(env.VOICE_GPT_LIVE_SCRIPTED_LESSONS==='1'?{scriptedLessons:true}:{}),
     ...(env.VOICE_GPT_LIVE_MODEL?{model:env.VOICE_GPT_LIVE_MODEL}:{}),
     ...(env.VOICE_GPT_LIVE_VOICE?{voice:env.VOICE_GPT_LIVE_VOICE}:{}),

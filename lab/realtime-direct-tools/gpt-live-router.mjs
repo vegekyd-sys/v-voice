@@ -99,6 +99,44 @@ export function decisionsChooserFromEnv(env=process.env,{fetchImpl}={}){
   const apiKey=env.VOICE_GPT_LIVE_DECISIONS_API_KEY;
   return apiKey?createDecisionsChooser({apiKey,...(env.VOICE_GPT_LIVE_DECISIONS_MODEL?{model:env.VOICE_GPT_LIVE_DECISIONS_MODEL}:{}),...(fetchImpl?{fetchImpl}:{})}):null;
 }
+// Three things the voice model sometimes does and a list of words cannot tell: it says goodbye and
+// never asks for the hang-up; it promises to think or look and nothing is running; the caller says
+// their own goodbye while the call is being hung up. Each is a judgement of what was just said, in
+// its conversation: a probability from the Decisions API where there is a key, a yes or no from the
+// routing model where there is not. (They were patterns once: "拜拜", "我想想", "先这样".)
+const JUDGE_SYSTEM='你在旁听一通电话，判断助手 V 和对方刚说的话属于哪种情况。只根据给出的对话判断。';
+const JUDGE={
+  farewell:'V 刚才这句话是在向对方道别、结束这通电话，而且从对话看对方也想结束通话或已经道别。只是谈到“再见”这个词、转述别人的话，或者对方并不想结束，都不算。',
+  promise:'V 刚才这句话只是答应去想、去查、去办，或者让对方等一下，却没有给出对方要的实质内容。已经给出了答案或内容、或者只是寒暄，都不算。',
+  stays:'对方最后这句话只是在道别、道谢或附和结束通话，没有提出新的问题、要求或反对。',
+};
+const heard=({reply='',userText='',history=[]})=>[recent(history.slice(-6)),userText&&`对方最后说：“${String(userText).slice(0,300)}”`,reply&&`V 刚才说：“${String(reply).slice(0,400)}”`].filter(Boolean).join('\n');
+/** `judge({reply,userText,history,signal})` -> {farewell, promise, stays}, each 0..1. Throws when there is no answer. */
+export function createReplyJudge({apiKey='',model='gpt-6-luna',complete=null,fetchImpl=fetch,timeoutMs=1500}={}){
+  if(!apiKey&&!complete)return null;
+  return async function judge({reply='',userText='',history=[],signal}={}){
+    const said=heard({reply,userText,history});
+    if(!apiKey){
+      // No probabilities here: the routing model answers yes or no to each.
+      const answer=await complete({signal,system:JUDGE_SYSTEM,user:said,tools:[{type:'function',name:'verdict',description:'给出这三项判断。',parameters:{type:'object',additionalProperties:false,required:Object.keys(JUDGE),
+        properties:Object.fromEntries(Object.entries(JUDGE).map(([name,description])=>[name,{type:'boolean',description}]))}}]});
+      if(answer?.name!=='verdict')throw Error('judge gave no verdict');
+      return Object.fromEntries(Object.keys(JUDGE).map(name=>[name,answer.args?.[name]===true?1:0]));
+    }
+    const controller=new AbortController(),abort=()=>controller.abort();
+    if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+    const timer=setTimeout(abort,timeoutMs);
+    try{
+      const response=await fetchImpl(DECISIONS_URL,{method:'POST',signal:controller.signal,headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},
+        body:JSON.stringify({model,input:[{role:'developer',content:[{type:'input_text',text:JUDGE_SYSTEM}]},{role:'user',content:[{type:'input_text',text:said}]}],
+          questions:Object.entries(JUDGE).map(([name,instructions])=>({type:'predicate',name,instructions}))})});
+      if(!response.ok)throw Error(`decisions HTTP ${response.status}`);
+      const answers=(await response.json())?.answers??[];
+      return Object.fromEntries(Object.keys(JUDGE).map(name=>[name,Number(answers.find(item=>item?.name===name&&item.type==='predicate')?.probability)||0]));
+    }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
+  };
+}
+export const replyJudgeFromEnv=(env=process.env,{fetchImpl,complete=null}={})=>createReplyJudge({apiKey:env.VOICE_GPT_LIVE_DECISIONS_API_KEY??'',complete,...(env.VOICE_GPT_LIVE_DECISIONS_MODEL?{model:env.VOICE_GPT_LIVE_DECISIONS_MODEL}:{}),...(fetchImpl?{fetchImpl}:{})});
 const takesNothing=tool=>Object.keys(tool?.parameters?.properties??{}).length===0;
 const SURE=0.5;
 export function createDelegationRouter({complete=null,choose=null,now=()=>new Date(),audit=()=>{}}={}){
