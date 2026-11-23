@@ -1446,7 +1446,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       enableGrok: process.env.VOICE_ENABLE_GROK === '1',
       defaultModel: process.env.VOICE_DEFAULT_MODEL ?? "gpt-live",
       feishuAccounts:process.env.VOICE_FEISHU_ACCOUNTS_FILE?JSON.parse(await readFile(process.env.VOICE_FEISHU_ACCOUNTS_FILE,'utf8')):config.channels?.feishu??{},
-      personalReply: {replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},
+      personalReply: {groupChatId:process.env.VOICE_PERSONAL_GROUP_CHAT_ID,replySync:!!process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID,accountId:process.env.VOICE_PERSONAL_REPLY_ACCOUNT_ID},
       conversationEntries: process.env.VOICE_ENTRIES_FILE ? JSON.parse(await readFile(process.env.VOICE_ENTRIES_FILE,"utf8")) : [],
       callReportsDirectory:process.env.VOICE_CALL_REPORTS_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-call-reports'),
       iosAppDownloadUrl:process.env.VOICE_IOS_APP_DOWNLOAD_URL,
