@@ -37,6 +37,7 @@ import { createVoiceTranscriptLog } from '../realtime-direct-tools/transcript-lo
 import {VOICE_CONTEXT_HISTORY_REQUEST,voiceConversationContext} from '../realtime-direct-tools/conversation-context.mjs';
 import {grokVoice} from '../realtime-direct-tools/grok-provider.mjs';
 import {gptLiveVoice} from '../realtime-direct-tools/gpt-live-provider.mjs';
+import {seeduplexVoice} from '../seeduplex-realtime-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
 import {createPhotoFinder} from './board-photo.mjs';
@@ -334,6 +335,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     }
     if (params.model === 'gpt-live-11' && params.voice !== undefined) {
       try { gptLiveVoice(params.voice); } catch (error) { return reply(400,{error:error.message}); }
+    }
+    // Doubao opens a session for a speaker it does not know and then never sends audio: refuse it here.
+    if (params.model === 'seeduplex' && params.voice !== undefined) {
+      try { seeduplexVoice(params.voice); } catch (error) { return reply(400,{error:error.message}); }
     }
     if (params.model && params.model !== 'gpt-live' && !directVoice) return reply(503,{error:'这个语音模型尚未接入'});
     if (context.creatingSession) return reply( 409, { error: "正在连接 V，请稍等。" });

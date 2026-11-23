@@ -7,7 +7,29 @@ export const SEEDUPLEX_RESOURCE_ID = "volc.speech.dialog";
 export const SEEDUPLEX_VOICES = Object.freeze({
   xiaohe: "zh_female_xiaohe_uranus_bigtts",
   companion: "zh_female_jiaochuannv_uranus_bigtts",
+  vv: "zh_female_vv_uranus_bigtts",
+  taozi: "zh_female_tianmeitaozi_uranus_bigtts",
+  linjia: "zh_female_linjianvhai_uranus_bigtts",
+  shunv: "zh_female_wenroushunv_uranus_bigtts",
+  yunzhou: "zh_male_m191_uranus_bigtts",
 });
+export const SEEDUPLEX_VOICE = "xiaohe";
+// The voices a caller may choose on the call page, in the order shown. Each one answered a short
+// real call on this model before it was listed (11/23). A speaker this model does not know is not
+// refused upstream: the session opens, the model answers in text, and no audio ever arrives (a
+// silent call). So a caller's choice is checked against this list and nothing else is sent.
+export const SEEDUPLEX_VOICE_CHOICES = Object.freeze([
+  ["xiaohe", "小何 · 甜美活泼"],
+  ["vv", "Vivi · 活泼灵动"],
+  ["taozi", "桃子 · 甜美"],
+  ["linjia", "邻家女孩 · 亲切"],
+  ["shunv", "淑女 · 温柔"],
+  ["yunzhou", "云舟 · 沉稳男声"],
+].map(([id, label]) => Object.freeze({ id, label })));
+export function seeduplexVoice(voice = SEEDUPLEX_VOICE) {
+  if (!SEEDUPLEX_VOICE_CHOICES.some(choice => choice.id === voice)) throw new Error("不支持这个豆包音色");
+  return voice;
+}
 
 const INPUT_FRAME_BYTES = 640;
 // Input held back by a stalled uplink (the phone's TCP connection over a lossy route) arrives

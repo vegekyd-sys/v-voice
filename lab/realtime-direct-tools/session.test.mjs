@@ -6,6 +6,7 @@ import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createDirectVoiceService,directInstructions} from './session.mjs';
 import {GPT_LIVE_VOICE_CHOICES} from './gpt-live-provider.mjs';
+import {SEEDUPLEX_VOICES,SEEDUPLEX_VOICE_CHOICES} from '../seeduplex-realtime-provider.mjs';
 import {speakerProfile} from '../speaker-native/stream-service.mjs';
 import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
@@ -2023,4 +2024,34 @@ test('a partial actor catalog cannot fall through to native Makaron exec',async 
   assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='denied')));
   assert.equal(f.invocations.length,0);
   assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/未开放前台创作/);
+});
+
+test('Doubao speaks in the voice the caller chose on the page; a dial without one, and a speaker, keep the default',async t=>{
+ const output=f=>f.upstream.sent.find(e=>e.type==='session.create').session.audio.output.voice;
+ const plain=await fixture(undefined,'seeduplex');t.after(()=>plain.service.dispose());
+ assert.deepEqual(plain.service.models().find(m=>m.id==='seeduplex').voices,SEEDUPLEX_VOICE_CHOICES);
+ assert.equal(plain.reservation.voice,'xiaohe');assert.equal(output(plain),SEEDUPLEX_VOICES.xiaohe);
+ const chosen=await fixture(undefined,'seeduplex',{voice:'taozi'});t.after(()=>chosen.service.dispose());
+ assert.equal(chosen.reservation.voice,'taozi');assert.equal(output(chosen),SEEDUPLEX_VOICES.taozi);
+ assert(chosen.audit.some(e=>e.type==='call.created'&&e.voice==='taozi'));
+ // A device record may name another model's voice: Doubao never used it, and a speaker still does not.
+ const device=await fixture(undefined,'seeduplex',{voice:'eve',surface:'speaker'});t.after(()=>device.service.dispose());
+ assert.equal(device.reservation.voice,'xiaohe');assert.equal(output(device),SEEDUPLEX_VOICES.xiaohe);
+ // Not on the page's list: refused before a session exists (upstream it would open and stay silent).
+ await assert.rejects(plain.service.reserve({model:'seeduplex',sessionKey:'agent:makaron:explicit:personal-fixture',voice:'sol'}),/豆包音色/u);
+});
+
+test('the cached waiting line is in the default voice: a call in another Doubao voice waits quietly',async t=>{
+ const {TOOL_PROGRESS_LINES}=await import('./tool-start-audio.mjs');
+ const PROGRESS=TOOL_PROGRESS_LINES.map((text,i)=>({text,pcm:Buffer.alloc(240,i+1),source:'cached-native-tool-progress',sha256:'fixture-'+i}));
+ for(const [voice,spoken] of [[undefined,true],['vv',false]]){
+  let finish;
+  const f=await fixture(()=>new Promise(resolve=>{finish=resolve;}),'seeduplex',{toolProgressClips:PROGRESS,voice});
+  t.after(()=>f.service.dispose());
+  f.event({type:'response.function_call_arguments.done',items:[{call_id:'mem',name:'memory_search',arguments:JSON.stringify({query:'项目'})}]});
+  for(let i=0;i<100&&!finish;i++)await delay(2);
+  assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),spoken);
+  assert.equal(f.client.sent.some(e=>e.type==='audio'&&e.source==='cached-native-tool-progress'),spoken);
+  finish({ok:true,output:{answer:'V Voice'}});
+ }
 });

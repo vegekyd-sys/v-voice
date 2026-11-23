@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCallView, messageDisplay, resolveStatus, speakerDisplay, splitTurns, TRANSIENT_MS} from './call-view.mjs';
+import {createCallView, messageDisplay, resolveStatus, speakerDisplay, splitTurns, TRANSIENT_MS, voiceChoice, VOICE_SLOTS} from './call-view.mjs';
 import {createAvatarTasks} from './avatar-state.mjs';
 
 const connected = (patch = {}) => {
@@ -122,4 +122,16 @@ test('completion must not reorder overlapping captions or hide the newest answer
   const answer = {key:'a', role:'assistant', text:'答案', at:2, complete:true};
   assert.deepEqual(splitTurns({history:[answer],current:[user]}).now.map(r=>r.key), ['u','a']);
   assert.deepEqual(splitTurns({history:[{...user,complete:true},answer],current:[]}).now.map(r=>r.key), ['u','a']);
+});
+
+test('the voice shown and chosen is the selected model\'s own; a model without a choice has an empty list', () => {
+  const doubao = [{id: 'xiaohe', label: '小何 · 甜美活泼'}, {id: 'taozi', label: '桃子 · 甜美'}], live = [{id: 'sol', label: 'Sol · 从容松弛'}, {id: 'maple', label: 'Maple · 活泼直率'}];
+  const view = createCallView({doubao: {voices: doubao, voice: 'taozi'}, live11: {voices: live, voice: 'sol'}, grok: {voices: [{id: 'iris', label: 'Iris'}], voice: 'iris'}});
+  assert.deepEqual(voiceChoice(view.get()), {model: 'seeduplex', voices: doubao, current: doubao[1]});
+  view.set({model: 'gpt-live-11'});
+  assert.deepEqual(voiceChoice(view.get()), {model: 'gpt-live-11', voices: live, current: live[0]});
+  // GPT Live One has one voice, and Grok keeps its own trial picker: nothing for Settings to list.
+  for (const model of ['gpt-live', 'grok', null]) { view.set({model}); assert.deepEqual(voiceChoice(view.get()), {model, voices: [], current: null}); }
+  assert.deepEqual(voiceChoice(createCallView().get()), {model: 'seeduplex', voices: [], current: null});
+  assert.deepEqual(Object.values(VOICE_SLOTS).map(slot => slot.storage), ['v.doubao.voice', 'v.gptLive11.voice']);
 });
