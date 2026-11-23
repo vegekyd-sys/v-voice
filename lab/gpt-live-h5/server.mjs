@@ -1355,7 +1355,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({accounts:createMediaAccounts(
         join(homedir(),'.makaron','chat-keys.json'),join(homedir(),'.openclaw','secrets','store','MAKARON_API_KEY'))}):null,
       calendar:personalLark.calendar,larkRead:personalLark.read,larkForActor:lark.forActor,
-      gptLive:gptLiveFromEnv(process.env),
+      gptLive:gptLiveFromEnv(process.env,{gatewayRequest:(method,params,options)=>gateway.request(method,params,options)}),
       grokModel:process.env.XAI_VOICE_MODEL,
       grokSpeed:Number(process.env.XAI_VOICE_SPEED ?? 1),
       grokExpressiveTags:process.env.XAI_VOICE_EXPRESSIVE_TAGS === '1',
