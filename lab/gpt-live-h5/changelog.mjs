@@ -198,14 +198,14 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 // Candidate only: the model is off in production until its login is configured and the switch is set.
 export const GPT_LIVE_11_CANDIDATE_UPDATE = {
-  version:'voice-gpt-live-11.20261123.2',date:'2026-11-23',
+  version:'voice-gpt-live-11.20261123.3',date:'2026-11-23',
   title:'GPT Live 1.1：是 V 本人，查东西当场答，讲解有画面（Candidate）',status:'candidate-validation',
   items:[
     '模型列表新增 GPT Live 1.1，走 Codex 套餐登录，不另外按量付费。',
     '它知道自己是 V：接通先打招呼，不再自称 ChatGPT；性格调成阳光、甜美、温柔，拨号前可以自己挑声音。',
     '查时间、上网搜索、查记忆和日程这类短任务当场办完；追问「再看一下」会接着刚才那件事查，不会查偏。',
     '讲解和讲故事：V 自己讲，听完就开口，不再念稿；画面跟着它说的话出现。',
-    '讲到看得见的东西（景点、藏品、菜）会配真实照片，一开口就先放几张；说“多看几张”会再讲几样新的并配上图。',
+    '讲到看得见的东西（景点、藏品、菜）会配真实照片，一开口就先放几张；V 照着屏幕上摆的顺序逐个讲，高亮跟着它说到的那一样走。说“多看几张”会再讲几样新的并配上图。',
     '通话中连接被掐断时会自动接回，V 说一句“接回来了”就接着刚才的话讲。',
     '修复：你说到一半的话不再出现在 V 的气泡里，也不会被画到画面上。',
     '修复：V 说“我去看一下”却没去查时，会直接替它把该查的查了再告诉你；说了再见就真的挂断。',
