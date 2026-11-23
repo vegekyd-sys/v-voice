@@ -1945,22 +1945,20 @@ test('improv tool joins a display call and steers its existing show without a ga
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'街角跑来一只猫',item_id:'scene-2'});
  f.call('improv_live',{action:'direct',shot:'转向街角'},'steer');
  await delay(0);
- assert.deepEqual(calls.filter(c=>c[0]==='direct').map(c=>c.at(-1)),['街角跑来一只猫']);
+ assert.deepEqual(calls.filter(c=>c[0]==='direct').map(c=>c.at(-1)),['转向街角']);
  assert.equal(f.invocations.some(v=>v?.tool==='improv_live'),false);
  const ordinary=await fixture();
  t.after(()=>ordinary.service.dispose());
  assert(!ordinary.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
 });
 
-test('a final spoken opening request reaches the player even if the host never calls the tool',async t=>{
+test('a transcript without a model tool call cannot start a show',async t=>{
  const calls=[],improv=fakeDirector(calls);
  const f=await fixture(undefined,'grok',{improv});
  t.after(()=>{improv.close();return f.service.dispose();});
- f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'帮我开个直播吧，拍一场玩具猫的音乐会。',item_id:'first'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'帮我开个直播吧。',item_id:'first'});
  await delay(3300);
- assert.equal(calls.filter(c=>c[0]==='start').length,1);
- assert.match(calls[0][2],/玩具猫/);
- assert(f.client.sent.some(event=>event.type==='improv.live' && event.action==='start'));
+ assert.equal(calls.length,0);
 });
 
 test('a spoken invitation can open on the picture selected in this call',async t=>{
@@ -1971,7 +1969,7 @@ test('a spoken invitation can open on the picture selected in this call',async t
  const owner=f.reservation.voiceSessionId, image='https://cdn.example/lighthouse.png';
  assets.add('different-call',{url:'https://cdn.example/other.png'});
  const say=text=>f.event({type:'conversation.item.input_audio_transcription.completed',transcript:text,item_id:'fixture-input'});
- const start=id=>f.call('improv_live',{action:'start',shot:'灯塔的光扫过港湾'},id);
+ const start=id=>f.call('improv_live',{action:'start',shot:'灯塔的光扫过港湾',openingImage:'current'},id);
  say('请用这张海报，然后开始一场直播好吗？');
  start('missing');
  await delay(0);
@@ -1983,10 +1981,10 @@ test('a spoken invitation can open on the picture selected in this call',async t
  start('with-image');
  await delay(0);
  assert.equal(calls.find(c=>c[0]==='start')?.at(-1),image);
- assert.equal(await assets.openingImage(owner,'a999',''),'');
- assert.equal(await assets.openingImage(owner,'https://cdn.example/unlisted.png',''),'');
+ assert.equal(await assets.openingImage(owner,'a999'),'');
+ assert.equal(await assets.openingImage(owner,'https://cdn.example/unlisted.png'),'');
  assets.pick(owner,'');
- assert.equal(await assets.openingImage(owner,'current','用这张图'),'https://cdn.example/harbor.png');
+ assert.equal(await assets.openingImage(owner,'current'),'https://cdn.example/harbor.png');
 });
 
 for(const model of ['grok','seeduplex'])test(model+' dispatches creation using the admitted Feishu scope and explains insufficient credits without opening checkout',async t=>{
@@ -2046,7 +2044,7 @@ test('a partial actor catalog cannot fall through to native Makaron exec',async 
   assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/未开放前台创作/);
 });
 
-test('the spoken Paris shop invitation carries its named V image through a direct confirmation',async t=>{
+test('a confirmation can open the exact picture the model selects from the call',async t=>{
  const {createAssetShelf,SELF_IMAGE}=await import('../gpt-live-h5/board-assets.mjs');
  const assets=createAssetShelf({standing:[SELF_IMAGE]}), calls=[],improv=fakeDirector(calls);
  const f=await fixture(undefined,'grok',{assets,improv});
@@ -2055,12 +2053,8 @@ test('the spoken Paris shop invitation carries its named V image through a direc
  const portrait=assets.add(owner,{url:'https://cdn.example/portrait.jpg',name:'巴黎巧克力店的小老板',from:'v'});
  const street=assets.add(owner,{url:'https://cdn.example/street.jpg',name:'巴黎巧克力店门口'});
  assets.visible(owner,[portrait.id,street.id]);
- const say=(text,id)=>f.event({type:'conversation.item.input_audio_transcription.completed',transcript:text,item_id:id});
- const start=id=>f.call('improv_live',{action:'start',shot:'开门营业',openingImage:street.id},id);
- say('是的。','unrelated');start('unrelated');await delay(0);
- assert.equal(calls.length,0);
- say('把那张，你那张巧克力店的图片开个直播。','opening');
- f.event({type:'response.output_audio_transcript.done',transcript:'要现在用这张雪夜巧克力店的图，开一场娱乐直播吗？'});
- say('是的。','approved');start('start');await delay(0);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'是的。',item_id:'confirmed'});
+ f.call('improv_live',{action:'start',shot:'开门营业',openingImage:portrait.id},'start');
+ await delay(0);
  assert.deepEqual(calls.filter(c=>c[0]==='start').map(c=>c.at(-1)),['https://cdn.example/portrait.jpg']);
 });

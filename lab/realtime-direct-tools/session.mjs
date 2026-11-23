@@ -1,4 +1,4 @@
-import {IMPROV_TOOL, invited, openingImageFor, openingShot} from './improv-live.mjs';
+import {IMPROV_TOOL} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
@@ -313,39 +313,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
-  function observeImprov(s, turn) {
-    if (!s.improv) return;
-    s.referenceEdit?.(turn);
-    const previous = s.improvOpening?.turn;
-    const question = s.answers?.at(-1);
-    const confirmsOpening = previous && !s.improv.active && question &&
-      question.at >= Date.parse(previous.receivedAt) && Date.now() - Date.parse(previous.receivedAt) < 45000 &&
-      /(?:开[^。！？?]{0,10}直播|开播)(?:吧|呢|吗|么)?[？?]$/u.test(question.text.trim()) &&
-      /^(?:是的?|对的?|好[的啊呀]?|可以|确认|开始吧|开吧)[。！!，,\s]*$/u.test(turn.text.trim());
-    const openingTurn = confirmsOpening ? {...turn,text:previous.text} : turn;
-    s.improvOpening = invited(openingTurn.text) ? {source:turn,turn:openingTurn} : null;
-    if (!s.improvOpening) {
-      void s.improv.observe(turn).catch(()=>audit({type:'improv.direction-failed',voiceSessionId:s.id}));
-      return;
-    }
-    const existing = s.improv.active;
-    // Give the voice model time to compose the opening. A clear invitation also
-    // works when the model answers conversationally and never calls the tool.
-    setTimeout(async () => {
-      if (!current(s) || s.latestUserTurn !== turn || (!existing && s.improv.active)) return;
-      try {
-        const args = {action:'start'};
-        const reference = openingImageFor(args,openingTurn.text);
-        const image = reference && shelfFor(s) ? await assets.openingImage(s.id,reference,openingTurn.text) : '';
-        if (!current(s) || s.latestUserTurn !== turn) return;
-        if (reference && !image) throw Error('请先在这通电话中添加或点选要开场的图');
-        args.shot=openingShot(openingTurn.text,Boolean(image));
-        await s.improv.command(args,openingTurn,event=>emit(s,event),image,image && assets.openingAspect?.(s.id,image),image && assets.openingName?.(s.id,image));
-        s.mediaRecovery?.started();
-      } catch(error) { emit(s,{type:'improv.notice',text:error.message}); }
-    }, existing ? 0 : 3200).unref();
-  }
-
   const sessionTools=s=>[...(s.improv?[IMPROV_TOOL]:[]),...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
@@ -583,7 +550,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       deliverAudio(clip.pcm,{source:clip.source,sha256:clip.sha256});emit(s,{type:'audio.done'});return true;
     };
     const invoke=async(name,args,callId,signal)=>{
-      if(name==='exec' && /^\s*makaron\s+edit\s/u.test(args.command) && s.referenceJob && s.referenceJob.turn===s.latestUserTurn && s.referenceJob.id!==callId) return s.referenceJob.result;
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(!allowedTools.has(name))throw Error('OpenClaw 未开放这个工具');
       if(name==='process'&&s.localExecutions?.has(args.sessionId))return s.localExecutions.poll(args.sessionId,{...args,signal});
@@ -603,7 +569,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // place on the board before it exists (board-assets.mjs). A question about progress makes nothing.
         // (A photograph found for the board and named in the command is first given an address the generator can fetch.)
         if(shelfFor(s)){
-          if(s.improv)args={...args,command:assets.bindUserReference?.(s.id,args.command,requestToken.text) ?? args.command};
           await assets.lend(s.id,args.command);
         }
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
@@ -692,24 +657,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       cleanup.then(()=>s.localCleanups.delete(cleanup),()=>{});
       return work.then(result=>{audit({type:'tool.local-result',voiceSessionId:s.id,callId,name,result});return result;});
     });
-    if (s.improv && s.mediaCliAvailable && shelfFor(s)) s.referenceEdit = turn => {
-      const words=turn.text;
-      if (s.referenceJob?.turn===turn || words.length>600 || /如果|假如|不要|先别|别画|别改|别做|别生成|不想|不需要|不是让|先不|不用|如何|怎么(?:做|用|改)|教程|视频|直播|开播|多少钱|报价|贵不贵|模型|Seedream|GPT|Midjourney|Flux|能做什么|[“”「」]/u.test(words)) return;
-      if (!/我(?:刚刚?|刚才)?上传的|我自己的(?:图片|照片)|我的(?:图片|照片)|(?:你的|你自己的|小何的|V的)(?:形象|头像|图片|照片)/iu.test(words) ||
-          !/改图|画(?:一张|张|个)|画成|改成|换成|生成(?:一张|张|图片)|做成/u.test(words)) return;
-      const id = 'reference-'+randomUUID(), controller=new AbortController();
-      // This calls the same authorized runner, shelf and per-turn submission as
-      // a native tool call. The user's words are one quoted CLI argument.
-      const prompt="'"+words.replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")+"'";
-      const command='makaron edit --image-model gemini-2.1 '+prompt;
-      const result=invoke('exec',{command,completionLine:'参考图改好了，你看画布。',failureLine:'这次改图没有成功。'},id,controller.signal);
-      s.referenceJob={id,turn,result};
-      emit(s,{type:'tool.call',name:'exec',callId:id,execution:'foreground',stage:'生成图片'});
-      result.then(value=>emit(s,{type:'tool.result',name:'exec',callId:id,failed:Boolean(value?.isError)}),error=>{
-        if(current(s))emit(s,{type:'improv.notice',text:error.message});
-        audit({type:'reference-edit.failed',voiceSessionId:s.id,reason:error.message});
-      });
-    };
     const admittedUserTurns=new Map();
     const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();if(shelfFor(s))await assets.lend(s.id);return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(shelfFor(s)?assets.backendContext(s.id):'')+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
     s.progressTimer=setInterval(()=>{idleTick(s);deferred(s);},200);s.progressTimer.unref?.();
@@ -782,12 +729,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         validateTool(call.name,call.args);
         if(call.name===IMPROV_TOOL.name){
           if(!s.improv)throw Error('当前通话没有即兴直播');
-          const latest=s.latestUserTurn;
-          const turn=call.args.action==='start' && s.improvOpening && s.improvOpening.source===latest ? s.improvOpening.turn : latest;
-          const reference=openingImageFor(call.args,turn?.text);
-          const imageUrl=reference && shelfFor(s) ? await assets.openingImage(s.id,reference,turn.text) : '';
-          if(reference && !imageUrl)throw Error('这张图还不能用来开场，请用户点选本通话中已显示的图片。');
-          if(reference && (latest!==s.latestUserTurn || !current(s) || s.epoch!==epoch))throw Error('开场请求已过期。');
+          const turn=s.latestUserTurn;
+          const {openingImage,imagePosition}=call.args;
+          const hasImage=openingImage!==undefined || imagePosition!==undefined;
+          if(hasImage && (call.args.action!=='start' || openingImage!==undefined && imagePosition!==undefined))throw Error('开播时请选择一个素材编号或画面序号');
+          const imageUrl=hasImage && shelfFor(s) ? await assets.openingImage(s.id,openingImage,imagePosition) : '';
+          if(hasImage && !imageUrl)throw Error('找不到指定的开场图，请从当前画布中选择已显示的图片。');
+          if(turn!==s.latestUserTurn || !current(s) || s.epoch!==epoch)throw Error('直播请求已过期');
           result=await s.improv.command(call.args,turn,event=>emit(s,event),imageUrl,imageUrl && assets.openingAspect?.(s.id,imageUrl),imageUrl && assets.openingName?.(s.id,imageUrl));
           s.mediaRecovery?.started();
         }
@@ -863,10 +811,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             result={lessonDelivered:Boolean(script)};
             }
           }
-        }
-        if(call.name==='end_call' && s.improv?.decision(s.latestUserTurn)){
-          const verdict=await s.improv.decision(s.latestUserTurn);
-          if(verdict.action==='end' && !/挂(?:掉|断)?(?:这个|这通)?电话|结束通话|挂了吧/u.test(s.latestUserTurn.text))throw Error('直播已结束，继续当前通话');
         }
         if(![IMPROV_TOOL.name,'send_task_updates','openclaw_agent_control','get_current_location','explain_on_board'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
@@ -948,7 +892,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播主持：用户明确要求按上传的参考图或你的形象改图时，本通话会直接提交 Makaron，依画布制作状态回应，不另搜图，不重做。开场请求只表示正在连接。观众说出一个角色或动作时，Makaron 会把它交给导演。简短接住这个创意，例如“让它从云里冲下来”，把呈现交给画面。你听到观众的编导意图，无法观察直播帧。只用将来式简短复述观众指定的动作，例如“好，让她干拔投三分”。禁止自行添加玩偶、庆祝细节或充当正在画面上发生的事来解说。观众收播后继续当前通话。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播意图由你结合对话判断。实际开播、调整下一幕、收播都调用 improv_live，先取得回执再回应。收播后继续这通电话。你能看到提交状态，无法观察直播帧。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
@@ -965,7 +909,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const deliver=()=>{
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
-        if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim()){s.latestUserTurn=Object.freeze({text,id:metadata.turnId,receivedAt:new Date().toISOString()});observeImprov(s,s.latestUserTurn);}s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim()){s.latestUserTurn=Object.freeze({text,id:metadata.turnId,receivedAt:new Date().toISOString()});}s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         if(role==='user'&&final&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
@@ -1042,7 +986,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
         s.bridge.handleBargeIn({confirmed});audit({type:'client.barge-in',voiceSessionId:s.id,...(device?{deviceId:device,confirmed}:{})});}
-      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});observeImprov(s,s.latestUserTurn);s.bridge.sendUserMessage(e.text);}
+      else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','droppedInputFrames','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
