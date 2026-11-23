@@ -222,3 +222,43 @@ test('a script captioned piece by piece as it is read shows each part of the pag
   assert.deepEqual(hear('小火龙').ahead, ['f/b', 'f/a>b']);
   assert.deepEqual(hear('怕水。').ahead, []);
 });
+
+test('a long sentence after a short one is reported clause by clause, not only at its end', async () => {
+  const h = harness();
+  const user = row('turn-1', 'user', '老城怎么逛');
+  h.client.update(snap([user]));
+  await h.advance(400);
+  const said = text => h.client.update(snap([user], [row('turn-2', 'assistant', text)]));
+  said('好呀！');
+  await h.advance(400);
+  assert.equal(h.requests.at(-1).payload.turns.at(-1).text, '好呀！');
+  // (Until 11/23 nothing more was asked before this sentence ended: 12 to 18 s of a page standing still.)
+  said('好呀！第一次去的话，我建议你早上从南门进，顺着河一');
+  await h.advance(BOARD_PROGRESS_INTERVAL_MS);
+  assert.equal(h.requests.at(-1).payload.turns.at(-1).text, '好呀！第一次去的话，我建议你早上从南门进，');
+  said('好呀！第一次去的话，我建议你早上从南门进，顺着河一路往北走。然后');
+  await h.advance(BOARD_PROGRESS_INTERVAL_MS);
+  assert.equal(h.requests.at(-1).payload.turns.at(-1).text, '好呀！第一次去的话，我建议你早上从南门进，顺着河一路往北走。');
+  // A few words after a comma are not yet worth a request.
+  said('好呀！第一次去的话，我建议你早上从南门进，顺着河一路往北走。然后，再');
+  await h.advance(BOARD_PROGRESS_INTERVAL_MS);
+  assert.equal(h.requests.length, 4);
+});
+
+test('a picture up before V spoke stays up when V\'s text, ahead of the voice, comes to name it', async () => {
+  const {createLessonGate} = await import('./board-client.mjs');
+  const {applyOp, emptyScene, speaksOf, spokenProgress, unspoken} = await import('./board-scene.mjs');
+  const gate = createLessonGate({now: () => 0});
+  const opening = [{op: 'scene', title: '老城', lesson: true, late: true}, {op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '钟楼', img: '老城 钟楼'}, {id: 'b', h: '石桥', img: '老城 石桥'}]}}].reduce(applyOp, emptyScene());
+  const view = (scene, text, speaking, index) => gate.view({scene, text, speaking, speaksOf, unspoken, progress: () => spokenProgress(scene, text, index)});
+  assert.equal(view(opening, '', false, 0), null, 'put up on the question: all of it shows');
+  // V's text has reached both names; the voice is still on the first sentence.
+  const said = '老城不大。先到钟楼，再走到石桥。';
+  assert.deepEqual(view(opening, said, true, 3).ahead, []);
+  // The illustrator then hangs them on V's words and adds a third thing: only that one waits for the voice.
+  const told = applyOp(opening, {op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '钟楼', img: '老城 钟楼', q: '先到钟楼'}, {id: 'b', h: '石桥', img: '老城 石桥', q: '再走到石桥'}, {id: 'c', h: '码头', img: '老城 码头', q: '最后是码头'}]}});
+  const more = said + '最后是码头。';
+  assert.deepEqual(view(told, more, true, 3).ahead, ['g/c']);
+  assert.deepEqual(view(told, more, true, 10), {focus: 'g/a', ahead: ['g/c']}, 'the mark still follows the voice from one to the next');
+  assert.deepEqual(view(told, more, true, Array.from(more).length).ahead, []);
+});
