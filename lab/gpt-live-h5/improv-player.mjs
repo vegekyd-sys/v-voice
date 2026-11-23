@@ -1,24 +1,30 @@
 // The playback peer belongs to the call. The lesson board can collapse, move
 // to another sheet or reopen while Makaron continues recording the same peer.
-export function createImprovPlayer({update,ended,keep,notice}){
+export function createImprovPlayer({update,ended,notice}){
   let current;
-  function close(){
-    if(!current)return;
-    window.removeEventListener('message',current.listener);
-    clearTimeout(current.cleanup);current.frame.remove();current=null;update(null);
+  function publish(show) {
+    update({id:show.id,stream:show.stream,caption:show.caption,note:show.note,focus:show.focus});
+  }
+  function detach(show) {
+    if(current===show){current=null;update(null);}
+  }
+  function close(show){
+    window.removeEventListener('message',show.listener);
+    clearTimeout(show.cleanup);show.frame.remove();detach(show);
   }
   function finish(){
-    if(!current || current.closing)return;
-    current.closing=true;
-    current.frame.contentWindow?.postMessage({id:current.id,action:'end'},location.origin);
-    ended(current.id);
-    current.cleanup=setTimeout(close,30000);
+    const show=current;
+    if(!show)return;
+    detach(show);
+    show.frame.contentWindow?.postMessage({id:show.id,action:'end'},location.origin);
+    ended(show.id);
+    show.cleanup=setTimeout(()=>close(show),45000);
   }
   function receive(event){
     if(event.action!=='start'){
       if(current?.id!==event.id)return;
       if(event.action==='end')finish();
-      if(event.action==='keep')keep();
+      if(event.action==='focus'){current.focus=(current.focus||0)+1;publish(current);}
       return;
     }
     if(current || typeof event.playerPath!=='string')return;
@@ -28,15 +34,22 @@ export function createImprovPlayer({update,ended,keep,notice}){
     const frame=document.createElement('iframe');frame.hidden=true;frame.title='Makaron Director 直播连接';frame.allow='autoplay';
     const show={id:event.id,frame,listener:e=>{
       if(e.source!==frame.contentWindow || e.origin!==location.origin || e.data?.source!=='makaron-director' || e.data.id!==event.id)return;
-      if(e.data.action==='playing'){show.stream=frame.contentDocument.querySelector('video')?.srcObject;update({id:event.id,stream:show.stream});}
-      if(e.data.action==='direction'){
-        const note={sent:'正在调整镜头',applied:'新镜头正在生成',rejected:'这条指令未被采用'}[e.data.state];
-        if(note)update({id:event.id,stream:show.stream,note});
+      if(e.data.action==='ended'){
+        if(current===show){ended(event.id);notice(e.data.failed?'直播连接失败，可以重新开播':'直播结束，通话继续',e.data.failed);}
+        close(show);return;
       }
-      if(e.data.action==='ended'){ended(event.id);close();notice('直播结束，通话继续');}
+      if(current!==show)return;
+      if(e.data.action==='playing'){show.stream=frame.contentDocument.querySelector('video')?.srcObject;publish(show);}
+      if(e.data.action==='direction'){
+        if(e.data.state==='applied' && Number.isInteger(e.data.version) && e.data.version>(show.version||0)){
+          show.version=e.data.version;show.caption=String(e.data.text||'').slice(0,2000);show.note='';
+        } else if(e.data.state==='sent')show.note='正在调整镜头';
+        else if(e.data.state==='rejected')show.note='这条指令未被采用';
+        publish(show);
+      }
     }};
     current=show;window.addEventListener('message',show.listener);
     update({id:show.id});frame.src=url.href;document.body.append(frame);
   }
-  return {receive,finish,keep};
+  return {receive,finish};
 }

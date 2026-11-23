@@ -193,6 +193,10 @@ function Controls({state, actions, onHeight}) {
         <button id="steer" type="submit" aria-label="发送补充内容" disabled={!enabled}><Icon d="m3 3 19 8-9 3-3 9-7-20Zm9 10L22 3" /></button>
       </form>
       <div id="callPill" className="pill" aria-label="通话控制">
+        {active && state.referenceUpload && state.model !== 'gpt-live' && <label className="reference-picker" title="添加参考图">
+          <input aria-label="添加参考图" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void actions.uploadReference(file);}}/>
+          <Icon><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="m4 18 5-5 3 3 4-6 4 6"/></Icon>
+        </label>}
         {active && (
           <button id="textToggle" type="button" aria-label={open ? '收起文字输入' : '打开文字输入'} aria-expanded={open} aria-controls="steerForm" onClick={toggleComposer}>
             <Icon><rect x="2" y="5" width="20" height="14" rx="3" /><path d="M6 9h1m3 0h1m3 0h1m3 0h1M6 12h1m3 0h1m3 0h1m3 0h1M7 16h10" /></Icon>
@@ -430,20 +434,19 @@ function ImprovStage({show, actions}) {
     let active = true;
     setPlaying(false);
     setBlocked(false);
-    element.srcObject = show.stream;
+    element.srcObject = show.stream ?? null;
     if (show.stream) element.play().catch(() => { if (active) setBlocked(true); });
     return () => { active = false; element.srcObject = null; };
   }, [show.stream]);
-  return <section className="improv-stage" aria-label="即兴直播">
-    <video ref={video} id="improvVideo" playsInline muted autoPlay onPlaying={() => {setPlaying(true); setBlocked(false);}} />
-    <div className="improv-toolbar">
-      <span className="improv-label" data-live={playing}>即兴直播</span>
-      <button type="button" onClick={actions.endImprov}>结束直播</button>
+  return <figure className="improv-stage" aria-label="即兴直播">
+    <div className="improv-picture">
+      <video ref={video} id="improvVideo" playsInline muted autoPlay onPlaying={() => {setPlaying(true); setBlocked(false);}} />
+      {blocked ? <button type="button" className="improv-center" onClick={() => video.current.play().catch(() => setBlocked(true))}>播放画面</button>
+        : !playing && <span className="improv-center" role="status">正在准备第一幕…</span>}
     </div>
-    {blocked ? <button type="button" className="improv-center" onClick={() => video.current.play().catch(() => setBlocked(true))}>播放画面</button>
-      : !playing && <span className="improv-center" role="status">正在准备第一幕…</span>}
-    {playing && <div className="improv-footer"><span role="status">{show.note}</span><button type="button" onClick={actions.keepImprov}>留一帧</button></div>}
-  </section>;
+    <figcaption aria-live="polite">{show.caption && <p><strong>导演已采用</strong> {show.caption}</p>}{show.note && <small>{show.note}</small>}</figcaption>
+    <button className="board-report" type="button" onClick={actions.endImprov}>结束直播</button>
+  </figure>;
 }
 
 function CallPage({view, actions, options}) {
@@ -476,7 +479,7 @@ function CallPage({view, actions, options}) {
   const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
   const currentScene = scene || (inCall && state.improv ? liveOnlyScene : null);
   const board = !boardHidden && !(history && !wide) ? currentScene : null;
-  useEffect(() => { if (state.improv?.id) setBoardHidden(null); }, [state.improv?.id]);
+  useEffect(() => { if (state.improv?.id) setBoardHidden(null); }, [state.improv?.id, state.improv?.focus]);
   // What V is saying in answer to the caller's latest words: shown on a page that has nothing on it yet.
   const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
@@ -524,7 +527,6 @@ function CallPage({view, actions, options}) {
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
           {currentScene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
-          {inCall && state.improvStill && <a className="improv-download" href={state.improvStill} download="即兴直播.jpg"><img src={state.improvStill} alt="" />保存留影</a>}
         </header>
         <section className="stage" aria-label="V">
           <Avatar key="portrait" onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
@@ -555,7 +557,7 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} liveMedia={state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+        {board && <Board scene={board} liveId={state.improv?.id} liveFocus={state.improv?.focus} liveMedia={state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
           works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
             : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing, autoSound: options.boardWorks.autoSound, film: options.boardWorks.film} : null}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}

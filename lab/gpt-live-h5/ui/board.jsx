@@ -826,7 +826,7 @@ function useFit(scroller, page, key) {
 }
 
 // One page of the canvas: its blocks, fitted to the panel.
-function Sheet({scene, liveMedia, spoken, loadPhoto, enlarge, caption = '', works = null}) {
+function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) {
   const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   const dense = useFit(box, sheet, scene.serial);
@@ -887,7 +887,6 @@ function Sheet({scene, liveMedia, spoken, loadPhoto, enlarge, caption = '', work
   }
   return (
     <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
-      {liveMedia && <div className="board-live-media">{liveMedia}</div>}
       <div className="board-body" ref={sheet}
         data-side={blocks.some(block => SMALL.has(block.t) && block !== hero) && blocks.some(block => !SMALL.has(block.t) || block === hero) || undefined} data-lead={hero ? 'true' : undefined} data-cue={scene.cue || undefined}>
         {/* Nothing drawn yet: V's words, so the page is not empty while the picture is on its way. */}
@@ -940,8 +939,12 @@ class BoardGuard extends React.Component {
 export function Board(props) {
   return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
 }
-function Canvas({scene, liveMedia, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
+function Canvas({scene, liveMedia, liveId, liveFocus, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
+  if (liveId) {
+    if (pages.length === 1 && !scene.title && !scene.blocks.length) pages.pop();
+    pages.push({serial: liveId, title: "即兴直播", blocks: []});
+  }
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
   const [inView, setInView] = useState(active);
@@ -951,13 +954,21 @@ function Canvas({scene, liveMedia, canvas, spoken, caption = '', loadPhoto, onCl
     const pictures = pagePictures(element?.closest?.('.board-page')), start = pictures.findIndex(item => item.element === element);
     if (start >= 0) setViewing({items: pictures.map(({element: from, ...item}) => item), start});
   };
-  // V drawing anything, anywhere, brings the view to V's page.
-  useLayoutEffect(() => {
+  const go = index => {
     const strip = track.current;
-    if (!strip) return;
-    const left = strip.clientWidth * active;
-    if (Math.abs(strip.scrollLeft - left) > 2) strip.scrollTo?.({left, behavior: 'smooth'});
-    setInView(active);
+    if (strip) strip.scrollTo?.({left: strip.clientWidth * index, behavior: 'instant'});
+    setInView(index);
+  };
+  const lastLive = useRef(null);
+  useLayoutEffect(() => {
+    if (liveId) {
+      if (lastLive.current !== liveId || liveFocus) go(pages.length - 1);
+    } else go(active);
+    lastLive.current = liveId;
+  }, [liveId, liveFocus]);
+  useLayoutEffect(() => {
+    if (!liveId) go(active);
+    else if (track.current && inView >= pages.length - 1) go(pages.length - 1);
   }, [active, pages.length, scene.rev]);
   const onScroll = () => { const strip = track.current; if (strip?.clientWidth) setInView(Math.max(0, Math.min(pages.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)))); };
   const page = pages[Math.min(inView, pages.length - 1)];
@@ -968,7 +979,7 @@ function Canvas({scene, liveMedia, canvas, spoken, caption = '', loadPhoto, onCl
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
         {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
-        {onReport && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
+        {onReport && page.serial !== liveId && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
@@ -977,12 +988,12 @@ function Canvas({scene, liveMedia, canvas, spoken, caption = '', loadPhoto, onCl
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
             <BoardGuard retry={`${item.serial}:${item.rev}`}>
-              <Sheet scene={item} liveMedia={index === active ? liveMedia : null} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />
+              {item.serial === liveId ? <div className="board-scroll board-live-media">{liveMedia}</div> : <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />}
             </BoardGuard>
           </div>
         ))}
       </div>
-      {pages.length > 1 && <i className="board-dots" aria-hidden="true">{pages.map((item, index) => <b key={item.serial} data-current={index === inView || undefined} />)}</i>}
+      {pages.length > 1 && <nav className="board-dots" aria-label="画面分页">{pages.map((item, index) => <button key={item.serial} type="button" aria-label={item.serial === liveId ? "查看直播画面" : "查看第" + (index + 1) + "页"} aria-current={index === inView ? "page" : undefined} onClick={() => go(index)}><b data-current={index === inView || undefined}/></button>)}</nav>}
       {viewing && <Viewer items={viewing.items} start={viewing.start} works={works} onClose={() => setViewing(null)} />}
     </section>
   );

@@ -278,6 +278,8 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     if (!words || /(?:不用|不要|别用|不需要)[^，。,.]{0,6}(?:图|照片)|重新(?:画|生成|做)一张|另外/u.test(words)) return null;
     const usable = item => item.fits !== false && (item.kind === 'image' && item.state === 'ready');
     const here = [...value.photos, ...value.assets].filter(usable);
+    if (/(?:你自己|你的|小何的|V的)(?:的)?(?:形象|头像|照片|图片)/iu.test(words)) return value.standing.find(item=>item.id==='v') ?? null;
+    if (/(?:我(?:刚刚?|刚才)?上传的[^，。]{0,6}(?:图|照片)|我自己的(?:照片|图片)|我的(?:照片|图片))/u.test(words)) return here.filter(item=>item.source==='upload').at(-1) ?? null;
     for (const match of words.matchAll(/[那这]\s*(?:个|张|幅|只|份)?\s*([^，。,.！？!?、那这]{2,12}?)的?\s*(?:那张|这张)?\s*(?:图片|照片|图|海报)/gu)) {
       const named = here.filter(item => nameFit(match[1], item.name) >= 1 || item.query && nameFit(match[1], item.query) >= 1).at(-1);
       if (named) return named;
@@ -351,6 +353,22 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
      * Before a creation command is read: the photographs it names (or, with no command, the latest
      * few, for V's backend) are given addresses a generator can fetch them from.
      */
+    bindUserReference(owner, command, words) {
+      if (!/^\s*makaron\s+edit\s/u.test(command) || /不用|不要用|别用/u.test(words)) return command;
+      const value = row(owner);
+      const own = /(?:你自己|你的|小何的|V的)(?:的)?(?:形象|头像|照片|图片)/iu.test(words);
+      const uploaded = /我(?:刚刚?|刚才)?上传的|我自己的(?:图片|照片)|我的(?:图片|照片)/u.test(words);
+      if (!own && !uploaded) return command;
+      const ref = own ? value.standing.find(item=>item.id==='v') :
+        value.assets.find(item=>item.id===value.picked && item.source==='upload') ?? value.assets.filter(item=>item.source==='upload').at(-1);
+      if (!ref) throw Error(own ? '当前通话没有 V 的形象参考图' : '请先点添加参考图，选一张你自己的图片');
+      const refs = [...command.matchAll(REFERENCE)];
+      if (refs.some(match=>meant(value,match[2]??match[3]??match[4]).item?.id===ref.id)) return command;
+      if (refs.length===1 && !meant(value,refs[0][2]??refs[0][3]??refs[0][4]).item) {
+        return command.replace(REFERENCE,(_match,flag)=>flag+ref.id);
+      }
+      return command.replace(/^([\s]*makaron\s+edit)\b/u,'$1 '+(refs.length?'--ref ':'--image ')+ref.id);
+    },
     async lend(owner, command = null) {
       const value = owners.get(owner);
       if (!value || !api.share) return;
@@ -434,6 +452,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       }
       if (asset.state === 'ready' && asset.url === url) { await wait(asset.looking, lookWaitMs); return api.facts(owner, asset.id); }
       asset.state = 'ready'; asset.url = url; asset.kind = media.kind === 'video' ? 'video' : 'image'; asset.readyAt = now();
+      if (asset.kind === 'image' && value.picked && asset.refs?.includes(value.picked)) value.picked = asset.id;
       audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'ready', madeMs: asset.readyAt - asset.at});
       changed(owner, value);
       await wait(look(owner, value, asset), lookWaitMs);
@@ -542,7 +561,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       if (!value) return '';
       const item = reference === 'current'
         ? pointedAt(value, words) ?? (value.picked ? find(value, value.picked) : value.assets.filter(item => item.state === 'ready').at(-1))
-        : [...value.photos, ...value.assets].find(item => item.id === reference);
+        : [...pictures(value), ...value.assets].find(item => item.id === reference);
       if (item?.kind !== 'image' || item.state !== 'ready' || item.fits === false) return '';
       return https(await api.address(owner, item.id));
     },
@@ -550,9 +569,9 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     async address(owner, id) {
       const value = owners.get(owner), asset = value?.assets.find(item => item.id === id && item.state === 'ready');
       if (asset) return asset.url;
-      if (!value?.photos.some(photo => photo.id === id)) return '';
+      if (!value || !pictures(value).some(photo => photo.id === id)) return '';
       await api.lend(owner, `--image ${id}`);
-      const photo = value.photos.find(item => item.id === id);
+      const photo = pictures(value).find(item => item.id === id);
       return photo?.url && photo.until >= now() ? photo.url : '';
     },
     /** The page has the thing on screen (its picture loaded). */

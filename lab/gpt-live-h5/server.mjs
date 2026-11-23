@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import {Readable} from 'node:stream';
-import {pipeline as pipeDirector} from 'node:stream/promises';
+import {once} from 'node:events';
 import {createImprovShow,directorCommand} from '../realtime-direct-tools/improv-live.mjs';
 import {voiceAccessContext} from '../../lib/access-context.mjs';
 import {createPublicVoiceGateway} from '../../lib/public-voice-gateway.mjs';
@@ -110,6 +109,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     lentPictures.set(token, {bytes: picture.bytes, type: picture.type, until});
     return {url: `${publicOrigin}${basePath}/board-shared/${token}.${kind}`, until};
   };
+  if (boardAssets && !hosted && director?.uploadReference) boardAssets.share = async query => {
+    const picture = await heldPicture(query);
+    return picture?.bytes ? {url:await director.uploadReference(picture.bytes,picture.type),until:Date.now()+LEND_MS} : null;
+  };
   const replyTargets=new Map(entries.replyBindings().map(e=>[e.id,conversationReplyTarget(e,feishuAccounts)]));
   const appDownload=iosAppDownload(iosAppDownloadUrl);
   const phoneLogin = feishuLogin ? createFeishuPhoneLogin({...feishuLogin, publicOrigin, basePath, entries,
@@ -213,7 +216,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
     ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
-    models:phoneModels(),...entryPresentation(binding,req),...(improvAllowed(binding)?{improvLive:true}:{}),...(boardAllowed(binding)?{board:true}:{})});
+    models:phoneModels(),...entryPresentation(binding,req),...(improvAllowed(binding)?{improvLive:true,...(director.uploadReference && boardAssets && boardAllowed(binding) ? {referenceUpload:true} : {})}:{}),...(boardAllowed(binding)?{board:true}:{})});
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
   // The board sends lookup results to its own text model, so it stays on the
   // owner's fixed entry until other callers have agreed to that.
@@ -504,12 +507,20 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           target.searchParams.set('id',id);
           for(const key of ['x-director-player','x-fal-target-url','content-type'])if(req.headers[key])headers[key]=req.headers[key];
         }
-        const upstream=await fetch(target,{method:req.method,headers,redirect:'error',signal:AbortSignal.timeout(95000),...(directorOp?{body:req,duplex:'half'}:{})});
-        res.writeHead(upstream.status,{'content-type':upstream.headers.get('content-type')||'application/octet-stream','cache-control':'no-store','referrer-policy':'no-referrer'});
-        if(upstream.body){
-          try{await pipeDirector(Readable.fromWeb(upstream.body),res);}
-          catch{res.destroy();} // The retiring player may abandon its final in-flight poll.
-        }else res.end();
+        const closed = new AbortController();
+        const signal = AbortSignal.any([closed.signal, AbortSignal.timeout(95000)]);
+        res.once('close',()=>closed.abort());
+        try {
+          const upstream=await fetch(target,{method:req.method,headers,redirect:'error',signal,...(directorOp?{body:req,duplex:'half'}:{})});
+          res.writeHead(upstream.status,{'content-type':upstream.headers.get('content-type')||'application/octet-stream','cache-control':'no-store','referrer-policy':'no-referrer'});
+          if (upstream.body) for await (const chunk of upstream.body) {
+            if (!res.write(chunk)) await once(res,'drain',{signal});
+          }
+          res.end();
+        } catch(error) {
+          if (!closed.signal.aborted && !res.headersSent) throw error;
+          res.destroy();
+        }
         return;
       }
       if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/board-shared/')) {
@@ -884,7 +895,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         models:phoneModels(),...entryPresentation(binding,req),
-        ...(improvAllowed(binding)?{improvLive:true}:{}),
+        ...(improvAllowed(binding)?{improvLive:true,...(director.uploadReference && boardAssets && boardAllowed(binding) ? {referenceUpload:true} : {})}:{}),
         ...(boardAllowed(binding)?{board:true}:{}),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
@@ -925,6 +936,30 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         res.on("close", () => { clearInterval(keepalive); context.listeners.delete(res); }); return;
       }
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
+      if (pathname === '/api/reference-image') {
+        const active = context.active;
+        if (!active?.improv || !improvAllowed(binding) || !boardAllowed(binding) || !boardAssets || !director?.uploadReference ||
+            active.reservation.voiceSessionId !== url.searchParams.get('call')) return json(res,409,{error:'参考图需要当前通话'});
+        const type = req.headers['content-type'], chunks = [];
+        let size = 0;
+        if (!['image/jpeg','image/png','image/webp'].includes(type)) return json(res,415,{error:'请选择 JPG、PNG 或 WebP 图片'});
+        for await (const chunk of req) {
+          size += chunk.length;
+          if (size > 8*1024*1024) return json(res,413,{error:'请选择小于 8 MB 的图片'});
+          chunks.push(chunk);
+        }
+        const bytes = Buffer.concat(chunks);
+        const matches = type==='image/jpeg' ? bytes.subarray(0,3).equals(Buffer.from([255,216,255])) :
+          type==='image/png' ? bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) :
+          bytes.toString('ascii',0,4)==='RIFF' && bytes.toString('ascii',8,12)==='WEBP';
+        if (!matches) return json(res,415,{error:'文件内容和图片格式不一致'});
+        const link = await director.uploadReference(bytes,type);
+        if (context.active !== active) return json(res,409,{error:'这通电话已结束'});
+        const owner=active.reservation.voiceSessionId;
+        const item=boardAssets.add(owner,{url:link,name:'我上传的参考图',source:'upload'});
+        boardAssets.pick(owner,item.id);
+        return json(res,200,{id:item.id});
+      }
       let params = await readBody();
       // Page features (`/api/page/<name>`): what a page may ask the service for, beside the call itself.
       // The iOS App relays any of them through one bridge command, so a new one ships with the service
@@ -1082,6 +1117,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (pathname === "/api/close") { await close(context); return json(res, 200, { ok: true }); }
       return json(res, 404, { error: "没有这个入口" });
     } catch (error) {
+      if (res.headersSent || res.destroyed) { res.destroy(); return; }
       const message = /requires an active|No active|no active/iu.test(error.message) ? "目前没有正在运行的后台任务，可以直接对 V 说话。" : "这次连接没有完成，请重新开始通话。";
       json(res, error.message === "Request too large" ? 413 : 500, { error: message });
     }

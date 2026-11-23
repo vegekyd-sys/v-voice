@@ -45,8 +45,20 @@ if (document.querySelector) mountCallUi(document, view, {
   // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
   boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: id => call?.boardAssets?.shown(id), save: item => saveBoardPicture(item)},
   actions: {
+    uploadReference: async file => {
+      const active=call;
+      if (!active?.voiceSessionId || !file) return;
+      if (file.size>8*1024*1024) return setStatus('请选择小于 8 MB 的图片',{tone:'problem'});
+      setStatus('正在添加参考图');
+      try {
+        const url=new URL(apiUrl('reference-image'),document.baseURI);
+        url.searchParams.set('call',active.voiceSessionId);
+        const response=await fetch(url,{method:'POST',body:file,headers:{'content-type':file.type}});
+        if (!response.ok) throw Error((await response.json()).error);
+        if(call===active){active.boardAssets?.poke?.();setStatus('参考图已放到画布上',{tone:'success'});}
+      } catch(error){if(call===active)setStatus(error.message||'添加参考图失败',{tone:'problem'});}
+    },
     endImprov: () => call?.improv?.finish(),
-    keepImprov: () => call?.improv?.keep(),
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
     skipConfirmation: () => void skipConfirmation(),
@@ -644,7 +656,7 @@ async function stopCall({failure}={}) {
   if (starting === active) starting = null;
   if (active) {
     active.improv?.finish();
-    view.set({improv:null,improvStill:null});
+    view.set({improv:null});
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.board?.dispose(); active.boardAssets?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null, boardAssets: null });
@@ -776,17 +788,7 @@ async function startCall() {
     if (improvLive) active.improv = createImprovPlayer({
       update: improv => { if (call === active) view.set({improv}); },
       ended: id => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id}).catch(()=>{}); },
-      notice: text => { if (call === active) setStatus(text,{tone:'success'}); },
-      keep: () => {
-        const video = $('improvVideo');
-        if (!video?.videoWidth || video.readyState < 2) return setStatus('画面还没到，稍后可以留一帧',{tone:'problem'});
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-        try {
-          canvas.getContext('2d').drawImage(video,0,0);
-          view.set({improvStill:canvas.toDataURL('image/jpeg',0.92)});
-        } catch { setStatus('这一帧暂时留不下来',{tone:'problem'}); }
-      }
+      notice: (text,failed) => { if (call === active) setStatus(text,{tone:failed?'problem':'success'}); }
     });
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
@@ -890,6 +892,7 @@ async function startCall() {
           if(value.type==='end.cancelled')active.remoteEnding=false;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.
+          if(value.type==='improv.notice'){setStatus(value.text,{tone:'problem'});return;}
           if(value.type==='improv.live'){void active.improv?.receive(value);return;}
           if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
             // Close only the display row, preserving its received text in
@@ -1138,6 +1141,7 @@ function applyEntryStatus(status) {
     webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
     improvAvailable = status.improvLive === true && !tvHost && typeof RTCPeerConnection === 'function';
+    view.set({referenceUpload:status.referenceUpload === true && !tvHost});
     boardAvailable = status.board === true && !tvHost;
     const phoneOptions = phoneModelOptions(status, view.get().model);
     const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));
