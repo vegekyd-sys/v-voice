@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {BOARD_INSTRUCTIONS, boardDirectorFromEnv, boundedBoardRequest, createBoardDirector, mayAskForLesson, createChatCompletionStream} from './board-director.mjs';
+import {BOARD_INSTRUCTIONS, boardDirectorFromEnv, boardRequest, boundedBoardRequest, createBoardDirector, mayAskForLesson, createChatCompletionStream, nameLanguage, LANGUAGE_INSTRUCTIONS} from './board-director.mjs';
 
 const lines = (...ops) => ops.map(op => JSON.stringify(op)).join('\n');
 const scripted = (...replies) => {
@@ -514,4 +514,40 @@ test('pictures of an answer: a comparison written again with its rows in another
   await director.run({owner: 'c', trigger: 'assistant_progress', turns: [user, {role: 'assistant', text: said[0]}]});
   await director.run({owner: 'c', trigger: 'assistant_end', turns: [user, {role: 'assistant', text: said[1]}]});
   assert.deepEqual(director.scene('c').blocks.map(block => [block.t, block.items.map(item => `${item.id}:${item.h}`)]), [['versus', ['a:续航', 'a2:价格']]]);
+});
+
+test('the page is written in the language V speaks, which is named for the director: asked once for each reply, beside the run', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  const requests = [], heard = [], seen = [];
+  let name = 'français（法语）';
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, hear: async words => { heard.push(words); return name; },
+    eye: {find: async () => ({bytes: Buffer.from('jpeg'), type: 'image/jpeg'}), see: async args => { seen.push(args.language); return []; }},
+    complete: async function* ({messages}) { requests.push(JSON.parse(messages[1].content)); yield requests.length === 1 ? '{"op":"scene","title":"Autour de la ville"}\n{"op":"put","block":{"id":"a","t":"list","items":[{"id":"a1","h":"Le vieux port","img":"vieux port","q":"le vieux port"}]}}\n' : '{"op":"none"}\n'; }});
+  const french = "Alors, autour de la ville, tu as le vieux port, et puis";
+  const run = (trigger, text, role = 'assistant') => director.run({owner: 'c', trigger, turns: [{role: 'user', text: 'Et autour ?'}, ...(role === 'assistant' ? [{role, text}] : [])]});
+  // The first run of a reply asks beside itself and goes without a name; the next has it.
+  await run('assistant_progress', french);
+  assert.deepEqual(heard, [french]);assert.equal('language' in requests[0], false);
+  await run('assistant_progress', french + " le marché couvert, qui est très animé le matin,");
+  assert.equal(heard.length, 1, 'the same reply, longer, is not asked about again');
+  assert.equal(requests[1].language, 'français（法语）');assert.equal(Object.keys(requests[1]).at(-1), 'language', 'last, after the words it is the language of');
+  assert.equal(seen.at(-1), 'français（法语）', 'the labels on a picture are written in it too');
+  // Before V answers the next question the page goes with the language V spoke last.
+  await run('user', '', 'user');assert.equal(requests.at(-1).language, 'français（法语）');
+  // V changes language (a call that came back, 11/24): asked again, and the run after that is told.
+  name = '中文';
+  const chinese = '好呀，那我们换一个城市，先说说老城区，';
+  await run('assistant_progress', chinese);assert.equal(heard.length, 2);assert.equal(requests.at(-1).language, 'français（法语）');
+  await run('assistant_progress', chinese + '那里有一条很长的石板路，两边都是小店，');assert.equal(requests.at(-1).language, '中文');
+  // A sound of agreement is not asked about, and a director without the ability is not told anything.
+  await run('assistant_end', 'Mm-hmm.');assert.equal(heard.length, 2);
+  assert.equal('language' in JSON.parse(boardRequest({trigger: 'user', scene: director.scene('c'), turns: [], evidence: []})), false);
+  assert.match(BOARD_INSTRUCTIONS, /请求里的 language 是 V 说话的语言/u);assert.match(BOARD_INSTRUCTIONS, /不要因为画面上是另一种语言就接着用那种语言写/u);
+});
+test('the language is named in one short line', async () => {
+  const says = reply => nameLanguage({words: 'x'.repeat(400), complete: async function* ({messages}) { assert.equal(messages[0].content, LANGUAGE_INSTRUCTIONS); assert.equal(messages[1].content.length, 120); yield* reply; }});
+  assert.equal(await says(['「fran', 'çais（法语）」\n这句话是法语。']), 'français（法语）');
+  assert.equal(await says(['中文。']), '中文');
+  assert.equal(await says(['']), '');
+  assert.equal(await says(['这句话里夹着好几种语言，很难说主要是哪一种，可能是英语也可能是别的']), '', 'an essay is not a name');
 });

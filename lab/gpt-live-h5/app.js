@@ -693,7 +693,7 @@ async function redialLostCall(active, failure, closed = {}) {
   if (heldMs > 30000) redials = 0;
   if (redials >= 2) return stopCall({failure});
   redials++;
-  const lost = {code: closed.code ?? null, clean: closed.clean === true, quietMs: closed.quietMs ?? null, heldMs, online: navigator.onLine !== false, hidden: document.hidden === true, net: String(navigator.connection?.effectiveType ?? '').slice(0, 12)};
+  const lost = {code: closed.code ?? null, clean: closed.clean === true, quietMs: closed.quietMs ?? null, silentMs: closed.silentMs ?? null, heldMs, online: navigator.onLine !== false, hidden: document.hidden === true, net: String(navigator.connection?.effectiveType ?? '').slice(0, 12)};
   // The audio context is kept: one made without a tap may never start on a phone.
   const context = active.context; active.context = null;
   // The lost call is not closed from here: the service saw its socket go, and an explicit close is a hang-up

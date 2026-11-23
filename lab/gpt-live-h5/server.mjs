@@ -319,7 +319,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   // What a page says about the call it lost before dialling again: numbers and flags only.
   const lostCallReport = raw => {
     const int = (value, max) => Number.isFinite(value) && value >= 0 ? Math.min(max, Math.round(value)) : null;
-    return {code: int(raw.code, 4999), clean: raw.clean === true, quietMs: int(raw.quietMs, 600000), heldMs: int(raw.heldMs, 86400000), online: raw.online !== false, hidden: raw.hidden === true,
+    return {code: int(raw.code, 4999), clean: raw.clean === true, quietMs: int(raw.quietMs, 600000), silentMs: int(raw.silentMs, 600000), heldMs: int(raw.heldMs, 86400000), online: raw.online !== false, hidden: raw.hidden === true,
       net: typeof raw.net === 'string' && /^[a-z0-9-]{1,12}$/u.test(raw.net) ? raw.net : null};
   };
   const reservePhoneCall = async ({context,binding,params,req,ip,cancelled=()=>false,prefetched=null}) => {

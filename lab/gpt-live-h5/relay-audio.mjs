@@ -237,6 +237,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=connection?.socket??new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let recoveryAttempted=false;
+  let lastMessageAt=null;
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer,uploadFailed=false;
   const pendingOutput=[];
   const inputBatch=[];let inputBatchBytes=0;
@@ -302,7 +303,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     if(context.state!=='running')stateChanged();
   };
   const promise=new Promise((resolve,reject)=>{
-    socket.onmessage=e=>{if(closed)return;try{
+    socket.onmessage=e=>{if(closed)return;lastMessageAt=performance.now();try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
       if(value.type==='ready'&&!ready){ready=true;stats.dialToReadyMs=Math.round(performance.now()-dialStartedAt);resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(reportStats,2000);}
       if(value.type==='audio')play(value);
@@ -321,7 +322,9 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     }catch(error){reject(error);onError(error);}};
     socket.onerror=()=>{const error=Error('实时语音连接失败');reject(error);onError(error);};
     // (How it closed goes with the report: a call cut off is dialled again, and the next call's record says what the page saw.)
-    socket.onclose=event=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed({code:Number.isInteger(event?.code)?event.code:null,clean:event?.wasClean===true,quietMs:lastReceiveAt==null?null:Math.round(performance.now()-lastReceiveAt)});};
+    socket.onclose=event=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed({code:Number.isInteger(event?.code)?event.code:null,clean:event?.wasClean===true,quietMs:lastReceiveAt==null?null:Math.round(performance.now()-lastReceiveAt),
+      // (`quietMs` counts from V's last sound; this from the last line of anything, the service's keepalive included.)
+      silentMs:lastMessageAt==null?null:Math.round(performance.now()-lastMessageAt)});};
   });void promise.catch(()=>{});
   connection?.adopt();
   // Received PCM is retained until the speaker node exists, so a dial that

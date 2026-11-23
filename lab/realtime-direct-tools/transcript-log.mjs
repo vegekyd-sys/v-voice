@@ -181,7 +181,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A call the page dialled by itself after its connection was cut: what the page saw of the lost one, as numbers and flags.
     if(event.type==='call.resumed'){
       const safe={};
-      for(const key of ['code','quietMs','heldMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['code','quietMs','silentMs','heldMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       for(const key of ['clean','online','hidden'])if(typeof event[key]==='boolean')safe[key]=event[key];
       if(typeof event.net==='string'&&/^[a-z0-9-]{1,12}$/u.test(event.net))safe.net=event.net;
       return enqueue({...owner,type:'call.resumed',...safe});

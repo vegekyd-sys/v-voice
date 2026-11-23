@@ -1725,6 +1725,8 @@ test('the page is not told to hang up while the voice path still hears the calle
 test('a quiet call still sends something down to the caller every few seconds, and stops when the caller has gone',async t=>{
  const f=await fixture(undefined,'seeduplex',{pings:true,relayPingMs:20});t.after(()=>f.service.dispose());
  await delay(110);assert(f.client.pings>=3,'pings while nobody speaks');
+ // A line of data goes with each ping; it names no call, so a page drops it unread.
+ const lines=f.client.sent.filter(value=>value.type==='keepalive');assert(lines.length>=3);assert.deepEqual(lines[0],{type:'keepalive'});
  f.client.readyState=3;f.client.emit('close',1006);await delay(10);const after=f.client.pings;await delay(80);assert.equal(f.client.pings,after);
 });
 test('a running tool is not silence',async t=>{

@@ -53,7 +53,10 @@ photo 是整张画面的主图：话题就是某一个看得见的东西（一�
 给小朋友讲、或者用户说「看不懂」「配点图」的时候，少写字、多配图：每条 h 只留名字或三五个字，d 能省就省，能配 img 的都配上；互相克制、循环、谁赢谁这类关系用 flow，把每个东西的图放在节点上。
 
 # 语言
-画面上所有的字（标题、条目的 h 和 d、便签、标注、图上的字）用 V 这一段话的语言：V 说法语就写法语，说英语就写英语，说中文就写中文。V 还没开口时（trigger 是 user），用用户刚才说话的语言；用户要求了换一种语言讲，就用他要的那种。查到的资料（evidence）是什么语言不算数：资料是中文、V 用法语讲，画面就写法语。画面上已经有的字如果和 V 现在说话的语言不一样（比如 V 开口前照资料写成了中文），这一次就把这些区块用同一个 id 改写成 V 的语言，不要留着两种语言。人名、店名、作品名这类专有名词照 V 说的写，不翻译。照片的搜索词（img、query）不受这一条限制，写最容易搜到图的说法。下面的字数限制是对中文说的，别的语言按差不多的长短来。
+请求里的 language 是 V 说话的语言；没有 language 时，看 conversation 里最后一段 V 的话是什么语言（V 还没说过话，就看用户的话）。用户刚要求了换一种语言讲（「用英语说」），就用他要的那种。这一次你写的每一个字——标题、条目的 h 和 d、便签、标注、图上的字——都用这种语言：V 说法语就写法语，说英语就写英语，说中文就写中文。
+别的都不算数：画面上已经有的字、更早的对话、别的页、查到的资料（evidence）是什么语言，都不决定你写什么语言。电话里的人会中途换语言（刚才说法语，现在说中文），画面要马上跟着换；资料是中文、V 用法语讲，画面就写法语。
+画面上已有的区块如果不是这种语言，这一次就把它们用同一个 id 整块改写成这种语言（意思不变，只换语言），再接着补新的内容。不要留着两种语言，更不要因为画面上是另一种语言就接着用那种语言写。
+人名、店名、作品名这类专有名词照 V 说的写，不翻译。照片的搜索词（img、query）不受这一条限制，写最容易搜到图的说法。下面的字数限制是对中文说的，别的语言按差不多的长短来。
 
 # 怎么画
 1. 画面是给眼睛的，要像 V 随手记在本子上的：有重点，有一点俏皮，不是汇报材料。用词和短语，不抄 V 说的话。h 不超过 12 个字，d 不超过 30 个字。一张画面 1 到 3 个区块，条目加起来不超过 12 条；追问展开时超出了，就 del 掉已经讲完、不再需要的区块。
@@ -85,7 +88,22 @@ const drawsInNotes = notes => (notes?.lines ?? []).some(line => /现画/u.test(S
 /** A lesson's script that asks for a page of pictures (a line's hint reads「图集：…」). */
 const galleryInNotes = notes => (notes?.lines ?? []).some(line => /图集|gallery/iu.test(String(line?.show ?? '')));
 
-export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null, assets = [], make = false, unscripted = false}) {
+/**
+ * The language V is speaking, named by the board's own model from V's words.
+ * A director told only "write in the language of V's last words" went on in the language of the page
+ * that was up: a call that came back after a French conversation had its pages written in French for
+ * two minutes while V and the caller spoke Chinese (11/24). Asked with the language's name in the
+ * request, it rewrote such a page in nine of ten.
+ */
+export const LANGUAGE_INSTRUCTIONS = '下面是电话里一个人说的一段话（语音转写，可能夹着别的语言的词）。它主要是用哪种语言说的？只输出这种语言的名字：用这种语言自己的叫法，后面括号里写中文名，例如「français（法语）」「English（英语）」「日本語（日语）」；中文就写「中文」。不要输出别的。';
+export async function nameLanguage({complete, words, signal}) {
+  let out = '';
+  for await (const chunk of complete({messages: [{role: 'system', content: LANGUAGE_INSTRUCTIONS}, {role: 'user', content: Array.from(String(words)).slice(0, 120).join('')}], signal})) out += chunk;
+  const name = out.trim().split('\n')[0].replace(/^[「"'『]+|[」"'』。.]+$/gu, '').trim();
+  return name && Array.from(name).length <= 30 ? name : '';
+}
+
+export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null, assets = [], make = false, unscripted = false, language = ''}) {
   return JSON.stringify({
     trigger,
     ...(unscripted ? {unscripted: true} : {}),
@@ -98,6 +116,8 @@ export function boardRequest({trigger, scene, turns, evidence, notes = null, rec
     screen: sceneDigest(scene) ?? '（画面现在是空的）',
     ...(evidence.length ? {evidence: evidence.map(item => ({tool: item.name, result: item.text}))} : {}),
     conversation: turns,
+    // (Last, next to the words it is the language of: a page already up in another language was otherwise carried on in that language.)
+    ...(language ? {language} : {}),
   });
 }
 
@@ -240,7 +260,7 @@ export async function* hedged(complete, {messages, signal}, afterMs = 2500, setT
  * `eye: {find(query), see({shots, said, signal, from, to})}` (board-eye.mjs): after a streamed run the
  * page's pictures are looked at and the places V talks about are pinned on them (scene.pins).
  */
-export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500, eye = null} = {}) {
+export function createBoardDirector({complete, now = Date.now, audit = () => {}, record = () => {}, maxOwners = 64, defers = () => false, illustrate = null, stream = null, prefetch = null, hedgeMs = 2500, eye = null, hear = null} = {}) {
   // The call's shelf of made things (board-assets.mjs), set by the service once both exist.
   let shelf = null;
   // Pictures a page will need are asked for the moment the page knows of them, not when the page gets round to showing them.
@@ -506,6 +526,16 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       // Whether what is being drawn is a lesson's script (its author's notes go with it; only a script may ask for a picture to be drawn).
       // (A voice that says the script in its own first words still reads it: `reads` finds what was said inside the script.)
       const scripted = Boolean(stream && row.notes && said && reads(said, row.notes.script));
+      // The language V speaks is asked for once for each of V's replies, beside this run and not before it:
+      // this run goes with the language of V's reply before (a caller and V seldom change it), the answer
+      // is there for the next run two seconds on, which rewrites the page if V has changed.
+      if (stream && hear && said) {
+        const head = Array.from(said).slice(0, 12).join('');
+        if (Array.from(said).length >= 8 && row.languageOf !== head) {
+          row.languageOf = head;
+          const asked = row.languageAsk = Promise.resolve().then(() => hear(said)).then(name => { if (row.languageAsk === asked && name) row.language = name; }).catch(() => {});
+        }
+      }
       if (stream) {
         // Lookup results alone draw nothing: V's words about them do.
         // Nor do a few words ("好，我想想怎么讲"), nor anything said while a script is being written for this very question.
@@ -555,7 +585,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.eyes.set(key, words);
             try {
               const found = await shot(subject, 'a');
-              const places = found && !controller.signal.aborted ? await eye.see({shots: [found], said, from, to, signal: controller.signal}) : null;
+              const places = found && !controller.signal.aborted ? await eye.see({shots: [found], said, from, to, language: row.language, signal: controller.signal}) : null;
               if (controller.signal.aborted) { row.eyes.delete(key); return null; }
               return {shots: found ? 1 : 0, pins: places ? put(subject.img, places.slice(0, alone.length > 1 ? 3 : 8)) : 0};
             } catch { row.eyes.delete(key); return {shots: 0, pins: 0, failed: 1}; }
@@ -566,7 +596,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             row.eyes.set(key, said);
             try {
               const shots = (await Promise.all(members.map((member, index) => shot(member, 'abc'[index])))).filter(Boolean);
-              const places = shots.length && !controller.signal.aborted ? await eye.see({shots, said, signal: controller.signal}) : null;
+              const places = shots.length && !controller.signal.aborted ? await eye.see({shots, said, language: row.language, signal: controller.signal}) : null;
               if (controller.signal.aborted) { row.eyes.delete(key); return null; }
               return {shots: shots.length, pins: places ? shots.reduce((sum, item) => sum + put(item.img, places.filter(place => place.on === item.id).slice(0, 4)), 0) : 0};
             } catch { row.eyes.delete(key); return {shots: 0, pins: 0, failed: 1}; }
@@ -733,6 +763,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
           {role: 'user', content: boardRequest({trigger, scene: row.scene, turns: stream?.turns ? stream.turns(turns) : turns, evidence: row.evidence,
             // (Said only where it changes what may be drawn: before V has spoken.)
             unscripted: Boolean(stream && unscripted && trigger === 'user'),
+            ...(stream && row.language ? {language: row.language} : {}),
             // The author's notes go with the script they were written for, and with nothing else.
             ...(scripted ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
             ...(stream && shelf ? {assets: shelf.digest(id), ...(scripted && drawsInNotes(row.notes) && shelf.canMake?.(id) && row.madeFor !== (row.turnNo ?? 0) ? {make: true} : {}), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
@@ -840,5 +871,5 @@ export function boardDirectorFromEnv(env = process.env, {audit, fetchImpl, illus
     const at = new Date(), file = join(directory, `board-${at.toISOString().slice(0, 10)}.jsonl`);
     void mkdir(directory, {recursive: true, mode: 0o700}).then(() => appendFile(file, JSON.stringify({at: at.toISOString(), ...event}) + '\n', {mode: 0o600})).catch(() => {});
   } : undefined;
-  return complete ? createBoardDirector({audit, complete, record, ...(prefetch ? {prefetch} : {}), ...(eye && stream ? {eye: eye(complete)} : {}), ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
+  return complete ? createBoardDirector({audit, complete, record, hear: words => nameLanguage({complete, words}), ...(prefetch ? {prefetch} : {}), ...(eye && stream ? {eye: eye(complete)} : {}), ...(env.VOICE_BOARD_LESSON === '1' ? {...(defer ? {defers: mayAskForLesson} : {}), ...(illustrate ? {illustrate} : {}), ...(stream ? {stream} : {})} : {})}) : null;
 }

@@ -15,7 +15,7 @@ export const EYE_INSTRUCTIONS = `你是 V 的指针。V 正在电话里讲解，
 - where 先用一句话说清这个东西在照片的哪一块、挨着什么（「画面右下，身体后面垂下来的那条」「左边那辆车的车头正中」），box 再照着它写。
 - box 是 on 那张照片上的位置：左上角 [0,0]，右下角 [1000,1000]（按照片的宽和高各自换算成千分比），紧贴着那个东西的边。指针停在框的中心，圈画在框上。
 - kind：ring（圈出一个部位，最常用）；point（只停住不圈：讲整只、整个、很大的东西时）。
-- label 写这个部位的名字（「尾巴」「进气格栅」「屋脊兽」），贴在圈旁边。
+- label 写这个部位的名字（「尾巴」「进气格栅」「屋脊兽」），贴在圈旁边。用 V 这段话的语言写：V 说法语，label 就写法语（「la queue」）；写了「标签语言」就用它。
 - 每一段最多一个；没有讲到照片上具体地方的段（开场、能力、来历、数字、总结、提问）不标。
 - 照片上看不到 V 讲的东西就不标，不要猜一个位置（照片里没有充电口，就不要圈「充电口」）。V 说某样东西「没有」（没有格栅、没有排气管）时也不标。
 - 人物照片（球员、明星）：V 只是提到这个人、讲他的数据或经历时不标；只有讲到他身上看得见的东西（球衣号码、发型、动作）才标。
@@ -33,14 +33,15 @@ const json = text => {
  * places on them ([{on, box, kind, h, q}]), each hung on the words of the clause it talks about. `complete` is the board's
  * own streaming completion (thinking off). Pins on a photograph not given, without a box, or on a
  * clause V has not said are dropped.
+ * `language`: the language V speaks, by name (the labels are written in it; they were Chinese on a French page).
  * With `from` and `to` only those clauses are given and pinned (the clauses about this picture, when V tells several things one after another).
  */
-export async function lookAt({complete, shots, said, signal, from = 0, to = Infinity}) {
+export async function lookAt({complete, shots, said, signal, from = 0, to = Infinity, language = ''}) {
   const parts = clauses(said), last = Math.min(to, parts.length);
   if (!shots.length || last <= from) return [];
   const content = [];
   for (const shot of shots) content.push({type: 'text', text: `照片 ${shot.id}：${shot.h || shot.img}`}, {type: 'image_url', image_url: {url: `data:${shot.type};base64,${Buffer.from(shot.bytes).toString('base64')}`}});
-  content.push({type: 'text', text: `${from > 0 || last < parts.length ? 'V 讲这张照片的话' : 'V 要念的话'}：${parts.slice(from, last).map((part, index) => `[${from + index}]${part}`).join('')}`});
+  content.push({type: 'text', text: `${from > 0 || last < parts.length ? 'V 讲这张照片的话' : 'V 要念的话'}：${parts.slice(from, last).map((part, index) => `[${from + index}]${part}`).join('')}${language ? `\n标签语言：${language}` : ''}`});
   let text = '';
   for await (const chunk of complete({messages: [{role: 'system', content: EYE_INSTRUCTIONS}, {role: 'user', content}], signal})) text += chunk;
   const known = new Set(shots.map(shot => shot.id)), seen = new Set();
@@ -62,6 +63,6 @@ export async function lookAt({complete, shots, said, signal, from = 0, to = Infi
 export function createBoardEye({complete, find, timeoutMs = 20000}) {
   return {
     find: query => Promise.race([Promise.resolve(find(query)).catch(() => null), new Promise(resolve => setTimeout(resolve, timeoutMs, null))]),
-    see: ({shots, said, signal, from, to}) => lookAt({complete, shots, said, signal, from, to}),
+    see: ({shots, said, signal, from, to, language}) => lookAt({complete, shots, said, signal, from, to, language}),
   };
 }

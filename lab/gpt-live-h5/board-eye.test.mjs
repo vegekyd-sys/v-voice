@@ -78,6 +78,11 @@ test('the eye sees each picture, and only places it can hang on a clause V says 
   assert.deepEqual(asked[1].content.map(part => part.type), ['text', 'image_url', 'text']);
   assert.ok(asked[1].content[1].image_url.url.startsWith('data:image/jpeg;base64,'));
   assert.ok(asked[1].content[2].text.includes('[4]它的尾巴又粗又长'));
+  // The labels' language is named only when it is known.
+  assert.ok(!asked[1].content[2].text.includes('标签语言'));
+  await lookAt({complete, said, shots, language: 'français（法语）'});
+  assert.ok(asked[1].content[2].text.endsWith('\n标签语言：français（法语）'));
+  assert.match(EYE_INSTRUCTIONS, /V 说法语，label 就写法语/u);
   assert.deepEqual(places.map(place => [place.h, place.on]), [['管子', 'a'], ['尾巴', 'a']]);
   assert.ok(places[1].q.startsWith('它的尾巴'));
   // Given only the clauses about this picture, a place on another clause is not this picture's.
