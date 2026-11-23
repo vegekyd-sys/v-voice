@@ -1691,6 +1691,20 @@ test('speech keeps the call alive and speaking during the idle farewell cancels 
  assert(await until(()=>f.client.sent.some(e=>e.type==='end.cancelled')));
  await delay(200);assert.equal(f.client.readyState,1,'a cancelled host end never closes the call');
 });
+test('speech during a hang-up is a change of mind, unless the voice path says it is only the caller\'s goodbye',async t=>{
+ // The session keeps no list of farewells: a voice path that can judge is asked, every other one is as before.
+ const {SeeduplexRealtimeVoiceBridge}=await import('../seeduplex-realtime-provider.mjs');
+ const asked=[];let undone=0;
+ SeeduplexRealtimeVoiceBridge.prototype.keepsEnding=async text=>{asked.push(text);return text==='只是道别';};
+ SeeduplexRealtimeVoiceBridge.prototype.endingCancelled=function(){undone++;};
+ t.after(()=>{delete SeeduplexRealtimeVoiceBridge.prototype.keepsEnding;delete SeeduplexRealtimeVoiceBridge.prototype.endingCancelled;});
+ const f=await fixture(undefined,'seeduplex',idleTiming);t.after(()=>f.service.dispose());
+ assert(await until(()=>hostEnded(f,'silence')));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'只是道别'});
+ await delay(80);assert.deepEqual(asked,['只是道别']);assert(!f.client.sent.some(e=>e.type==='end.cancelled'),'the hang-up stands');assert.equal(undone,0);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'还有一件事'});
+ assert(await until(()=>f.client.sent.some(e=>e.type==='end.cancelled')));assert.equal(undone,1,'and the voice path is told');
+});
 test('a running tool is not silence',async t=>{
  const f=await fixture(()=>new Promise(()=>{}),'seeduplex',idleTiming);t.after(()=>f.service.dispose());
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'slow',name:'current_time',arguments:'{}'}]});
