@@ -127,7 +127,12 @@ export function createImprovShow({run}) {
           show={id:result.id,imageName};send({type:'improv.live',action,id:show.id,playerPath:result.playerPath,...(imageUrl?{imageUrl}:{})});
         }finally{opening=false;}
       }else if(action==='direct'){const result=await observe(turn);return {...result,instruction:'只确认收到用户指定的动作，不播报画面、不添加新的角色或情节。'};}
-      else if(action==='end'){if(!show)return {requested:true,action};const result=await observe(turn);return {requested:result.action==='end',action:result.action};}
+      else if(action==='end'){
+        if(!show)return {requested:true,action};
+        const result=await observe(turn);
+        if(result.action!=='end')throw Error('Makaron 尚未确认收播，直播仍在继续。');
+        return {requested:true,action:'end'};
+      }
       else throw Error('当前没有直播');
       return {requested:true,action,...(action==='start' && imageName?{openingImageName:imageName,instruction:'用这个已核实的图片名称确认开场。'}:{})};
     },
