@@ -491,3 +491,21 @@ test('without a lesson tool the model explains and tells stories itself; a deleg
   await ready(g);say(g,idOf(17),'讲讲天空');await pause(20);assert(!offered.at(-1).includes('answer_directly'));assert.equal(g.calls[0].name,'explain_on_board');
   f.bridge.close();g.bridge.close();
 });
+
+test('while the call is being hung up, a caller who is audibly speaking is waited for',async()=>{
+  const judge=judging([['拜拜',{stays:.95}],['还有个事',{stays:.05}]]);
+  const f=await fixture({tools:END,route:async()=>({name:'end_call',args:{}}),replyJudge:judge});await ready(f);
+  const loud=Buffer.alloc(4800);for(let i=0;i<loud.length;i+=2)loud.writeInt16LE(8000,i); // 100 ms at 24 kHz
+  f.bridge.sendAudio(loud);f.bridge.sendAudio(loud);assert.equal(f.bridge.endingHeld(),null,'no hang-up in progress: nothing to hold');
+  userSays(f,'u1','那先这样,拜拜');say(f,idOf(1),'那先这样,拜拜');await pause(10);assert.equal(f.calls[0]?.name,'end_call');
+  assert.equal(f.bridge.endingHeld(),null,'what the caller said before the hang-up began is not them speaking now');
+  f.bridge.sendAudio(loud);assert.equal(f.bridge.endingHeld(),null,'a click is not speech');
+  f.bridge.sendAudio(loud);
+  const held=f.bridge.endingHeld();assert(held instanceof Promise);assert(f.events.some(e=>e.diag?.stage==='ending-held'));
+  let released=false;void held.then(()=>{released=true;});await pause(300);assert.equal(released,false,'still within the time their words take to arrive');
+  // Their turn opens and closes, and what they said is being judged: held throughout; a change of mind releases it at once.
+  f.bridge.receive({type:'turn.created',turn:{id:'u2',role:'user'}});await pause(150);assert.equal(released,false);
+  f.bridge.receive({type:'turn.done',turn:{id:'u2',role:'user',transcript:'等等,还有个事'}});
+  assert.equal(await f.bridge.keepsEnding('等等,还有个事'),false);f.bridge.endingCancelled();await pause(200);assert.equal(released,true);
+  assert.equal(f.bridge.endingHeld(),null);
+});

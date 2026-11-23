@@ -6,6 +6,10 @@ import {randomInt} from 'node:crypto';
 // 24 kHz mono PCM towards the relay.
 const WIRE_RATE=48000,WIRE_CHANNELS=2,FRAME_SAMPLES=960,FRAME_MS=20,PAYLOAD_TYPE=111;
 const REORDER_DEPTH=4,MAX_PENDING_INPUT_BYTES=WIRE_RATE*2*2; // two seconds of 48 kHz mono
+// Catching up after the caller's audio arrived late (see `catchUp`): what may wait, how long a pause
+// must be before any of it is skipped, and how quiet a pause is (about -35 dBFS at its loudest sample).
+const BACKLOG_BYTES=WIRE_RATE*2*.2,PAUSE_FRAMES=5,QUIET_PEAK=600;
+const quiet=(pcm,bytes)=>{for(let i=0;i<bytes;i+=4)if(Math.abs(pcm.readInt16LE(i))>=QUIET_PEAK)return false;return true;};
 // Digital silence still arrives as packets; only audible frames are V speaking.
 const AUDIBLE=200;
 
@@ -58,7 +62,7 @@ export class GptLivePeer {
     this.input=new PcmResampler(inputSampleRate,WIRE_RATE);
     this.pending=Buffer.alloc(0);this.sequence=randomInt(65536);this.timestamp=randomInt(4294967296);
     this.closed=false;this.connected=false;this.tracks=new Set();this.streams=new Map();this.current=null;
-    this.stats={rtpIn:0,rtpOut:0,pcmOut:0,peak:0,sources:0,lost:0};
+    this.stats={rtpIn:0,rtpOut:0,pcmOut:0,peak:0,sources:0,lost:0,skippedMs:0,backlogMs:0};
     this.peer.onTrack.subscribe(track=>this.attach(track));
     this.peer.connectionStateChange.subscribe(state=>{
       if(this.closed)return;
@@ -95,10 +99,21 @@ export class GptLivePeer {
     if(due-this.framesSent>25)this.framesSent=due-1; // stalled process: do not replay a backlog
     for(let burst=0;this.framesSent<due&&burst<4;burst++){this.frame();this.framesSent++;}
   }
+  // The caller's audio comes over a connection that stalls and then delivers what it held in one
+  // burst. The pump sent silence in its place while it was held, so the burst would be heard that much
+  // late for the rest of the call, and every answer and interruption with it (up to two seconds, on a
+  // home connection within a minute or two). The same amount of quiet is taken out again: while more
+  // than a fifth of a second is waiting and a pause is at its head, a frame of the pause is skipped.
+  // What the caller says is never skipped.
+  catchUp(bytes){
+    while(this.pending.length>BACKLOG_BYTES+bytes&&quiet(this.pending,bytes*PAUSE_FRAMES)){this.pending=this.pending.subarray(bytes);this.stats.skippedMs+=FRAME_MS;}
+    this.stats.backlogMs=Math.round(this.pending.length/(WIRE_RATE*2)*1000);
+  }
   frame(){
     if(!this.connected||this.closed)return;
     try{
       const bytes=FRAME_SAMPLES*2,mono=Buffer.alloc(bytes); // silence keeps the stream's cadence
+      this.catchUp(bytes);
       this.pending.copy(mono,0,0,bytes);this.pending=this.pending.subarray(Math.min(bytes,this.pending.length));
       const packet=this.encoder.encode(monoToStereo(mono),FRAME_SAMPLES);
       const rtp=new this.werift.RtpPacket(new this.werift.RtpHeader({marker:false,payloadType:PAYLOAD_TYPE,sequenceNumber:this.sequence,timestamp:this.timestamp}),Buffer.from(packet));

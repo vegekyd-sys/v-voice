@@ -33,7 +33,7 @@ const SCRIPT_MATCH=6,SCRIPT_LOOSE=36,SCRIPT_WINDOW_MS=120_000,SCRIPT_SOURCE='V-b
 // until the caller ended it), and "let me think" / "I'll go and check" with nothing delegated (it cannot
 // work in the background; a real call had three such lines in a row). What a reply is, is judged by a
 // model (`judge`), not matched against words; these are only how long to wait and how sure to be.
-const NET_MS=2200,NET_MAX_CHARS=64,SURE_FAREWELL=0.7,SURE_PROMISE=0.6,SURE_STAYS=0.5;
+const HOLD_QUIET_MS=2000,HOLD_SETTLE_MS=400,HOLD_MAX_MS=12000,LOUD_PEAK=2500,LOUD_RUN_MS=160,LOUD_GAP_MS=300,NET_MS=2200,NET_MAX_CHARS=64,SURE_FAREWELL=0.7,SURE_PROMISE=0.6,SURE_STAYS=0.5;
 function scriptOf(text,at){
   const chars=Array.from(String(text)),map=[];let letters='';
   chars.forEach((character,index)=>{for(const letter of loose(character)){letters+=letter;map.push(index);}});
@@ -165,7 +165,7 @@ export class GptLiveBridge {
   constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',judge=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
     Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,judge,display,connectTimeoutMs,pollGapMs,now});
     this.delegations=new Map();this.background=new Set();this.follows=new Map();this.abort=new AbortController();
-    this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;
+    this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.judging=0;this.loudMs=0;this.loudAt=-Infinity;this.callerLoudAt=-Infinity;this.userDoneAt=-Infinity;this.skippedReported=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;
     this.history=[];this.spoke=false;this.heard=false;this.greeting=null;this.ownCalls=0;
   }
   connect(){
@@ -222,7 +222,26 @@ export class GptLiveBridge {
   target(callId){const entry=this.delegations.get(callId);return entry&&entry.state!=='done'?this.on(callId):{};}
   // A call this service started itself has no delegation on the wire: what it yields is said to the session.
   on(callId){return this.delegations.get(callId)?.own?{}:{delegationId:callId};}
-  sendAudio(bytes){if(this.ready&&!this.closed)this.peer?.sendAudio(bytes);}
+  sendAudio(bytes){if(!this.ready||this.closed)return;this.peer?.sendAudio(bytes);if(this.ending)this.listen(bytes);}
+  // Is the caller audibly saying something? Asked only while the call is being hung up (`endingHeld`):
+  // a run of loud audio, not one click.
+  listen(bytes){
+    let peak=0;for(let i=0;i+1<bytes.length;i+=8){const v=Math.abs(bytes.readInt16LE(i));if(v>peak)peak=v;}
+    if(peak<LOUD_PEAK)return;
+    const now=this.now();this.loudMs=(now-this.loudAt>LOUD_GAP_MS?0:this.loudMs)+bytes.length/2/(this.request.inputSampleRate??24000)*1000;this.loudAt=now;
+    if(this.loudMs>=LOUD_RUN_MS)this.callerLoudAt=now;
+  }
+  // The page hangs up when V's goodbye has played, and the caller's words arrive a second or two after
+  // they are said: "等一下，先别挂" said over the goodbye was never heard in time. So while the caller is
+  // audibly speaking, or their turn is open or being judged, the session waits before it lets the page
+  // hang up; what they said then decides (`keepsEnding`). Bounded: nobody is kept on a dead call.
+  endingHeld(){
+    const held=()=>!this.closed&&this.ending&&(this.userSpeaking||this.judging>0||this.userDoneAt>this.endingAt&&this.now()-this.userDoneAt<HOLD_SETTLE_MS||this.now()-this.callerLoudAt<HOLD_QUIET_MS);
+    if(!held())return null;
+    this.request.onDiagnostic?.({stage:'ending-held',elapsedMs:Math.round(this.now()-this.startedAt)});
+    const until=this.now()+HOLD_MAX_MS;
+    return new Promise(resolve=>{const check=()=>{if(!held()||this.now()>=until)return resolve();const t=setTimeout(check,120);t.unref?.();};check();});
+  }
   // Typed text from the page: the user's own words.
   sendUserMessage(text){this.userText=String(text??'').trim();this.muted=false;this.request.onClearAudio?.('barge-in',{retiredResponseId:this.turnId});this.append(text);}
   // The opening line. The model may let the request pass in silence, so it is asked
@@ -302,6 +321,8 @@ export class GptLiveBridge {
     if(event.type==='session.started'&&!this.ready){this.ready=true;clearTimeout(this.timer);this.resolve();this.request.onReady?.();
       // A mid-call snapshot: the close-time one is dropped once the call is no longer current.
       for(const delay of [4000,7000]){const t=setTimeout(()=>{if(!this.closed&&this.peer)this.request.onDiagnostic?.({stage:'media-stats',elapsedMs:Math.round(this.now()-this.startedAt),...this.peer.stats});},delay);t.unref?.();}
+      // Each time late audio was caught up with (`skippedMs` grew), so the record shows how much a call would have fallen behind.
+      this.statsTimer=setInterval(()=>{const skipped=this.peer?.stats.skippedMs??0;if(this.closed||skipped-this.skippedReported<100)return;this.skippedReported=skipped;this.request.onDiagnostic?.({stage:'media-stats',elapsedMs:Math.round(this.now()-this.startedAt),...this.peer.stats});},5000);this.statsTimer.unref?.();
     }
     if(event.type==='turn.created'&&event.turn?.role==='user'){
       // The caller is talking over V: whatever is still queued on the phone is dropped.
@@ -333,7 +354,7 @@ export class GptLiveBridge {
     if(event.type==='turn.done'){
       const role=event.turn?.role,id=event.turn?.id,transcript=gptLiveText(event.turn?.transcript);
       if(role==='user'){
-        this.userSpeaking=false;this.userTurn?.done();this.userTurn=null;
+        this.userSpeaking=false;this.userDoneAt=this.now();this.userTurn?.done();this.userTurn=null;
         // A cough or a noise, transcribed as a marker and nothing else, is not something the caller said.
         if(!transcript.replace(/[\s\p{P}\p{S}]/gu,'')){this.request.onInputSpeech?.(false,{recognized:false});return;}
         this.userText=transcript;this.remember('user',transcript);this.speculate(transcript);
@@ -482,7 +503,7 @@ export class GptLiveBridge {
       return;
     }
     // The call is already being hung up (the service did it when V said goodbye without delegating).
-    if(choice.name==='end_call'){if(this.ending){entry.state='done';return;}this.ending=true;}
+    if(choice.name==='end_call'){if(this.ending){entry.state='done';return;}this.ending=true;this.endingAt=this.now();}
     entry.name=choice.name;entry.state='running';
     this.remember('tool','',{name:choice.name,query:String(choice.args?.query??choice.args?.topic??choice.args?.question??choice.args?.url??'')});
     if(choice.name===GPT_LIVE_SELF_TOOL.name){
@@ -513,7 +534,7 @@ export class GptLiveBridge {
       const judged=await verdict;
       if(!judged||moot())return;
       if(canEnd&&judged.farewell>=SURE_FAREWELL){
-        const id=`host_${++this.ownCalls}`;this.ending=true;
+        const id=`host_${++this.ownCalls}`;this.ending=true;this.endingAt=this.now();
         this.delegations.set(id,{text:'',state:'running',polls:0,name:'end_call',own:true});
         this.request.onDiagnostic?.({stage:'farewell-unprompted',elapsedMs:Math.round(this.now()-this.startedAt)});
         this.request.onToolCall?.({callId:id,name:'end_call',args:{}});
@@ -530,9 +551,10 @@ export class GptLiveBridge {
   // (Asked by the session; without a judge it is a change of mind, as for every other voice.)
   async keepsEnding(text){
     if(!this.ending||!this.judge)return false;
-    try{return (await this.judge({userText:gptLiveText(text),history:this.history.slice(-6),signal:this.abort.signal})).stays>=SURE_STAYS;}catch{return false;}
+    this.judging++;
+    try{return (await this.judge({userText:gptLiveText(text),history:this.history.slice(-6),signal:this.abort.signal})).stays>=SURE_STAYS;}catch{return false;}finally{this.judging--;}
   }
-  endingCancelled(){this.ending=false;}
+  endingCancelled(){this.ending=false;this.loudMs=0;this.callerLoudAt=-Infinity;}
   submitToolResult(callId,result){
     if(this.closed)return;
     const follow=this.follows.get(callId);if(follow)this.follows.delete(callId);
@@ -563,7 +585,7 @@ export class GptLiveBridge {
     if(this.closed)return;
     if(this.peer)this.request.onDiagnostic?.({stage:'media-stats',elapsedMs:Math.round(this.now()-this.startedAt),...this.peer.stats});
     this.finishReply();
-    this.closed=true;this.ready=false;clearTimeout(this.timer);clearTimeout(this.mediaTimer);clearTimeout(this.greetingTimer);clearTimeout(this.finishTimer);clearTimeout(this.netTimer);this.abort.abort();this.userTurn?.done();
+    this.closed=true;this.ready=false;clearInterval(this.statsTimer);clearTimeout(this.timer);clearTimeout(this.mediaTimer);clearTimeout(this.greetingTimer);clearTimeout(this.finishTimer);clearTimeout(this.netTimer);this.abort.abort();this.userTurn?.done();
     try{if(this.socket?.readyState===1)this.socket.send(JSON.stringify({type:'session.close'}));}catch{}
     this.socket?.close();this.peer?.close();this.reject?.(Error('通话已关闭'));this.request.onClose?.('completed');
   }

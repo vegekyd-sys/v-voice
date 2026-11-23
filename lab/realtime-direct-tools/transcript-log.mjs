@@ -79,7 +79,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','input-burst','input-backlog-dropped','context-dropped','upstream-closed','greeting-requested','lesson-unprompted','promise-unkept','farewell-unprompted'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','input-burst','input-backlog-dropped','context-dropped','upstream-closed','greeting-requested','lesson-unprompted','promise-unkept','farewell-unprompted','ending-held'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
       const safe={stage:event.stage};
       // What the voice service said when it ended the session itself: a few short fields
       // (reason, code, message), by plain keys, never audio or text of the call.
@@ -87,7 +87,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         if(['string','number','boolean'].includes(typeof value))safe['closed.'+key]=String(value).replace(/[\u0000-\u001f\u007f]/gu,' ').slice(0,120);
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
-      for(const key of ['sessionAgeMs','attempt','stalledMs','arrivedMs','droppedMs','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources','lost'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['sessionAgeMs','attempt','stalledMs','arrivedMs','droppedMs','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources','lost','skippedMs','backlogMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
     // Which tool a GPT Live delegation became and how it was decided; never the words.

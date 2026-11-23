@@ -925,7 +925,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       },
       onClearAudio:(reason,metadata)=>routeOutput('clear',null,()=>{s.audioDelivery?.finish('clear');s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.audioDelivery?.finish('segment-done');s.responseActive=false;}),
-      onResponseDone:e=>routeOutput('done',e,()=>{s.audioDelivery?.finish('done');void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){s.ending.completed=true;emit(s,{type:'end.after-playback',callId:s.ending.callId});}}),
+      onResponseDone:e=>routeOutput('done',e,()=>{s.audioDelivery?.finish('done');void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){
+        // (A voice path that hears the caller still speaking is waited for: what they are saying may undo the hang-up.)
+        const ending=s.ending,after=()=>{if(!current(s)||s.ending!==ending)return;ending.completed=true;emit(s,{type:'end.after-playback',callId:ending.callId});};
+        const held=s.bridge?.endingHeld?.();if(typeof held?.then==='function')void held.then(after,after);else after();
+      }}),
       onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.responseActivityAt=Date.now();s.replyDelivery?.begin(e.responseId);}
         if(e.type==='native.listening-aside')s.replyDelivery?.ignore(e.responseId);
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});

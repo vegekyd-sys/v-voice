@@ -1705,6 +1705,22 @@ test('speech during a hang-up is a change of mind, unless the voice path says it
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'还有一件事'});
  assert(await until(()=>f.client.sent.some(e=>e.type==='end.cancelled')));assert.equal(undone,1,'and the voice path is told');
 });
+test('the page is not told to hang up while the voice path still hears the caller; what they say may undo it',async t=>{
+ const {GrokVoiceBridge}=await import('./grok-provider.mjs');
+ let release;GrokVoiceBridge.prototype.endingHeld=()=>new Promise(resolve=>{release=resolve;});
+ t.after(()=>{delete GrokVoiceBridge.prototype.endingHeld;});
+ const farewell=(f,id)=>{f.event({type:'response.created',response:{id}});f.event({type:'response.output_audio.delta',response_id:id,delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id,status:'completed'}});};
+ const f=await fixture();t.after(()=>f.service.dispose());
+ f.call('end_call',{});await delay(5);farewell(f,'bye');await delay(20);
+ assert(!f.client.sent.some(e=>e.type==='end.after-playback'),'held');release();await delay(10);
+ assert(f.client.sent.some(e=>e.type==='end.after-playback'),'the caller was only saying goodbye: it goes on');
+ // A hang-up undone while it was held is not carried out afterwards.
+ const g=await fixture();t.after(()=>g.service.dispose());
+ g.call('end_call',{});await delay(5);farewell(g,'bye');await delay(10);
+ g.event({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下,还有个事'});
+ assert(await until(()=>g.client.sent.some(e=>e.type==='end.cancelled')));release();await delay(10);
+ assert(!g.client.sent.some(e=>e.type==='end.after-playback'));
+});
 test('a running tool is not silence',async t=>{
  const f=await fixture(()=>new Promise(()=>{}),'seeduplex',idleTiming);t.after(()=>f.service.dispose());
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'slow',name:'current_time',arguments:'{}'}]});

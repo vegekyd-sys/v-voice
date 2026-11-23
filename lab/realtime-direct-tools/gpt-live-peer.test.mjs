@@ -43,6 +43,25 @@ test('peer offers Opus, paces 20 ms RTP frames from microphone PCM and pads sile
   state.peer.connectionStateChange.emit('failed');assert.match(errors[0],/媒体连接失败/u);
   peer.close();assert.equal(state.closed,true);peer.frame();assert.equal(state.sent.length,2);
 });
+test('audio that arrived late is caught up with in the caller\'s pauses, and nothing said is skipped',async()=>{
+  const {state,werift,OpusScript}=fakes();
+  const peer=new GptLivePeer({werift,OpusScript});await peer.offer();await peer.answer('v=0\r\nanswer');
+  const speech=ms=>pcm(Array(ms*24).fill(1000)),pause=ms=>pcm(Array(ms*24).fill(0)),drain=()=>{for(let i=0;i<200&&peer.pending.length;i++)peer.frame();};
+  const loud=()=>state.sent.filter(p=>p.payload[0]!==0).length;
+  state.peer.connectionStateChange.emit('connected');
+  // In step with the clock: a frame at a time, pauses and all, is sent as it is.
+  for(let i=0;i<10;i++){peer.sendAudio(i<5?speech(20):pause(20));peer.frame();}
+  assert.equal(peer.stats.skippedMs,0);const steady=state.sent.length;
+  // A stalled connection delivers 1.2 s at once: 0.3 s of speech, a 0.6 s pause, 0.3 s of speech.
+  peer.sendAudio(Buffer.concat([speech(300),pause(600),speech(300)]));const before=loud();drain();
+  assert(loud()-before>=29,'all thirty frames of speech are sent');
+  assert(peer.stats.skippedMs>=460&&peer.stats.skippedMs<=540,'most of the pause is taken out: '+peer.stats.skippedMs);
+  assert(state.sent.length-steady<=37);assert.equal(peer.stats.backlogMs<=220,true);
+  // A burst that is all speech is sent whole: there is no pause to take out.
+  const skipped=peer.stats.skippedMs,sent=state.sent.length;peer.sendAudio(speech(1000));drain();
+  assert.equal(peer.stats.skippedMs,skipped);assert(state.sent.length-sent>=50);
+  peer.close();
+});
 test('voice on a second RTP source is heard while the first carries only silence',()=>{
   const {state,werift,OpusScript}=fakes(),audio=[];let clock=1000;
   const peer=new GptLivePeer({werift,OpusScript,onAudio:b=>audio.push(b.readInt16LE(0)),now:()=>clock});
