@@ -401,7 +401,7 @@ export function createPhotoGallery({complete,find,director}){
       signal?.throwIfAborted();
       const batch=planned.splice(0,count-items.length);
       const hits=await Promise.all(batch.map(async item=>{
-        const name=String(item?.name??'').trim().slice(0,40), query=clean(item?.query);
+        const name=String(item?.name??'').trim().slice(0,40), query=Array.from(clean(item?.query)).slice(0,40).join('');
         if(!name || !query || seen.has(name) || seen.has(query))return null;
         const photo=await find(query,{signal});
         return photo?.bytes?.length ? {name,query,hash:createHash('sha256').update(photo.bytes).digest('hex')} : null;
