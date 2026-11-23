@@ -2300,3 +2300,8 @@ video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 
 .improv-controls{display:flex;align-items:center;gap:.45rem}
 .improv-sound svg{width:1em;height:1em;vertical-align:middle}
+
+.improv-rec{position:absolute;z-index:2;top:.7rem;left:.7rem;display:inline-flex;align-items:center;gap:.4em;padding:.24em .55em;border-radius:.35em;background:#181219aa;color:white;font:600 .77rem/1.4 system-ui;letter-spacing:.04em;pointer-events:none}
+.improv-rec i{width:.54em;height:.54em;border-radius:50%;background:#ff515b}
+.improv-rec time{font-variant-numeric:tabular-nums}
+.improv-replay{display:block;max-width:100%;max-height:65vh;object-fit:contain;margin-inline:auto;border-radius:.6rem}

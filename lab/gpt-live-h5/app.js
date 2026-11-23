@@ -43,7 +43,7 @@ if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   loadBoardPhoto: Object.assign(query => loadBoardPhoto(query), {missing: query => loadBoardPhoto.missing(query)}),
   // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
-  boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: (id, ratio) => call?.boardAssets?.shown(id, ratio), save: item => saveBoardPicture(item)},
+  boardWorks: {visible: ids=>call?.boardAssets?.visible(ids), pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: (id, ratio) => call?.boardAssets?.shown(id, ratio), save: item => saveBoardPicture(item)},
   actions: {
     uploadReference: async file => {
       const active=call;
@@ -658,7 +658,8 @@ async function stopCall({failure}={}) {
   if (starting === active) starting = null;
   if (active) {
     active.improv?.finish();
-    view.set({improv:null});
+    view.set({improv:null,recordings:[]});
+    for(const clip of active.recordings?.values()??[])if(clip.recording)URL.revokeObjectURL(clip.recording);
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.board?.dispose(); active.boardAssets?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null, boardAssets: null });
@@ -789,6 +790,11 @@ async function startCall() {
     if(captureError)throw captureError;
     if (improvLive) active.improv = createImprovPlayer({context:active.context,
       update: improv => { if (call === active) view.set({improv}); },
+      archive: clip => {
+        if(call!==active){if(clip.recording)URL.revokeObjectURL(clip.recording);return;}
+        active.recordings??=new Map();active.recordings.set(clip.id,clip);
+        view.set({recordings:[...active.recordings.values()]});
+      },
       ended: id => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id}).catch(()=>{}); },
       notice: (text,failed) => { if (call === active) setStatus(text,{tone:failed?'problem':'success'}); }
     });

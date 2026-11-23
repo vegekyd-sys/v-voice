@@ -559,9 +559,19 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     async openingImage(owner, reference, words) {
       const value = owners.get(owner);
       if (!value) return '';
-      const item = reference === 'current'
-        ? pointedAt(value, words) ?? (value.picked ? find(value, value.picked) : value.assets.at(-1))
-        : [...pictures(value), ...value.assets].find(item => item.id === reference);
+      const visible=value.visible?.map(id=>find(value,id)).filter(Boolean);
+      const ordinal=/第\s*([1-9一二两三四五六七八九])\s*[张幅个]/u.exec(words)?.[1];
+      const position=ordinal ? Number(ordinal) || '一二三四五六七八九'.indexOf(ordinal.replace('两','二'))+1 : 0;
+      const selected=value.picked && find(value,value.picked);
+      let item=find(value,reference);
+      if(position && visible) item=visible[position-1];
+      else if(reference==='current'){
+        const named=pointedAt(value,words);
+        if(named && (named!==selected || !visible || visible.includes(named))) item=named;
+        else if(selected && (!visible || visible.includes(selected)))item=selected;
+        else if(visible)item=visible.length===1?visible[0]:null;
+        else item=value.assets.at(-1);
+      }
       if (item?.kind !== 'image' || item.state !== 'ready' || item.fits === false) return '';
       return https(await api.address(owner, item.id));
     },
@@ -575,8 +585,11 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       return photo?.url && photo.until >= now() ? photo.url : '';
     },
     /** The page has the thing on screen (its picture loaded). */
+    visible(owner,ids) {
+      const value=row(owner);value.visible=[...new Set(ids.slice(0,16))].filter(id=>typeof id==='string' && SHELF_ID.test(id) && find(value,id));
+    },
     openingAspect(owner,url) {
-      const value=owners.get(owner), asset=value?.assets.find(item=>item.url===url && item.kind==='image');
+      const value=owners.get(owner), asset=value && [...value.assets,...pictures(value)].find(item=>item.url===url && item.kind==='image');
       if(!asset)return '';
       const [w,h]=String(asset.aspect??'').split(':').map(Number);
       const ratio=asset.displayRatio || w/h;
@@ -586,7 +599,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     },
     seen(owner, ids, shapes) {
       const value = owners.get(owner);
-      for (const id of Array.isArray(ids) ? ids.slice(0, 12) : []) { const asset = value?.assets.find(item => item.id === id); if (asset && asset.state === 'ready') {asset.shown=true;const ratio=shapes?.[id];if(Number.isFinite(ratio)&&ratio>0&&ratio<100)asset.displayRatio=ratio;} }
+      for (const id of Array.isArray(ids) ? ids.slice(0, 12) : []) { const asset = value && find(value,id); if (asset && asset.state === 'ready') {asset.shown=true;const ratio=shapes?.[id];if(Number.isFinite(ratio)&&ratio>0&&ratio<100)asset.displayRatio=ratio;} }
     },
     shown(owner, id) { return owners.get(owner)?.assets.find(asset => asset.id === id)?.shown === true; },
     watch(owner, watcher) { const value = row(owner); value.watchers.add(watcher); return () => value.watchers.delete(watcher); },

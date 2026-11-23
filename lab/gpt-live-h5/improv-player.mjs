@@ -1,6 +1,6 @@
 // The playback peer belongs to the call. The lesson board can collapse, move
 // to another sheet or reopen while Makaron continues recording the same peer.
-export function createImprovPlayer({context,update,ended,notice}){
+export function createImprovPlayer({context,update,ended,notice,archive=()=>{}}){
   let current, callerSpeaking=false, hostSpeaking=false, outputMuted=false;
   function mix(show) {
     if(!show?.gain)return;
@@ -38,6 +38,10 @@ export function createImprovPlayer({context,update,ended,notice}){
   function publish(show) {
     update({id:show.id,stream:show.stream,muted:!!show.muted,imageUrl:show.imageUrl,cue:show.cue,note:show.note,focus:show.focus});
   }
+  function keep(show) {
+    if(!show.stream && !show.recording)return;
+    archive({id:show.id, poster:show.poster || show.imageUrl, recording:show.recording, done:!!show.done, caption:show.cue?.text});
+  }
   function detach(show) {
     disconnectSound(show);
     if(current===show){current=null;update(null);}
@@ -49,10 +53,10 @@ export function createImprovPlayer({context,update,ended,notice}){
   function finish(){
     const show=current;
     if(!show)return;
-    detach(show);
+    keep(show);detach(show);
     show.frame.contentWindow?.postMessage({id:show.id,action:'end'},location.origin);
     ended(show.id);
-    show.cleanup=setTimeout(()=>close(show),45000);
+    show.cleanup=setTimeout(()=>{show.done=true;keep(show);close(show);},45000);
   }
   function receive(event){
     if(event.action!=='start'){
@@ -68,7 +72,12 @@ export function createImprovPlayer({context,update,ended,notice}){
     const frame=document.createElement('iframe');frame.hidden=true;frame.title='Makaron Director 直播连接';frame.allow='autoplay';
     const show={id:event.id,imageUrl:event.imageUrl,frame,listener:e=>{
       if(e.source!==frame.contentWindow || e.origin!==location.origin || e.data?.source!=='makaron-director' || e.data.id!==event.id)return;
+      if(e.data.action==='stopped'){show.poster=e.data.poster;keep(show);disconnectSound(show);return;}
+      if(e.data.action==='recorded' && e.data.blob instanceof Blob && e.data.blob.size && !show.recording){
+        show.recording=URL.createObjectURL(e.data.blob);keep(show);return;
+      }
       if(e.data.action==='ended'){
+        show.done=true;keep(show);
         if(current===show){ended(event.id);notice(e.data.failed?'直播连接失败，可以重新开播':'直播结束，通话继续',e.data.failed);}
         close(show);return;
       }

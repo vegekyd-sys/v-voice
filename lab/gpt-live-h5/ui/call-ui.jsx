@@ -428,6 +428,7 @@ function TvIsland({state,actions,status}) {
 function ImprovStage({show, actions}) {
   const video = useRef(null);
   const [playing, setPlaying] = useState(false);
+  const [seconds,setSeconds]=useState(0);
   const [blocked, setBlocked] = useState(false);
   const [caption,setCaption] = useState('');
   const [shape,setShape] = useState(16 / 9);
@@ -443,7 +444,7 @@ function ImprovStage({show, actions}) {
     // arriving between two paints stays hidden until its frame reaches here.
     const present = (_now, metadata) => {
       if(!active || !element.videoWidth)return;
-      setPlaying(true);setBlocked(false);setShape(element.videoWidth/element.videoHeight);
+      setPlaying(true);setSeconds(Math.floor(metadata?.mediaTime ?? element.currentTime));setBlocked(false);setShape(element.videoWidth/element.videoHeight);
       const cue=nextCue.current;
       if(cue && cue.version>version && (cue.rtp==null || metadata?.rtpTimestamp==null ||
           ((metadata.rtpTimestamp-cue.rtp)>>>0)<0x80000000)){
@@ -466,6 +467,7 @@ function ImprovStage({show, actions}) {
     <div className="board-work-frame improv-picture" data-playing={playing || undefined} style={{'--shape':shape}}>
       {show.imageUrl && !playing && <img className="improv-cover" src={show.imageUrl} alt="开场参考图" onLoad={e=>{if(!video.current?.videoWidth)setShape(e.target.naturalWidth/e.target.naturalHeight);}}/>}
       {!show.imageUrl && !playing && <div className="board-work-sketch" aria-hidden="true"><i/><i/><i/></div>}
+      {playing && <span className="improv-rec" aria-label="正在录制"><i/>REC <time>{String(Math.floor(seconds/60)).padStart(2,'0')}:{String(seconds%60).padStart(2,'0')}</time></span>}
       <video ref={video} id="improvVideo" playsInline muted autoPlay />
     </div>
     <figcaption aria-live="polite">
@@ -509,7 +511,7 @@ function CallPage({view, actions, options}) {
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
   const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
-  const currentScene = scene || (inCall && state.improv ? liveOnlyScene : null);
+  const currentScene = scene || (inCall && (state.improv || state.recordings?.length) ? liveOnlyScene : null);
   const board = !boardHidden && !(history && !wide) ? currentScene : null;
   useEffect(() => { if (state.improv?.id) setBoardHidden(null); }, [state.improv?.id, state.improv?.focus]);
   // What V is saying in answer to the caller's latest words: shown on a page that has nothing on it yet.
@@ -589,8 +591,8 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} liveId={state.improv?.id} liveFocus={state.improv?.focus} liveMedia={state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
-          works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
+        {board && <Board scene={board} recordings={state.recordings} liveId={state.improv?.id} liveFocus={state.improv?.focus} liveMedia={state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+          works={state.boardAssets ? {...state.boardAssets, visible:options.boardWorks?.visible, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
             : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing, autoSound: options.boardWorks.autoSound, film: options.boardWorks.film} : null}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}
         {inCall && (

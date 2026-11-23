@@ -20,7 +20,7 @@ const worksOf = scene => (scene?.blocks ?? []).filter(block => block?.t === 'wor
 export function createAssetsClient({request, onChange = () => {}, onSync = () => {}, rev = () => 0, isCurrent = () => true, now = Date.now,
   setTimer = setTimeout, clearTimer = clearTimeout} = {}) {
   let assets = new Map(), photos = new Map(), picked = '', stamp = -1, busy = false, closed = false, timer = null, asking = false, again = false, changedAt = -Infinity, refusals = 0, had = false, call = '';
-  let wantPick = null;
+  let wantPick = null, visible = null, sentVisible = null;
   const seen = new Set(), told = new Set(), shapes = new Map();
   // (`photos`: the photographs the board found, by what was searched for: {id, name}.)
   const view = () => ({assets, photos, picked});
@@ -31,6 +31,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
     if (asking) { again = true; return; }
     asking = true;
     const body = {rev: rev(), ...(call ? {call} : {})};
+    if(visible!==sentVisible && visible!==null)body.visible=JSON.parse(visible);
     if (wantPick !== null) { body.pick = wantPick; wantPick = null; }
     const fresh = [...seen].filter(id => !told.has(id));
     if (fresh.length) body.seen = fresh;
@@ -38,6 +39,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
     if(sized.length)body.shapes=Object.fromEntries(sized.map(id=>[id,shapes.get(id)]));
     try {
       const reply = await request(body);
+      if(body.visible)sentVisible=JSON.stringify(body.visible);
       refusals = 0; had = true;
       for (const id of fresh) told.add(id);
       if (closed || !isCurrent() || !reply || !Array.isArray(reply.assets)) return;
@@ -69,6 +71,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
   }
   return {
     get view() { return view(); },
+    visible(ids){const next=JSON.stringify(ids.slice(0,16));if(visible===next || closed)return;visible=next;if(asking)again=true;else {clearTimer(timer);timer=null;schedule(0);}},
     /** Something happened that may have changed the shelf (a tool started or ended, a result arrived). */
     poke() { if (closed) return; refusals = Math.min(refusals, 1); changedAt = Math.max(changedAt, now() - ASSET_SETTLE_MS + 3 * ASSET_POLL_MS); if (asking) again = true; else { clearTimer(timer); timer = null; schedule(150); } },
     /** A page of the board arrived: a made thing on it that is not known yet is asked for. */
@@ -87,7 +90,7 @@ export function createAssetsClient({request, onChange = () => {}, onSync = () =>
       try { const reply = await request({rev: rev(), address: id}); return reply?.address?.id === id && typeof reply.address.url === 'string' ? reply.address.url : ''; } catch { return ''; }
     },
     /** A thing's picture is on screen. */
-    shown(id,ratio) { if (closed || seen.has(id)) return; if(Number.isFinite(ratio) && ratio>0)shapes.set(id,ratio); seen.add(id); if (!asking && timer === null) schedule(300); },
+    shown(id,ratio) { if (closed || seen.has(id) && (!ratio || shapes.has(id))) return; if(seen.has(id))told.delete(id); if(Number.isFinite(ratio) && ratio>0)shapes.set(id,ratio); seen.add(id); if (!asking && timer === null) schedule(300); },
     dispose() { closed = true; clearTimer(timer); timer = null; },
   };
 }

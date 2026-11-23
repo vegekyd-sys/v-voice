@@ -1060,7 +1060,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if (typeof params.pick === 'string' && (params.pick === '' || SHELF_ID.test(params.pick))) boardAssets.pick(owner, params.pick);
         // (`address`: where the thing can be saved from. A found photograph is lent out for it.)
         const address = typeof params.address === 'string' && SHELF_ID.test(params.address) ? {id: params.address, url: await boardAssets.address(owner, params.address)} : null;
-        if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && ASSET_ID.test(id)),params.shapes);
+        if(Array.isArray(params.visible))boardAssets.visible?.(owner,params.visible);
+        if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && SHELF_ID.test(id)),params.shapes);
         const state = board.state(owner);
         return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&(params.rev!==state.scene.rev||typeof params.call==='string'&&params.call!==owner.slice(0,8))?{sync:state}:{})});
       }
