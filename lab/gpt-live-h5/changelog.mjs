@@ -198,7 +198,7 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
 };
 // Candidate only: the model is off in production until its login is configured and the switch is set.
 export const GPT_LIVE_11_CANDIDATE_UPDATE = {
-  version:'voice-gpt-live-11.20261124.2',date:'2026-11-24',
+  version:'voice-gpt-live-11.20261124.3',date:'2026-11-24',
   title:'GPT Live 1.1：是 V 本人，查东西当场答，讲解有画面（Candidate）',status:'candidate-validation',
   items:[
     '模型列表新增 GPT Live 1.1，走 Codex 套餐登录，不另外按量付费。',
@@ -214,6 +214,8 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
     '说话更像聊天：一两句就停下来听你说。',
     '修复：长回答里 V 的声音断断续续。它的声音传过来比播放稍慢，以前播着播着就在字中间断一下；现在趁它句子之间本来的停顿多等一小会儿，不在字中间断。',
     '修复：画面和图上的标注跟着 V 说的语言走。V 换了语言（比如断线接回后改说中文），画面连标题一起换过来，不再停在之前的语言。',
+    '修复：V 每句话开头不再少几个字。',
+    '修复：该查记忆或上网时没去查、凭印象回答。现在你一说完就先查上；V 没去查就答了，会拿查到的结果对照，说错了就更正。断线接回后也记得刚才查到的内容。',
     '讲“今年、现在”的事先按今天的日期去查，再按查到的最新资料讲，不拿旧印象补。',
     '首页右上角新增「设置」：豆包和 GPT Live 1.1 的声音都在这里选，选一次会记住；豆包新增 Vivi、桃子、邻家女孩、淑女和云舟五种声音。原来的「iOS 绑定」也收在设置里。',
     '仅候选验证：真实手机收音、打断、锁屏和长时间通话还没验收，机器人和音箱暂未接入。',
