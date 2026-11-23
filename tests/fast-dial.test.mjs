@@ -15,7 +15,7 @@ async function fixture(t,options={}){
   attach:(id,ticket,ws)=>{const s=sessions.get(id);assert.equal(s.r.relayTicket,ticket);s.ws=ws;calls.push(['attach',id]);ws.on('close',()=>sessions.delete(id));ws.send(JSON.stringify({type:'ready',voiceSessionId:id}));return true;},
   close:async id=>{calls.push(['close',id]);sessions.get(id)?.ws?.close();sessions.delete(id);},
   dispose:async()=>{for(const s of sessions.values())s.ws?.terminate();sessions.clear();},handleEvent:()=>{},};
- const bridge=createLiveH5Server({improvKey:options.improvKey??'',basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:entries,phoneInputPolicy:'native',speakerRouting:{close(){},dispose(){},snapshot:()=>({})},directVoice:direct,avatarEvaluate:null,
+ const bridge=createLiveH5Server({director:options.director,basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:entries,phoneInputPolicy:'native',speakerRouting:{close(){},dispose(){},snapshot:()=>({})},directVoice:direct,avatarEvaluate:null,
   gateway:{ready:true,request:async(method,args)=>{calls.push([method,args]);if(method==='sessions.describe'){await options.describe?.();return {session:options.missing?null:{key:args.key,agentId:'makaron'}};}return {};}}});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
  const request=(entry,route,cookie,body)=>new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:'/voice/api/'+route+'?phone='+entry.id,method:body?'POST':'GET',headers:{host:new URL(origin).host,origin,...cookie?{cookie}:{},'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);});
@@ -110,11 +110,32 @@ test('an old Grok fast-dial preference cannot allocate or close a call in the or
 });
 
 test('improv requires a configured owner entry and a capable web dial',async t=>{
- const f=await fixture(t,{web:true,improvKey:'fixture-only'}),cookie=await f.login(entries[0]);
+ const f=await fixture(t,{web:true,director:async()=>({})}),cookie=await f.login(entries[0]);
  const status=await (await f.request(entries[0],'status',cookie)).json();
  assert.equal(status.improvLive,true);
  const {ws,done}=f.connect(entries[0],cookie,'&improvLive=1');
  await done;
  assert.equal(typeof f.calls.find(c=>c[0]==='reserve')[1].improv?.command,'function');
  ws.close();
+});
+
+test('an abandoned player download leaves the call server running',async t=>{
+ const http=await import('node:http');
+ let started;
+ const opened=new Promise(resolve=>{started=resolve;});
+ const media=http.createServer((req,res)=>{
+   res.writeHead(200,{'content-type':'text/javascript'});
+   res.write('/* player */');started();
+ });
+ await new Promise(resolve=>media.listen(0,'127.0.0.1',resolve));
+ t.after(()=>{media.closeAllConnections();return new Promise(resolve=>media.close(resolve));});
+ const bridge=createLiveH5Server({director:async()=>({}),directorOrigin:'http://127.0.0.1:'+media.address().port});
+ await new Promise(resolve=>bridge.server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>bridge.dispose());
+ const base='http://127.0.0.1:'+bridge.server.address().port;
+ const pending=fetch(base+'/director/player.js');
+ await opened;
+ await (await pending).body.cancel();
+ await new Promise(r=>setTimeout(r,20));
+ assert.equal((await fetch(base+'/')).status,200);
 });

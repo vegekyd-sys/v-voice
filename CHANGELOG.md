@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-23 — Makaron Director on the lesson board (Candidate)
+
+The web call uses the private Makaron CLI Director session. Scene directions and requests to end the broadcast use the active session. The board shares its existing space with the live picture and keeps the call connected.
+
+
 ## 2026-11-22 — A video does not cut an iPhone call; a call connected again keeps its board
 
 - A page's sound takes the phone's audio from the call: production 11/22 00:33:52 the microphone stopped after a video was played with sound; after #251, which started the viewer's video with sound inside the tap, 01:46:42 and 01:48:15 the call was cut and connected again. In the App, nothing on the page is heard during a call: every media element is muted, its own controls included. The App plays a video's sound instead (build 50, `capabilities.film`: `FilmSound.swift`, the `film` bridge command, `ios/H5/film-sound.mjs`), through the call's own engine beside V's voice, following the silent picture: it starts, stops, jumps and goes round with it, and is put back within 0.12 s. A silent video may start by itself (`mediaTypesRequiringUserActionForPlayback = .audio`), so a made video moves and is heard once as on the web page; the viewer has its own controls. In the simulator's log the web view's GPU process activates a `MediaPlayback` audio session for a video with sound, and none through the whole of the new flow. An older App shows a play mark and plays it silent.

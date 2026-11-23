@@ -1,8 +1,11 @@
 import {randomUUID} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const execute=promisify(execFile);
 
 export const IMPROV_TOOL = {
   type: 'function', name: 'improv_live',
-  description: '通话内即兴直播。只有用户明确请你开一场娱乐直播时才 start。从刚聊的话题取一个具体的梗，写一幕有动作和意外的虚构开场。镜头提示只写可见场景，不含私人信息。用户指定用屏幕上的图开场时带 openingImage，当前这张填 current，指定素材填它的编号。等工具确认提交后再说正在连接。直播中观众的评论、疑问正常接话；明确指挥画面才 direct。想留下眼前一刻用 keep，结束直播用 end，继续通话。图片、短片、查找真实直播仍走原路径。返回 requested 表示已交给屏幕，不代表已经播出。',
+  description: '通话内即兴直播。只有用户明确请你开一场娱乐直播时才 start。从刚聊的话题取一个具体的梗，写一幕有动作和意外的虚构开场。镜头提示只写可见场景，不含私人信息。用户指定用屏幕上的图开场时带 openingImage，当前这张填 current，指定素材填它的编号。等工具确认提交后再说正在连接。开播后每句用户语音由 Makaron 分辨剧情、聊天和收播。新的角色、动作或场景自然算下一幕，画面由导演呈现，你可以简短接话。不要重复提交或声称看见尚未播出的改动。想留下眼前一刻用 keep，结束直播用 end，继续通话。图片、短片、查找真实直播仍走原路径。返回 requested 表示已交给屏幕，不代表已经播出。',
   parameters: {type:'object', additionalProperties:false, required:['action'], properties:{
     action:{type:'string',enum:['start','direct','keep','end']}, shot:{type:'string',description:'start 或 direct 的镜头描述，最多 600 字'},
     openingImage:{type:'string',description:'仅 start，用户指定的屏幕参考图，current 或本次电话中的图片编号'}
@@ -29,66 +32,61 @@ export function openingImageFor({action, openingImage}, text) {
   return openingImage || (/(?:用|拿|以|让)[^，。？！?]{0,20}(?:这张|那张|图片|照片|海报|幅图|张图)/u.test(text) ? 'current' : '');
 }
 
-export function createImprovShow({key, fetcher = fetch}) {
-  let show = null, lastStart = null, closed = false;
-  const finish = () => {
-    clearTimeout(show?.timer);
-    show?.cancel.abort();
-    show = null;
+
+export function directorCommand(environment=process.env) {
+  const binary=environment.VOICE_MAKARON_DIRECTOR_CLI;
+  if(!binary?.startsWith('/') || !environment.MAKARON_API_KEY || !environment.MAKARON_DIRECTOR_URL)return null;
+  const env=Object.fromEntries(['PATH','LANG','MAKARON_API_KEY','MAKARON_DIRECTOR_URL'].filter(k=>environment[k]).map(k=>[k,environment[k]]));
+  return async args=>{
+    try{
+      const {stdout}=await execute(binary,['director',...args,'--json'],{env,timeout:45000,maxBuffer:65536});
+      return JSON.parse(stdout);
+    }catch{throw Error('Makaron Director 未确认操作，请查看本场状态');}
   };
+}
+
+export function createImprovShow({run}) {
+  let show=null,opening=false,closed=false,lastStart,emit;
+  const turns=new WeakMap();
+  async function stop(id) {
+    if(!show || show.id!==id)return false;
+    await run(['stop',id]);
+    if(show?.id===id){show=null;emit?.({type:'improv.live',id,action:'end'});}
+    return true;
+  }
+  function observe(turn) {
+    if(!show || !turn)return Promise.resolve({action:'chat'});
+    if(turns.has(turn))return turns.get(turn);
+    const id=show.id;
+    const result=run(['direct',id,'--host','--turn-id',turn.id||randomUUID(),'--',turn.text]).then(value=>{
+      if(value.action==='end' && show?.id===id){show=null;emit({type:'improv.live',id,action:'end'});}
+      return value;
+    });
+    turns.set(turn,result);return result;
+  }
   return {
-    command({action, shot}, turn, send, imageUrl = '') {
-      if (closed) throw Error('这通电话已结束');
-      if (['start','direct'].includes(action) && (typeof shot !== 'string' || !shot.trim() || shot.length > 600)) throw Error('需要一句简短的镜头描述');
-      if (action === 'start') {
-        if (show || turn === lastStart) throw Error('这次开场已经提交');
-        if (!invited(turn?.text)) throw Error('还没听清用户是否想现在开播，可以自然地问一句。');
-        lastStart = turn;
-        show = {id:randomUUID(), cancel:new AbortController(), submitted:false, session:null,
-          timer:setTimeout(finish,95000).unref()};
-      }
-      if (!show) throw Error('当前没有直播');
-      const id = show.id;
-      send({type:'improv.live', id, action, ...(action === 'start' && imageUrl ? {imageUrl} : {}), ...(['start','direct'].includes(action) ? {shot:shot.trim()} : {})});
-      if (action === 'end') finish();
-      return {requested:true, action};
+    observe,
+    decision:turn=>turns.get(turn),
+    async command({action,shot},turn,send,imageUrl=''){
+      if(closed)throw Error('这通电话已结束');
+      if(action==='start'){
+        if(show || opening || turn===lastStart)throw Error('这次开场已经提交');
+        if(!invited(turn?.text))throw Error('请先确认是否开播');
+        if(!shot?.trim() || shot.length>600)throw Error('需要简短的开场描述');
+        opening=true;lastStart=turn;emit=send;
+        try{
+          const result=await run(['start','--prompt',shot.trim(),'--request-id',randomUUID(),...(imageUrl?['--image',imageUrl]:[])]);
+          if(closed){await run(['stop',result.id]);throw Error('这通电话已结束');}
+          if(result.phase!=='waiting'||!/^\/director\/player\.html#[a-z0-9-]+\.[a-zA-Z0-9_-]{43}$/.test(result.playerPath))throw Error('Makaron 未返回有效的播放票据');
+          show={id:result.id};send({type:'improv.live',action,id:show.id,playerPath:result.playerPath});
+        }finally{opening=false;}
+      }else if(action==='direct'){return observe(turn);}
+      else if(action==='end'){if(!show)return {requested:true,action};const result=await observe(turn);return {requested:result.action==='end',action:result.action};}
+      else if(action==='keep'&&show){send({type:'improv.live',action,id:show.id});}
+      else throw Error('当前没有直播');
+      return {requested:true,action};
     },
-    end(id) { if (id !== show?.id) return false; finish(); return true; },
-    close() { closed = true; finish(); },
-    async proxy(id, target, body, signal) {
-      const current = show;
-      if (!current || id !== current.id) return [409,{error:'直播已经结束'}];
-      const endpoint = 'minimax/h3-max/director', bridge = 'https://wma.fal.run';
-      let input;
-      if (target === bridge+'/session' && body?.app_id === endpoint && body.type === 'offer' && typeof body.sdp === 'string' && body.sdp) {
-        if (current.submitted) return [409,{error:'直播连接已经提交'}];
-        current.submitted = true;
-        input = {app_id:endpoint, type:'offer', sdp:body.sdp};
-      } else if (target === bridge+'/ice' && body?.app_id === endpoint) input = {app_id:endpoint};
-      else if (target === 'https://fal.run/'+endpoint+'/ice') input = {};
-      else if (target === bridge+'/session/heartbeat' && current.session && body?.session_id === current.session) input = {session_id:current.session};
-      else return [400,{error:'直播请求无效'}];
-      try {
-        const res = await fetcher(target, {method:'POST',redirect:'error',headers:{authorization:'Key '+key,'content-type':'application/json'},
-          body:JSON.stringify(input),signal:AbortSignal.any([current.cancel.signal,signal,AbortSignal.timeout(90000)])});
-        if (!res.ok) {
-          // Classify the failure without exposing provider text, credentials or SDP.
-          const reason = (await res.text()).slice(0,3000);
-          const issue = /credit|balance|billing|payment/i.test(reason) ? 'billing'
-            : /capacity|runner|unavailable|overload/i.test(reason) ? 'capacity'
-            : /sdp|transceiver|m-line|offer/i.test(reason) ? 'offer'
-            : res.status === 401 || res.status === 403 ? 'access' : 'upstream';
-          return [424,{error:'直播服务未能建立连接',upstreamStatus:res.status,issue}];
-        }
-        const data = await res.json();
-        if (current !== show) return [409,{error:'直播已经结束'}];
-        if (target === bridge+'/session') {
-          current.session = data.session_id;
-          clearTimeout(current.timer);
-          current.timer = setTimeout(finish,125000).unref();
-        }
-        return [200,data];
-      } catch { return [502,{error:'直播连接已中断'}]; }
-    }
+    end:stop,
+    close(){closed=true;if(show)void stop(show.id).catch(()=>{});}
   };
 }

@@ -1923,17 +1923,29 @@ test('what a call was making when its connection was lost is finished where the 
  }
 });
 
+function fakeDirector(calls=[]){
+ return createImprovShow({run:async args=>{
+   calls.push(args);
+   if(args[0]==='start')return {id:'a123',phase:'waiting',playerPath:'/director/player.html#a123.'+'x'.repeat(43)};
+   if(args[0]==='direct')return {action:'send'};
+   return {phase:'ended'};
+ }});
+}
+
 test('improv tool joins a display call and steers its existing show without a gateway task',async t=>{
- const improv=createImprovShow({key:'fixture'});
+ const calls=[],improv=fakeDirector(calls);
  const f=await fixture(undefined,'grok',{improv});
  t.after(()=>{improv.close();return f.service.dispose();});
  assert(f.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
  f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'给我们来场直播'})),false);
  f.call('improv_live',{action:'start',shot:'橘猫推开便利店的门'},'start');
+ await delay(0);
  const show=f.client.sent.find(v=>v.type==='improv.live');
  assert.equal(show.action,'start');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'街角跑来一只猫',item_id:'scene-2'});
  f.call('improv_live',{action:'direct',shot:'转向街角'},'steer');
- assert.deepEqual(f.client.sent.filter(v=>v.type==='improv.live').map(v=>[v.id,v.action]),[[show.id,'start'],[show.id,'direct']]);
+ await delay(0);
+ assert.deepEqual(calls.filter(c=>c[0]==='direct').map(c=>c.at(-1)),['街角跑来一只猫']);
  assert.equal(f.invocations.some(v=>v?.tool==='improv_live'),false);
  const ordinary=await fixture();
  t.after(()=>ordinary.service.dispose());
@@ -1942,7 +1954,7 @@ test('improv tool joins a display call and steers its existing show without a ga
 
 test('a spoken invitation can open on the picture selected in this call',async t=>{
  const {createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
- const assets=createAssetShelf({}), improv=createImprovShow({key:'fixture'});
+ const assets=createAssetShelf({}), calls=[],improv=fakeDirector(calls);
  const f=await fixture(undefined,'grok',{assets,improv});
  t.after(()=>{improv.close();return f.service.dispose();});
  const owner=f.reservation.voiceSessionId, image='https://cdn.example/lighthouse.png';
@@ -1959,7 +1971,7 @@ test('a spoken invitation can open on the picture selected in this call',async t
  say('你可以用这张图开始一场直播吗？');
  start('with-image');
  await delay(0);
- assert.equal(f.client.sent.find(e=>e.type==='improv.live')?.imageUrl,image);
+ assert.equal(calls.find(c=>c[0]==='start')?.at(-1),image);
  assert.equal(await assets.openingImage(owner,'a999',''),'');
  assert.equal(await assets.openingImage(owner,'https://cdn.example/unlisted.png',''),'');
  assets.pick(owner,'');

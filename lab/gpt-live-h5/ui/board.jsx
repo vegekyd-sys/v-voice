@@ -826,7 +826,7 @@ function useFit(scroller, page, key) {
 }
 
 // One page of the canvas: its blocks, fitted to the panel.
-function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) {
+function Sheet({scene, liveMedia, spoken, loadPhoto, enlarge, caption = '', works = null}) {
   const box = useRef(null), sheet = useRef(null);
   const [missing, setMissing] = useState(() => new Set());
   const dense = useFit(box, sheet, scene.serial);
@@ -887,6 +887,7 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) 
   }
   return (
     <div className="board-scroll" ref={box} role="region" aria-live="polite" aria-label="画面内容" tabIndex={0}>
+      {liveMedia && <div className="board-live-media">{liveMedia}</div>}
       <div className="board-body" ref={sheet}
         data-side={blocks.some(block => SMALL.has(block.t) && block !== hero) && blocks.some(block => !SMALL.has(block.t) || block === hero) || undefined} data-lead={hero ? 'true' : undefined} data-cue={scene.cue || undefined}>
         {/* Nothing drawn yet: V's words, so the page is not empty while the picture is on its way. */}
@@ -939,7 +940,7 @@ class BoardGuard extends React.Component {
 export function Board(props) {
   return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
 }
-function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
+function Canvas({scene, liveMedia, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
@@ -976,7 +977,7 @@ function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onRepo
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
             <BoardGuard retry={`${item.serial}:${item.rev}`}>
-              <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />
+              <Sheet scene={item} liveMedia={index === active ? liveMedia : null} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />
             </BoardGuard>
           </div>
         ))}

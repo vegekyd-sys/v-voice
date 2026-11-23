@@ -774,11 +774,6 @@ async function startCall() {
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if(captureError)throw captureError;
     if (improvLive) active.improv = createImprovPlayer({
-      open: async (id, callbacks) => {
-        const {openDirector} = await import('./improv-transport.bundle.mjs');
-        if (call !== active || view.get().improv?.id !== id) throw Error('直播已结束');
-        return openDirector(apiUrl('improv-proxy') + '&call=' + encodeURIComponent(active.voiceSessionId) + '&show=' + encodeURIComponent(id), callbacks);
-      },
       update: improv => { if (call === active) view.set({improv}); },
       ended: id => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id}).catch(()=>{}); },
       notice: text => { if (call === active) setStatus(text,{tone:'success'}); },

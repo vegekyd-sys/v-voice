@@ -7,6 +7,8 @@ import {createPortal, flushSync} from 'react-dom';
 import {clock, resolveStatus, splitTurns} from '../call-view.mjs';
 import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
 import {Board} from './board.jsx';
+import {emptyScene} from '../board-scene.mjs';
+const liveOnlyScene = emptyScene();
 import {boardNowLine} from '../board-client.mjs';
 
 const Icon = ({d, children}) => <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">{d ? <path d={d} /> : children}</svg>;
@@ -472,7 +474,9 @@ function CallPage({view, actions, options}) {
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
   const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
-  const board = !state.improv && scene && !boardHidden && !(history && !wide) ? scene : null;
+  const currentScene = scene || (inCall && state.improv ? liveOnlyScene : null);
+  const board = !boardHidden && !(history && !wide) ? currentScene : null;
+  useEffect(() => { if (state.improv?.id) setBoardHidden(null); }, [state.improv?.id]);
   // What V is saying in answer to the caller's latest words: shown on a page that has nothing on it yet.
   const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
@@ -519,12 +523,11 @@ function CallPage({view, actions, options}) {
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
-          {!state.improv && scene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
+          {currentScene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
           {inCall && state.improvStill && <a className="improv-download" href={state.improvStill} download="即兴直播.jpg"><img src={state.improvStill} alt="" />保存留影</a>}
         </header>
         <section className="stage" aria-label="V">
-          {inCall && state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>}
-          <Avatar key="portrait" hidden={Boolean(inCall && state.improv)} onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
+          <Avatar key="portrait" onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
           {!inCall && (
             <div className="home">
               <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>
@@ -552,7 +555,7 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+        {board && <Board scene={board} liveMedia={state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
           works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
             : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing, autoSound: options.boardWorks.autoSound, film: options.boardWorks.film} : null}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}

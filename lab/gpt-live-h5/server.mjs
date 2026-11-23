@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import {createImprovShow} from '../realtime-direct-tools/improv-live.mjs';
+import {Readable} from 'node:stream';
+import {pipeline as pipeDirector} from 'node:stream/promises';
+import {createImprovShow,directorCommand} from '../realtime-direct-tools/improv-live.mjs';
 import {voiceAccessContext} from '../../lib/access-context.mjs';
 import {createPublicVoiceGateway} from '../../lib/public-voice-gateway.mjs';
 import {createVoiceAgentControl,listenVoiceAgentControl} from '../../lib/voice-agent-control.mjs';
@@ -62,7 +64,7 @@ const PAGE_FEATURES = Object.freeze({
 });
 export const callAttemptLimit = binding => binding.permissionProfile === 'unidentified' ? 6 : 30;
 
-export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAssets = null, boardAudience = 'owner', improvKey = process.env.VOICE_IMPROV_LIVE === '1' ? process.env.FAL_KEY : '', enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
+export function createLiveH5Server({ gateway, offer, directVoice, listening, speakerRouting, speakerFixture, candidateRelease, board = null, boardPhotos = null, boardAssets = null, boardAudience = 'owner', director = process.env.VOICE_IMPROV_LIVE === '1' ? directorCommand() : null, directorOrigin = process.env.MAKARON_DIRECTOR_URL, enableGrok = false, phoneInputPolicy = "speaker", preview = false, basePath = "", publicOrigin = "", accessToken = "", maxActiveSessions = 8, maxActiveSessionsPerIp = 2, avatarEvaluate = avatarEvaluatorFromEnv(), avatarLog, callControlAudit=()=>{}, callControlEvaluate=callControlEvaluatorFromEnv(), relayUsageFile = process.env.VOICE_RELAY_USAGE_FILE || '/var/lib/v-voice-usage/snapshot.json', conversationEntries = [], personalReply = {}, feishuAccounts = {}, feishuLogin, iosBindingsFile, iosPublicEntry = false, publicTools = iosPublicEntry, iosAppDownloadUrl = 'https://testflight.apple.com/join/5DybcrZA', callReportsDirectory, callSummarize=callSummarizerFromEnv(), defaultModel = "gpt-live", gptProvider = process.env.VOICE_GPT_PROVIDER ?? "openai", deviceEndpoint = null, backendDeviceEndpoint = '' }) {
   let agentControl = null;
   if (!['native','speaker'].includes(phoneInputPolicy)) throw new Error('Invalid phone input policy');
   if (!["gpt-live","seeduplex","grok"].includes(defaultModel)) throw new Error("Invalid default voice model");
@@ -205,7 +207,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     return issued;
   };
   const conversationPresentation=binding=>{const context=voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools});return {name:context.conversationLabel,kind:binding.kind,replySync:binding.replySync,accountLabel:context.accountLabel,entryKind:context.entryKind,scopeNote:context.scopeNote};};
-  const improvAllowed = binding => Boolean(improvKey) && binding.permissionProfile === 'personal-tianyi';
+  const improvAllowed = binding => Boolean(director) && binding.permissionProfile === 'personal-tianyi';
   const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
     ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
@@ -376,7 +378,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // the deployment selects the phone default, not browser heuristics.
         // Clients opt in only after implementing native response ownership and reversible pause.
         const inputPolicy = params.inputPolicy ?? 'speaker';
-        const improv = params.improvLive === true && !params.nativeRuntimeVersion && improvAllowed(binding) ? createImprovShow({key:improvKey}) : null;
+        const improv = params.improvLive === true && !params.nativeRuntimeVersion && improvAllowed(binding) ? createImprovShow({run:director}) : null;
         const reservation = await directVoice.reserve({...(improv?{improv}:{}),model:params.model,sessionKey,voice:params.voice,...(unidentified?{unidentified:true}:{}),...(binding.callerIdentity?{callerIdentity:binding.callerIdentity}:{}),...(binding.gateway?{gateway:callGateway,actorScoped:true,agentId:binding.agentId,toolIdentity:binding.actorPrincipal}:{}),...(params.nativeRuntimeVersion===1?{nativeRuntimeVersion:1}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:params.nativeDeviceActions,terminalKind:iosBindings?.read(req,binding)?'ios':'web',backendDeviceURL:backendDeviceEndpoint||`${hosted?publicOrigin:`http://127.0.0.1:${server.address().port}`}${basePath}/internal/device-request`}:{}),...(params.nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(replyTarget?{replyTarget,callReportFactory:ownerId=>callReports.begin(binding,replyTarget,ownerId,reportOptions)}:{}),...(binding.id!=='tianyi'?{sessionBound:true}:{}),...(speakerRouting||unidentified)?{inputPolicy}:{},...(prefetched?{prefetched}:{})});
         context.active={improv,sessionKey,gateway:callGateway,reservation,direct:true,touchedAt:Date.now(),cookie:req.headers.cookie};
         carryOn(context,reservation.voiceSessionId);
@@ -488,6 +490,26 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (basePath && url.pathname === basePath && req.method === "GET") { res.writeHead(308, { location: `${basePath}/${url.search}`, "cache-control": "no-store" }); res.end(); return; }
       if (basePath && !url.pathname.startsWith(`${basePath}/`)) return json(res, 404, { error: "没有这个入口" });
       let pathname = basePath ? url.pathname.slice(basePath.length) : url.pathname;
+      // The player authenticates its own single-show ticket at Makaron. No phone cookie or API key crosses this relay.
+      const directorAsset = req.method==='GET' && ['/director/player.html','/director/player.js','/director/transport.mjs'].includes(pathname);
+      const directorOp = req.method==='POST' && /^\/api\/director\/player\/(poll|signal|recording|stop)$/.test(pathname);
+      if(director && directorOrigin && (directorAsset || directorOp)){
+        const target=new URL(pathname,directorOrigin);
+        const headers={};
+        if(directorOp){
+          const ticket=req.headers['x-director-player'], id=url.searchParams.get('id');
+          if(!/^[a-zA-Z0-9_-]{43}$/.test(ticket??'') || !/^[a-f0-9-]{36}$/.test(id??''))return json(res,403,{error:'播放票据无效'});
+          target.searchParams.set('id',id);
+          for(const key of ['x-director-player','x-fal-target-url','content-type'])if(req.headers[key])headers[key]=req.headers[key];
+        }
+        const upstream=await fetch(target,{method:req.method,headers,redirect:'error',signal:AbortSignal.timeout(95000),...(directorOp?{body:req,duplex:'half'}:{})});
+        res.writeHead(upstream.status,{'content-type':upstream.headers.get('content-type')||'application/octet-stream','cache-control':'no-store','referrer-policy':'no-referrer'});
+        if(upstream.body){
+          try{await pipeDirector(Readable.fromWeb(upstream.body),res);}
+          catch{res.destroy();} // The retiring player may abandon its final in-flight poll.
+        }else res.end();
+        return;
+      }
       if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/board-shared/')) {
         const lent = lentPictures.get(/^\/board-shared\/([a-f0-9]{32})\.(?:jpg|png|webp)$/u.exec(pathname)?.[1]);
         if (!lent || lent.until < Date.now()) return json(res, 404, {error: '没有这张图'});
@@ -734,7 +756,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "improv-player.mjs", "improv-transport.bundle.mjs", "board-client.mjs", "board-assets-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "upload-backpressure.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "improv-player.mjs", "board-client.mjs", "board-assets-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "upload-backpressure.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
@@ -930,21 +952,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       // (Hung up after its connection had already gone: nothing is kept for a redial.)
       if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId)){letGo(context,params.voiceSessionId);return json(res,200,{ok:true});}
-      if (pathname === '/api/improv-proxy') {
-        const active = context.active;
-        if (!active?.improv || !improvAllowed(binding) || url.searchParams.get('call') !== active.reservation.voiceSessionId) return json(res,403,{error:'当前通话没有直播'});
-        const gone = new AbortController();
-        res.once('close', () => gone.abort());
-        const [status, value] = await active.improv.proxy(url.searchParams.get('show'),req.headers['x-fal-target-url'],params,gone.signal);
-        const target=req.headers['x-fal-target-url'];
-        const phase=target==='https://wma.fal.run/session'?'offer':target==='https://wma.fal.run/session/heartbeat'?'heartbeat':'ice';
-        if(phase!=='heartbeat'||status!==200)callControlAudit({type:'improv.signal',voiceSessionId:active.reservation.voiceSessionId,phase,status,upstreamStatus:value.upstreamStatus,issue:value.issue});
-        if (!res.destroyed) return json(res,status,value);
-        return;
-      }
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
-      if(pathname==='/api/improv-end')return json(res,200,{ended:context.active.improv?.end(params.id)??false});
+      if(pathname==='/api/improv-end')return json(res,200,{ended:await context.active.improv?.end(params.id)??false});
       if(pathname==='/api/device-result'){
         const active=context.active;
         if(active.direct||!active.deviceBound||active.deviceRetired||Object.keys(params).some(k=>!['voiceSessionId','frame'].includes(k)))return json(res,409,{error:'设备通道已结束'});

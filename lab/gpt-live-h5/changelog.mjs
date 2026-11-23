@@ -196,6 +196,11 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
     '仅 Candidate；持续电视、人声干扰和真人设备验收仍在验证。',
   ],
 };
+export const DIRECTOR_CANDIDATE_UPDATE = {
+  version:'voice-makaron-director.20261123.1',date:'2026-11-23',status:'candidate-validation',
+  title:'在讲解画布中主持即兴直播',
+  items:['讲解中的图片和直播可以同屏查看。','开播后直接说出下一幕，或说“直播结束”回到原来的通话。'],
+};
 export const VOICE_UPDATES = [
   {
     version:'voice-board-works.20261122.2',date:'2026-11-22',
