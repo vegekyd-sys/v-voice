@@ -972,6 +972,7 @@ function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, s
     setInView(index);
   };
   const lastLive = useRef(null);
+  const lastScene = useRef(scene.serial);
   useLayoutEffect(() => {
     if (liveId) {
       if (lastLive.current !== liveId || liveFocus) go(pages.length - 1);
@@ -980,7 +981,9 @@ function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, s
     lastLive.current = liveId;
   }, [liveId, liveFocus]);
   useLayoutEffect(() => {
-    if (!liveId && !pages[inView]?.clip) go(active);
+    const newScene = lastScene.current !== scene.serial;
+    lastScene.current = scene.serial;
+    if (!liveId && (newScene || !pages[inView]?.clip)) go(active);
     else if (track.current && inView >= pages.length - 1) go(pages.length - 1);
   }, [active, pages.length, scene.serial]);
   const onScroll = () => { const strip = track.current; if (strip?.clientWidth) setInView(Math.max(0, Math.min(pages.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)))); };
