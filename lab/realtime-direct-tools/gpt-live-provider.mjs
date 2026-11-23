@@ -262,7 +262,7 @@ export class GptLiveBridge {
     this.request.onDiagnostic?.({stage:'greeting-requested',attempt:greeting.tries,elapsedMs:Math.round(this.now()-this.startedAt)});
     // A call dialled again after its connection was cut is not greeted: V says it is back and goes on.
     const back=this.resume;
-    this.append(back?`电话刚才断了一下，现在接回来了，对方还在等你。现在就开口：先用半句话说接回来了（比如“刚才断了一下，接回来了”），不重新打招呼，然后${back.unfinished?'接着把刚才没讲完的内容讲下去，从断掉的地方往后讲，不要从头重讲':'问一句要不要接着刚才的说，然后停下来听'}。${back.user?`对方最后说的是：“${bound(back.user,200)}”。`:''}${back.reply?`你刚才讲到：“…${Array.from(back.reply).slice(-220).join('')}”${back.unfinished?'（话在这里断了）':''}。`:''}不委派，不等对方先说话。`
+    this.append(back?`电话刚才断了一下，现在接回来了，对方还在等你。现在就开口，用对方刚才跟你说话的语言（他说法语你就说法语，说英语就说英语）：先用半句话说接回来了（意思是“刚才断了一下，接回来了”），不重新打招呼，然后${back.unfinished?'接着把刚才没讲完的内容讲下去，从断掉的地方往后讲，不要从头重讲':'问一句要不要接着刚才的说，然后停下来听'}。${back.user?`对方最后说的是：“${bound(back.user,200)}”。`:''}${back.reply?`你刚才讲到：“…${Array.from(back.reply).slice(-220).join('')}”${back.unfinished?'（话在这里断了）':''}。`:''}不委派，不等对方先说话。`
       :`${greeting.text}现在就开口，只说一句很短的问候（十个字以内，比如“嗨，我是 V，在呢”），说完就停下来听。不提问，不提以前聊过的事，不委派，不等对方先说话。`,{channel:'speakable'});
     this.greetingTimer=setTimeout(()=>this.greet(),GREETING_RETRY_MS);this.greetingTimer.unref?.();
   }

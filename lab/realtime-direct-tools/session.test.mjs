@@ -24,9 +24,9 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='voice.product.task.cancel'){sdkTask.status='cancelled';return {taskId:sdkTask.taskId,cancelled:true};}
   return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
+ const service=createDirectVoiceService({gateway,...(options.relayPingMs?{relayPingMs:options.relayPingMs}:{}),...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
  const reservation=await service.reserve({model,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
- const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
+ const client=new EventEmitter();client.readyState=1;client.sent=[];if(options.pings)client.ping=()=>{client.pings=(client.pings??0)+1;};client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1721,6 +1721,11 @@ test('the page is not told to hang up while the voice path still hears the calle
  g.event({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下,还有个事'});
  assert(await until(()=>g.client.sent.some(e=>e.type==='end.cancelled')));release();await delay(10);
  assert(!g.client.sent.some(e=>e.type==='end.after-playback'));
+});
+test('a quiet call still sends something down to the caller every few seconds, and stops when the caller has gone',async t=>{
+ const f=await fixture(undefined,'seeduplex',{pings:true,relayPingMs:20});t.after(()=>f.service.dispose());
+ await delay(110);assert(f.client.pings>=3,'pings while nobody speaks');
+ f.client.readyState=3;f.client.emit('close',1006);await delay(10);const after=f.client.pings;await delay(80);assert.equal(f.client.pings,after);
 });
 test('a running tool is not silence',async t=>{
  const f=await fixture(()=>new Promise(()=>{}),'seeduplex',idleTiming);t.after(()=>f.service.dispose());

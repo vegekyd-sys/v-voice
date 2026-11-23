@@ -94,7 +94,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -529,6 +529,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   }
   async function start(s,client) {
     s.client=client;
+    // Something every few seconds on the way down to the caller. While V and the caller are both quiet the
+    // service sends nothing for as long as the quiet lasts, and a connection that had carried nothing down
+    // for 20 s was cut somewhere between the two ends (no close frame at either; the call had been up five
+    // minutes and the page's own traffic was still arriving). A protocol ping costs a few bytes.
+    if(typeof client.ping==='function'){
+      const beat=setInterval(()=>{if(client.readyState===1){try{client.ping();}catch{}}},relayPingMs);beat.unref?.();
+      client.on('close',()=>clearInterval(beat));
+    }
     client.on('close',code=>void close(s.id,'client-closed'+(code?':'+code:'')).catch(()=>{}));
     // A client that can already play may ask for the greeting while the model
     // is still connecting; it is spoken at ready, without another round trip.
