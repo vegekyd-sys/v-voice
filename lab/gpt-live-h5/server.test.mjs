@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createLiveH5Server ,callAttemptLimit} from "./server.mjs";
 import {createDirectVoiceService} from '../realtime-direct-tools/session.mjs';
+import {SEEDUPLEX_VOICE_CHOICES} from '../seeduplex-realtime-provider.mjs';
 import { transcriptEvent } from "./events.mjs";
 import { AVATAR_FILES } from "./avatar-state.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
@@ -526,4 +527,17 @@ test('GPT Live 1.1 stays out of the catalog until the service enables it, then r
  // The caller's choice of voice is one of the model's own, or the call is not made.
  assert.equal((await shown.request('session',{model:'gpt-live-11',voice:'xiaohe'})).status,400);assert.equal(reserved.length,0);
  assert.equal((await shown.request('session',{model:'gpt-live-11',voice:'maple'})).status,200);assert.equal(reserved[0].model,'gpt-live-11');assert.equal(reserved[0].voice,'maple');
+});
+
+test('a Doubao voice sent by the page is one the page offers, or the call is not made; no voice dials as before',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',label:'豆包 SeedDuplex',available:true,voice:'xiaohe',voices:SEEDUPLEX_VOICE_CHOICES}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-doubao-'+reserved.length,transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ const f=await fixture(t,{directVoice});
+ const status=await(await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();
+ assert.deepEqual(status.models.find(m=>m.id==='seeduplex').voices,JSON.parse(JSON.stringify(SEEDUPLEX_VOICE_CHOICES)));
+ // (GPT Live's voice, a raw speaker id, a mapped speaker the page does not offer, nothing.)
+ for(const voice of ['sol','zh_female_vv_uranus_bigtts','companion','',null]){const refused=await f.request('session',{model:'seeduplex',voice});assert.equal(refused.status,400);assert.match((await refused.json()).error,/豆包音色/u);}
+ assert.equal(reserved.length,0);
+ assert.equal((await f.request('session',{model:'seeduplex',voice:'taozi'})).status,200);assert.equal(reserved[0].voice,'taozi');
+ assert.equal((await f.request('close',{voiceSessionId:'test-doubao-1'})).status,200);
+ assert.equal((await f.request('session',{model:'seeduplex'})).status,200);assert.equal(reserved[1].voice,undefined);
 });

@@ -19,7 +19,7 @@ import {createDeviceLocation,LOCATION_TOOL,locationOperation} from './device-loc
 import {createNativeRuntime,DEFAULT_NATIVE_RUNTIME_POLICY} from './native-runtime.mjs';
 import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
-import {SeeduplexRealtimeVoiceBridge,preconnectSeeduplex} from '../seeduplex-realtime-provider.mjs';
+import {SEEDUPLEX_VOICE,SEEDUPLEX_VOICE_CHOICES,seeduplexVoice,SeeduplexRealtimeVoiceBridge,preconnectSeeduplex} from '../seeduplex-realtime-provider.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_DELEGATE_TOOL,LOCATION_CONTROL_TOOL,createToolExecutor,validateTool,processExited,withExecutionLines} from './tools.mjs';
@@ -229,7 +229,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const websocketServer=new wsModule.WebSocketServer({noServer:true,maxPayload:65536});
   if(gptLive)gptLive={...gptLive,voice:gptLiveVoice(gptLive.voice)};
   const configured=id=>id==='seeduplex'?Boolean(apiKeys.seeduplex):id==='gpt-live-11'?typeof gptLive?.resolveAuth==='function'&&typeof gptLive.loadMedia==='function':id==='grok'&&Boolean(apiKeys.grok);
-  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES,speed:grokSpeed,expressiveTags:grokExpressiveTags}:{}),...(m.id==='gpt-live-11'?{model:gptLive?.model??m.model,voice:gptLive?.voice??m.voice,voices:GPT_LIVE_VOICE_CHOICES}:{}),available:configured(m.id),billing:m.id==='gpt-live-11'?'subscription':'api',nativeTransport:'gateway-relay'}));
+  const models=()=>DIRECT_MODELS.map(m=>({...m,...(m.id==='grok'?{model:grokModel,label:grokVoiceLabel(grokModel),voices:GROK_VOICES,speed:grokSpeed,expressiveTags:grokExpressiveTags}:{}),...(m.id==='gpt-live-11'?{model:gptLive?.model??m.model,voice:gptLive?.voice??m.voice,voices:GPT_LIVE_VOICE_CHOICES}:{}),...(m.id==='seeduplex'?{voices:SEEDUPLEX_VOICE_CHOICES}:{}),available:configured(m.id),billing:m.id==='gpt-live-11'?'subscription':'api',nativeTransport:'gateway-relay'}));
   const current=s=>Boolean(s)&&!s.closed&&sessions.get(s.id)===s;
   const emit=(s,value)=>{
     if(!current(s))return;
@@ -426,7 +426,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if([...sessions.values()].some(s=>s.cleanupFailed))throw Error('上一通电话的后台任务正在确认退出，请稍后重试');
     const spec=models().find(m=>m.id===model);if(!spec)throw Error('没有这个语音模型');
     if(!configured(model))throw Error(`${spec.label} 尚未配置语音凭据`);
-    const selectedVoice=model==='grok'?grokVoice(voice):model==='gpt-live-11'&&voice!==undefined&&voice!==null?gptLiveVoice(voice):spec.voice;
+    // (Doubao: the caller's own choice on a phone page. An entry that sends none keeps the default, and so does a
+    // speaker or a robot: a device record's `voice` may name another model's voice and was never applied to Doubao.)
+    const selectedVoice=model==='grok'?grokVoice(voice):model==='gpt-live-11'&&voice!==undefined&&voice!==null?gptLiveVoice(voice):model==='seeduplex'&&surface==='phone'&&voice!==undefined&&voice!==null?seeduplexVoice(voice):spec.voice;
     const publicVoice=Boolean(unidentified&&callGateway?.publicVoice===true);
     if(unidentified){
       sessionBound=true;actorScoped=true;replyTarget=null;callReportFactory=null;inputPolicy='native';
@@ -561,7 +563,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       },
     }));
     // Lookup recovery is shared; cached PCM never interrupts the provider's pending function.
-    const noticeClips=s.model==='seeduplex'?loadToolStartClips():null,progressClips=s.model==='seeduplex'?toolProgressClips??loadToolProgressClips():[];
+    // (The waiting lines were recorded in the default voice: a call in another voice waits quietly instead of hearing a second voice.)
+    const noticeClips=s.model==='seeduplex'?loadToolStartClips():null,progressClips=s.model==='seeduplex'&&s.voice===SEEDUPLEX_VOICE?toolProgressClips??loadToolProgressClips():[];
     s.audioDelivery=createAudioDeliveryMetrics({report:event=>audit({...event,voiceSessionId:s.id})});
     const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);s.audioDelivery.packet(audio.length,metadata.responseId);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
     // A slow native lookup gets a cached "still looking" line, delivered like the
@@ -906,7 +909,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }
     const instructionCatalog=entries.map(entry=>(searchAck&&isSearchTool(entry.id)||s.mediaCliAvailable&&entry.id==='exec')?{...entry,description:voiceTools.find(tool=>tool.name===entry.id)?.description??entry.description}:entry);
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
-    const request={providerConfig:{voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
+    const request={providerConfig:{voice:s.model==='seeduplex'?s.voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
       instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(s.model==='gpt-live-11'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
