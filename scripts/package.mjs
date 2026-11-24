@@ -53,7 +53,7 @@ for(const name of packaged){
  if(!/\.m?js$/u.test(name))continue;
  const source=await readFile(join(root,name),'utf8');
  for(const [,spec] of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)['"](\.{1,2}\/[^'"]+)['"]/gu)){
-  const dep=relative(root,resolve(root,dirname(name),spec));
+  const dep=relative(root,resolve(root,dirname(name),spec.split(/[?#]/u,1)[0]));
   if(!packaged.has(urlAliases[dep]??dep))missing.push(name+' -> '+dep);
  }
 }
