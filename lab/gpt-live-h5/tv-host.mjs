@@ -43,6 +43,9 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   const avatar = () => document.querySelector?.('.call-page .avatar');
   const setLayout = (value, expected) => {
     if (!validOwner(expected) || !['compact','medium','full'].includes(value)) return false;
+    // The call UI requests compact as soon as it sees idle. Keep the full native
+    // surface until the on-screen portrait reaches the desktop, including on a slow TV.
+    if(value==='compact'&&landing&&document.documentElement.dataset.tvLanding==='moving')return true;
     if(value===layout&&view.get().tvLayout===value)return true;
     avatarAnimation?.cancel();
     enteringAvatar = null;
@@ -156,7 +159,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const x=(companionBounds.x+companionBounds.width-80-hostBounds.x)*scale-rect.left;
       const y=(companionBounds.y+30-hostBounds.y)*scale-rect.top;
       const target=`translate3d(${x}px,${y}px,0) scale(${64*scale/rect.width})`;
-      const finish=()=>{if(landing===ghost){ghost.style.transform=target;document.documentElement.dataset.tvLanding='arrived';}};
+      const finish=()=>{if(landing===ghost){ghost.style.transform=target;document.documentElement.dataset.tvLanding='arrived';setLayout('compact');}};
       // Let Chromium composite the starting circle before releasing the layer to its animator.
       window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>{
         if(landing!==ghost||document.documentElement.dataset.tvLanding!=='moving')return;

@@ -254,3 +254,23 @@ test('full layout waits for the resized overlay and animates from the actual des
  assert.equal(window.document.documentElement.dataset.tvLayout,'full');
  assert.equal(animations.length,1);assert.match(animations[0][0].transform,/translate/);
 });
+
+test('going idle on a lesson keeps the full window until the portrait reaches Home',async()=>{
+ const {api,window,view}=fixture('?tv=1&tvShell=1&tvOverlay=1');
+ const {document}=window, jobs=[];let arrived,removed=false;
+ const face={getBoundingClientRect:()=>({left:625,top:93,width:74,height:74})};
+ document.querySelector=s=>s==='.call-page .avatar'?face:null;
+ document.getElementById=()=>({animate(){}});
+ const ghost={style:{},setAttribute(){},getContext:()=>({drawImage(){}}),remove(){removed=true;},
+   animate:frames=>{assert.match(frames[1].transform,/translate3d/);return {finished:new Promise(resolve=>{arrived=resolve;})};}};
+ document.createElement=()=>ghost;document.body={appendChild(){}};
+ window.innerWidth=1200;window.requestAnimationFrame=fn=>jobs.push(fn);window.setTimeout=()=>{};
+ api.commitLayout('medium',undefined,{x:630,y:100,width:264});
+ api.setLayout('full');api.commitLayout('full',undefined,{x:0,y:0,width:920});
+ view.set({call:'connected'});api.landPortrait();view.set({call:'idle'});api.setLayout('compact');
+ assert.equal(api.snapshot.layout,'full');assert.equal(api.snapshot.landing,true);
+ while(jobs.length)jobs.shift()();
+ arrived();await Promise.resolve();
+ assert.equal(api.snapshot.layout,'compact');assert.equal(api.snapshot.landing,false);
+ api.commitLayout('compact',undefined,{x:630,y:100,width:264});assert.equal(removed,true);
+});
