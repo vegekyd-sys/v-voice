@@ -79,8 +79,6 @@ export function gptLiveDelegationPolicy(names,{display=true}={}){
     'Delegation policy:',
     'Backend tools:',
     ...can.map(line=>`- ${line}`),
-    // (The kind is the model's own choice of tool: see `GPT_LIVE_KINDS`.)
-    `委派时，那句话用上面清单里的类别名加冒号开头，后面写要查的关键词或要办的事，把这段对话里指代的东西补全${[has('memory_search')&&'“记忆：heartbeat 多久跑一次 现状”',has('web_search')&&'“搜索：2026年11月 人工智能 证明 数学难题”',has('end_call')&&'“挂断：”'].filter(Boolean).map((x,i)=>i?x:`，例如${x}`).join('')}。`,
     'Delegate to the backend when:',
     '- 需要实时信息（新闻、比分、价格、天气、时间）、用户的个人资料或历史、创作，或者任何实际操作。你自己不能上网、不能读写资料、不能办事，不要凭记忆猜，也不要只口头答应。',
     '- 说到用户自己的事（他的项目、家人、以前定过或聊过的事）或最近发生的事：你说出口的每个具体事实（名字、数字、日期、进展、谁定的、为什么、怎么做到的）都必须出自这通电话里已经查回来的结果。用户接着聊其中一部分、换个角度问、追问、纠正，或问到结果里没写的细节（“我想从这部分聊”“那它多久一次”“是谁定的”“是怎么做到的”“哪天的事”“那另一场呢”“不对，我说的是……”）：先看手里的结果有没有明明白白写着这一点，有就直接讲，没有就再委派去查，不要用常识或印象补。',
