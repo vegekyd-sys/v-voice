@@ -142,20 +142,29 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const rect=avatar()?.getBoundingClientRect(),picture=document.getElementById('avatar');
       if(!rect?.width || !picture?.animate) return;
       // Keep only the current portrait while the call releases its media and the board unmounts.
-      const ghost=document.createElement('img');
-      ghost.alt='';ghost.src=picture.currentSrc||picture.src;ghost.className='tv-landing-portrait';
+      const ghost=document.createElement('canvas');
+      ghost.className='tv-landing-portrait';ghost.setAttribute('aria-hidden','true');
+      // Keep the decoded frame that is actually on screen. Reopening an animated WebP
+      // here can leave the overlay empty while the desktop already shows through.
+      const pixels=Math.min(512,Math.ceil(rect.width*(window.devicePixelRatio||1)));
+      ghost.width=ghost.height=pixels;
+      try{ghost.getContext('2d').drawImage(picture,0,0,pixels,pixels);}catch{return;}
       Object.assign(ghost.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
       document.body.appendChild(ghost);landing=ghost;
       document.documentElement.dataset.tvLanding='moving';
       const scale=window.innerWidth/hostBounds.width;
-      // The desktop portrait is the 64dp circle inside the companion hit target.
-      const x=(companionBounds.x+companionBounds.width-16-64-hostBounds.x)*scale-rect.left;
+      const x=(companionBounds.x+companionBounds.width-80-hostBounds.x)*scale-rect.left;
       const y=(companionBounds.y+30-hostBounds.y)*scale-rect.top;
-      const animation=ghost.animate([{transform:'none'},{transform:`translate(${x}px,${y}px) scale(${64*scale/rect.width})`}],
-        {duration:330,easing:'cubic-bezier(.35,0,.2,1)',fill:'forwards'});
-      const finish=()=>{if(landing===ghost)document.documentElement.dataset.tvLanding='arrived';};
-      animation.finished.then(finish,finish);
-      window.setTimeout(finish,450);
+      const target=`translate3d(${x}px,${y}px,0) scale(${64*scale/rect.width})`;
+      const finish=()=>{if(landing===ghost){ghost.style.transform=target;document.documentElement.dataset.tvLanding='arrived';}};
+      // Let Chromium composite the starting circle before releasing the layer to its animator.
+      window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>{
+        if(landing!==ghost||document.documentElement.dataset.tvLanding!=='moving')return;
+        const motion=ghost.animate([{transform:'translate3d(0,0,0) scale(1)'},{transform:target}],
+          {duration:440,easing:'cubic-bezier(.35,0,.2,1)',fill:'forwards'});
+        motion.finished.then(finish,finish);
+      }));
+      window.setTimeout(finish,1100);
     },
     focusPrimary,
     passiveFocus(focused){if(overlay)document.documentElement.dataset.tvPassiveFocused=String(focused===true);},

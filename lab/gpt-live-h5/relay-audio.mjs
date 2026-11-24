@@ -92,7 +92,7 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
   let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
   let paused=false,held=false,complete=false,muted=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
-  const rate=24000,blockFrames=2400,lead=.48;
+  const rate=24000,blockFrames=2400,lead=.72;
   const port={onmessage:null,postMessage:command,close:dispose};output.port=port;
   const futureFrames=(block,now)=>Math.max(0,block.pcm.length-Math.max(0,Math.min(block.pcm.length,Math.floor((now-block.at)*rate+1e-5))));
   function trim(now){scheduled=scheduled.filter(b=>b.at+b.pcm.length/rate>now);}
@@ -123,7 +123,7 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
     for(const b of scheduled){const left=futureFrames(b,now);pending+=left;if(now>=b.at&&left>0)playing=true;if(now>=b.at)lastPlayedAt=Math.min(now,b.at+b.pcm.length/rate);}
     trim(now);
     if(playing)starved=false;
-    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;if(growMs)prefillMs=Math.min(Math.max(prefillMs,maxMs),prefillMs+growMs);}
+    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;if(growMs){prefillMs=Math.min(maxMs,prefillMs+growMs);firstAt=now;}}
     if(!paused&&!held&&context.state==='running'&&frames){
       if(nextAt===null||nextAt<now){nextAt=Math.max(now+.02,(firstAt??now)+(complete?0:prefillMs/1000));}
       while(frames&&nextAt<now+lead){
@@ -345,7 +345,10 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     if(context.state!=='running')throw Error('麦克风和声音已暂停，请轻点页面后重新拨号。');
     const buffered=bufferedOutput&&typeof subscribePcm==='function'&&typeof renderReference!=='function';
     stats.bufferedOutput=buffered?1:0;
-    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs,growMs:bufferGrowMs||80,maxMs:Math.max(bufferMaxMs,440)});
+    if(buffered){
+      stats.startBufferMs=Math.max(startBufferMs,240);
+      speaker=createBufferedPcmSpeaker(context,{prefillMs:stats.startBufferMs,growMs:bufferGrowMs||100,maxMs:Math.max(bufferMaxMs,640)});
+    }
     else {
       const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
       try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}

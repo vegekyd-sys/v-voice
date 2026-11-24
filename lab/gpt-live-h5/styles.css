@@ -2341,6 +2341,6 @@ html[data-tv-layout="full"] .board{mask-image:none;-webkit-mask-image:none}
 
 /* Home already enlarges the portrait during dialing. Its first WebView frame is at that final size. */
 html[data-tv-overlay="true"][data-tv-layout="medium"]:not([data-tv-revealed="true"]) .call-page .avatar{transform:none;transition:none!important}
-.tv-landing-portrait{position:fixed;z-index:100;object-fit:cover;border-radius:50%;transform-origin:0 0;pointer-events:none}
+.tv-landing-portrait{will-change:transform;position:fixed;z-index:100;object-fit:cover;border-radius:50%;transform-origin:0 0;pointer-events:none}
 html[data-tv-landing],html[data-tv-landing] body{background:transparent!important}
 html[data-tv-landing] #app{opacity:0;pointer-events:none}
