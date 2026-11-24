@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-24 — iOS App calls no longer end five seconds in
+
+- The relay's keepalive line (`{"type":"keepalive"}` every 5 s, added 11-24 for web pages behind middleboxes that drop pings) went to every client. The released iOS App reads each line of a native-runtime call as a runtime frame and fails the call on one it does not know ("当前服务的语音协议尚不支持"), so every App call ended about five seconds after connecting, whatever the model. The line now goes only to phone web pages; the App and speakers get the protocol ping alone, as before.
+
 ## 2026-11-24 — GPT Live 1.1 released; GPT Live One retired (`voice-gpt-live-11.20261124.1`)
 
 - GPT Live 1.1 (below, from the Candidate of 2026-11-20 to 11-24) goes to production. It is offered on the phone where the service has `VOICE_ENABLE_GPT_LIVE_11=1` and a login; robot and speaker endpoints are not offered it.

@@ -535,9 +535,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // minutes and the page's own traffic was still arriving). A protocol ping costs a few bytes.
     // A second call was cut the same way with the pings on (16 s after V's last word, 11/24): whatever is in
     // between need not pass a ping on to the page, so a line of data goes with it. It carries no call id,
-    // and a page of any version drops such a line before reading it.
+    // and a web page of any version drops such a line before reading it. Only a web page: the released iOS
+    // App reads every line of a native-runtime call as a runtime frame and hangs up on one it does not know
+    // (11/24: every App call ended five seconds in), and a speaker's adapter was never shown to skip it.
+    // Those clients answer the protocol ping, which they always have.
+    const line=s.surface==='phone'&&!s.nativeRuntime;
     if(typeof client.ping==='function'){
-      const beat=setInterval(()=>{if(client.readyState===1){try{client.ping();client.send('{"type":"keepalive"}');}catch{}}},relayPingMs);beat.unref?.();
+      const beat=setInterval(()=>{if(client.readyState===1){try{client.ping();if(line)client.send('{"type":"keepalive"}');}catch{}}},relayPingMs);beat.unref?.();
       client.on('close',()=>clearInterval(beat));
     }
     client.on('close',code=>void close(s.id,'client-closed'+(code?':'+code:'')).catch(()=>{}));
