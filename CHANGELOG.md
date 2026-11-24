@@ -1,6 +1,12 @@
 # Changelog
 
 
+
+## 2026-11-24 — Live broadcast recordings reach the server on a slow uplink (`voice-makaron-director.20261124.5`)
+
+- Online acceptance found the recording upload cut off: through the production tunnel it arrived at about 70 KB/s, and the Voice relay gave every Director player request 95 s. The recording upload alone now gets 15 minutes; other player requests keep 95 s.
+- The Makaron player records at 0.9 Mbps video and 64 kbps audio (Makaron dev), about half the earlier size.
+
 ## 2026-11-24 — Live broadcast on the lesson board released (`voice-makaron-director.20261124.4`)
 
 - The Candidate work below (2026-11-23 to 11-24) goes to production: the voice model opens, steers and ends a Makaron Director broadcast with `improv_live`, the show advances its own story, and the recording is archived on the board.
