@@ -39,7 +39,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     view.set({tvLayout:layout});
     window.requestAnimationFrame?.(focusPrimary);
   };
-  let hostBounds, enteringAvatar, avatarAnimation;
+  let hostBounds, companionBounds, enteringAvatar, avatarAnimation, landing;
   const avatar = () => document.querySelector?.('.call-page .avatar');
   const setLayout = (value, expected) => {
     if (!validOwner(expected) || !['compact','medium','full'].includes(value)) return false;
@@ -83,7 +83,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const focus=element?.getAttribute?.('data-tv-control')??({textToggle:'compose',steerText:'input',steer:'send',readerBack:'reader-back',readerBody:'reader-body',mute:'mute',stop:'end'})[element?.id];
       const state=view.get();
       const mic=window.__gptLiveDuplexDiagnostics?.microphone;
-      return Object.freeze({...snapshot,reading:state.reading===true,
+      return Object.freeze({...snapshot,landing:document.documentElement.dataset.tvLanding==='moving',reading:state.reading===true,
         microphone:Object.freeze({driver:state.call==='idle'?'none':mic?.kind==='tv-array-microphone'?'tv-array':'browser',
           channels:mic?.kind==='tv-array-microphone'&&[4,6].includes(mic.channels)?mic.channels:null,
           acousticEchoTestPassed:false}),
@@ -104,7 +104,11 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       // Full pages use the original desktop layout at a wider CSS viewport;
       // compact/medium windows retain their established island scale.
       if (enteringAvatar && bounds?.width === enteringAvatar.windowWidth) return false;
-      if (Number.isFinite(bounds?.x) && Number.isFinite(bounds?.y)) hostBounds = bounds;
+      if (Number.isFinite(bounds?.x) && Number.isFinite(bounds?.y)) {
+        hostBounds = bounds;
+        if(value!=='full') companionBounds = bounds;
+      }
+      if(value==='compact' && landing){landing.remove();landing=null;delete document.documentElement.dataset.tvLanding;}
       if(shell&&Number.isFinite(bounds?.width)&&bounds.width>=48&&bounds.width<=7680) {
         const width=value==='full'?Math.max(1200,bounds.width):bounds.width;
         const scale=value==='full'?bounds.width/width:1;
@@ -131,6 +135,27 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         });
       }
       return true;
+    },
+    landPortrait() {
+      if (!overlay || layout!=='full' || !companionBounds || !hostBounds || landing ||
+          window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      const rect=avatar()?.getBoundingClientRect(),picture=document.getElementById('avatar');
+      if(!rect?.width || !picture?.animate) return;
+      // Keep only the current portrait while the call releases its media and the board unmounts.
+      const ghost=document.createElement('img');
+      ghost.alt='';ghost.src=picture.currentSrc||picture.src;ghost.className='tv-landing-portrait';
+      Object.assign(ghost.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
+      document.body.appendChild(ghost);landing=ghost;
+      document.documentElement.dataset.tvLanding='moving';
+      const scale=window.innerWidth/hostBounds.width;
+      // The desktop portrait is the 64dp circle inside the companion hit target.
+      const x=(companionBounds.x+companionBounds.width-16-64-hostBounds.x)*scale-rect.left;
+      const y=(companionBounds.y+30-hostBounds.y)*scale-rect.top;
+      const animation=ghost.animate([{transform:'none'},{transform:`translate(${x}px,${y}px) scale(${64*scale/rect.width})`}],
+        {duration:330,easing:'cubic-bezier(.35,0,.2,1)',fill:'forwards'});
+      const finish=()=>{if(landing===ghost)document.documentElement.dataset.tvLanding='arrived';};
+      animation.finished.then(finish,finish);
+      window.setTimeout(finish,450);
     },
     focusPrimary,
     passiveFocus(focused){if(overlay)document.documentElement.dataset.tvPassiveFocused=String(focused===true);},

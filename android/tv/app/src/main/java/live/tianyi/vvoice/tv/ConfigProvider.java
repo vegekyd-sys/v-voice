@@ -15,6 +15,7 @@ public final class ConfigProvider extends ContentProvider {
     @Override public String getType(Uri uri) { return "application/json"; }
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if (!"/config".equals(uri.getPath()) || !"w".equals(mode)) throw new FileNotFoundException();
+        CallService.configChanging();
         return ParcelFileDescriptor.open(new File(getContext().getFilesDir(), "entry.json"),
             ParcelFileDescriptor.MODE_WRITE_ONLY | ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE);
     }

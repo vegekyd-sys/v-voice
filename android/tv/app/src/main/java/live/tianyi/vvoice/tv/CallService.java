@@ -26,9 +26,12 @@ public final class CallService extends Service {
     private static CallService current;
     private static boolean entryVisible;
     static void entryStarted(){entryVisible=true;if(current!=null&&current.attached){current.windows.removeView(current.surface);current.attached=false;}}
-    static void entryFinished(){entryVisible=false;if(current!=null)current.handler.postDelayed(()->{if(current!=null&&!entryVisible)current.resize(current.mode);},250);}
+    static void entryFinished(){entryVisible=false;if(current!=null)current.handler.postDelayed(()->{if(current!=null&&!current.standby&&!entryVisible)current.resize(current.mode);},250);}
     private WindowManager windows;
     private WindowManager.LayoutParams window;
+    private boolean standby, configChanged;
+    private final Runnable expireStandby=()->{if(standby)stopSelf();};
+    static void configChanging(){CallService s=current;if(s!=null)s.handler.post(()->{s.configChanged=true;if(s.standby)s.stopSelf();});}
     private boolean attached,interactive=true,hadCall,closing,startupCueFinished;
     private String lastCall="idle";
     private long idleSince;
@@ -132,7 +135,7 @@ public final class CallService extends Service {
         IntentFilter query=new IntentFilter("live.tianyi.vvoice.tv.QUERY_SURFACE");
         registerReceiver(surfaceQuery,query,"live.tianyi.familytv.permission.VOICE_SURFACE",null,Context.RECEIVER_EXPORTED);
         handler.post(poll);
-        handler.postDelayed(()->{if(!surfaceAnnounced){getSharedPreferences("diagnostics",0).edit().putString("failure_code","TV_SURFACE_TIMEOUT").apply();android.widget.Toast.makeText(this,"V 暂时连接不上，请稍后重试",android.widget.Toast.LENGTH_LONG).show();stopSelf();}},30000);
+        handler.postDelayed(()->{if(!standby&&!surfaceAnnounced){getSharedPreferences("diagnostics",0).edit().putString("failure_code","TV_SURFACE_TIMEOUT").apply();android.widget.Toast.makeText(this,"V 暂时连接不上，请稍后重试",android.widget.Toast.LENGTH_LONG).show();stopSelf();}},30000);
     }
     private void prepareAudioPage(String url){
         if(audioPageProvisioned||!EntryPolicy.trusted(url))return;
@@ -214,6 +217,29 @@ public final class CallService extends Service {
         getSharedPreferences("diagnostics",0).edit().putBoolean("interactive",interactive).apply();
         web.post(this::acknowledgeLayout);
     }
+    private void park(){
+        if(!personal || configChanged){stopSelf();return;}
+        standby=true;hadCall=false;closing=false;interactive=false;
+        surfaceAnnounced=hostPresented=visualPending=pageFocusReady=false;
+        lastCall="idle";pageVersion++;pendingLaunch=null;
+        arrayCapture.invalidate();arrayCapture.foreground(false);
+        audioPageProvisioned=nativeMicReady=false;
+        handler.removeCallbacks(poll);
+        if(attached){windows.removeView(surface);attached=false;}
+        web.onPause();
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",false).putBoolean("interactive",false)
+            .putString("mic_driver","none").putInt("mic_channels",0).apply();
+        handler.postDelayed(expireStandby,120000);
+    }
+    private void resumeStandby(){
+        handler.removeCallbacks(expireStandby);standby=false;startupCueFinished=false;
+        startNotification();web.onResume();web.setAlpha(0);arrayCapture.foreground(true);
+        prepareAudioPage(web.getUrl());web.evaluateJavascript("window.vVoiceTV?.setLayout('medium')",null);
+        resize("medium");lastDiagnostics="";
+        getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",true).putString("failure_code","").apply();
+        handler.removeCallbacks(poll);handler.post(poll);
+    }
     private void showCall(){
         String target = "connected".equals(lastCall) ? "full" : "medium";
         web.evaluateJavascript("window.vVoiceTV?.setLayout("+JSONObject.quote(target)+")",null);
@@ -230,7 +256,7 @@ public final class CallService extends Service {
     private final BroadcastReceiver surfaceQuery=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(surfaceAnnounced){if(i.getBooleanExtra("expand",false)){showCall();}announce(true);web.evaluateJavascript("window.vVoiceTV?.passiveFocus?.("+i.getBooleanExtra("focused",false)+")",null);}}};
     private final BroadcastReceiver systemEvents=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){
         if(Intent.ACTION_SCREEN_OFF.equals(i.getAction())){action("end");stopSelf();}
-        else if("homekey".equals(i.getStringExtra("reason")))collapse();
+        else if(!standby&&"homekey".equals(i.getStringExtra("reason")))collapse();
     }};
     private void startNotification(){
         NotificationManager manager=getSystemService(NotificationManager.class);
@@ -244,6 +270,7 @@ public final class CallService extends Service {
     @Override public IBinder onBind(Intent intent){return null;}
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent==null){stopSelf();return START_NOT_STICKY;}
+        if(standby)resumeStandby();
         if("END".equals(intent.getAction())){action("end");handler.postDelayed(this::stopSelf,300);return START_NOT_STICKY;}
         closing=false;idleSince=0;
         if(START_CALL.equals(intent.getAction())&&"idle".equals(lastCall)){hadCall=false;pendingLaunch="launch-"+java.util.UUID.randomUUID();}
@@ -257,9 +284,9 @@ public final class CallService extends Service {
         web.evaluateJavascript("window.vVoiceTV?.action("+JSONObject.quote(name)+","+expected+")",null);
     }
     private final Runnable poll=new Runnable(){public void run(){
-        if(!visible)return;
+        if(!visible||standby)return;
         web.evaluateJavascript("JSON.stringify(window.vVoiceTV?{...window.vVoiceTV.snapshot,surfaceReady:Boolean(document.querySelector('.call-page .avatar #avatar')?.naturalWidth&&!document.documentElement.dataset.tvTransition)}:null)",value->{
-            if(!visible)return;
+            if(!visible||standby)return;
             try{
                 Object raw=new JSONTokener(value).nextValue();if(!(raw instanceof String))return;
                 JSONObject p=new JSONObject((String)raw);String owner=p.getString("owner");
@@ -272,10 +299,10 @@ public final class CallService extends Service {
                 String call=p.optString("call");
                 if(!"idle".equals(call))finishStartupCue();
                 if(!"idle".equals(call)){hadCall=true;idleSince=0;closing=false;}
-                if(hadCall&&"idle".equals(call)&&!closing){
+                if(hadCall&&"idle".equals(call)&&!closing&&!p.optBoolean("landing")){
                     closing=true;pendingLaunch=null;
                     if(!p.optString("failureCode","").isEmpty()&&!"null".equals(p.optString("failureCode")))handler.postDelayed(()->{if(closing)stopSelf();},12000);
-                    else{collapse();handler.postDelayed(()->{if(closing){announce(false);handler.postDelayed(()->{if(closing)stopSelf();},120);}},500);}
+                    else{collapse();handler.postDelayed(()->{if(closing){announce(false);handler.postDelayed(()->{if(closing)park();},120);}},500);}
                 }
                 if(!hadCall&&pendingLaunch==null&&"idle".equals(call)){
                     if(idleSince==0)idleSince=android.os.SystemClock.elapsedRealtime();
@@ -294,7 +321,7 @@ public final class CallService extends Service {
                     .putString("meter_source",meter==null?"none":meter.optString("source","none"))
                     .putInt("meter_peak",meter==null?0:meter.optInt("peak",0))
                     .putInt("viewport_width",viewport==null?0:viewport.optInt("width",0)).putInt("viewport_height",viewport==null?0:viewport.optInt("height",0)).apply();}
-                String next=p.optString("layout","full");if(!next.equals(mode))resize(next);
+                String next=p.optString("layout","full");if(!closing&&!next.equals(mode))resize(next);
                 prepareNativeFocus();
                 JSONObject actions=p.optJSONObject("actions");
                 if(pendingLaunch!=null&&!"idle".equals(p.optString("call")))pendingLaunch=null;

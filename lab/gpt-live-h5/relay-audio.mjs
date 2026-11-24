@@ -92,7 +92,7 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
   let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
   let paused=false,held=false,complete=false,muted=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
-  const rate=24000,blockFrames=2400,lead=.16;
+  const rate=24000,blockFrames=2400,lead=.48;
   const port={onmessage:null,postMessage:command,close:dispose};output.port=port;
   const futureFrames=(block,now)=>Math.max(0,block.pcm.length-Math.max(0,Math.min(block.pcm.length,Math.floor((now-block.at)*rate+1e-5))));
   function trim(now){scheduled=scheduled.filter(b=>b.at+b.pcm.length/rate>now);}
@@ -345,7 +345,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     if(context.state!=='running')throw Error('麦克风和声音已暂停，请轻点页面后重新拨号。');
     const buffered=bufferedOutput&&typeof subscribePcm==='function'&&typeof renderReference!=='function';
     stats.bufferedOutput=buffered?1:0;
-    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs,growMs:bufferGrowMs,maxMs:bufferMaxMs});
+    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs,growMs:bufferGrowMs||80,maxMs:Math.max(bufferMaxMs,440)});
     else {
       const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
       try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}

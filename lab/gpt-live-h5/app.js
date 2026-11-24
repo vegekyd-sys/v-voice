@@ -1,7 +1,7 @@
 import {createImprovPlayer} from "./improv-player.mjs";
 import {phoneModelOptions} from "./model-options.mjs";
 import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
-import {captureTvArray,hasTvArrayCapture,tvArraySupportsModel} from "./tv-array-capture.mjs";
+import {captureTvArray,hasTvArrayCapture,warmTvAudio,tvArraySupportsModel} from "./tv-array-capture.mjs";
 import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
@@ -32,6 +32,7 @@ const $ = (id) => document.getElementById(id);
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
 const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
+if(tvHost)warmTvAudio();
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
   // With the call board on, a delivered document stays a card in the
@@ -657,6 +658,7 @@ function providerMessage(event) {
 }
 async function stopCall({failure}={}) {
   const active = call; call = null;
+  if (active && !failure && tvHost) {tvHost.landPortrait?.();warmTvAudio();}
   if (starting === active) starting = null;
   if (active) {
     active.improv?.finish('call');

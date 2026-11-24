@@ -10,6 +10,13 @@ public class CaptureCreditsTest {
         c.acknowledge(1);assertTrue(c.available());c.sent();assertFalse(c.available());
         for(int n=2;n<=9;n++)c.acknowledge(n);assertTrue(c.available());
     }
+    @Test public void aBatchReleasesOnlyItsOwnFrames(){
+        CaptureCredits c=new CaptureCredits();for(int i=0;i<6;i++)c.sent();
+        assertThrows(IllegalArgumentException.class,()->c.acknowledge(4,3));
+        c.acknowledge(3,3);assertEquals(5,c.remaining());
+        assertThrows(IllegalArgumentException.class,()->c.acknowledge(3,3));
+        c.acknowledge(6,3);assertEquals(8,c.remaining());
+    }
     @Test public void duplicateFutureAndCrossGenerationAcknowledgementsCannotGrantCredit(){
         CaptureCredits c=new CaptureCredits();c.sent();
         assertThrows(IllegalArgumentException.class,()->c.acknowledge(2));
