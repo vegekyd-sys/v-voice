@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-24 — GPT Live 1.1 is given whole results, as Doubao is
+
+- GPT Live 1.1 was given every tool result except a search cut at 2,400 characters: a day of six meetings showed it three, and a page or a background task's result stopped mid-way, so it said what it had and seemed cut off. Doubao is given the same results whole up to 32 KB.
+- Every result now reaches GPT Live whole up to that same budget (`TOOL_RESULT_MAX_BYTES` in `search-result.mjs`, now also the bound Doubao and Grok check), and only past it is cut. Search and memory digests keep every passage as returned instead of six cut to 520 and 1,200 characters.
+- Doubao and Grok receive exactly what they did.
+
 ## 2026-11-24 — iOS App calls no longer end five seconds in
 
 - The relay's keepalive line (`{"type":"keepalive"}` every 5 s, added 11-24 for web pages behind middleboxes that drop pings) went to every client. The released iOS App reads each line of a native-runtime call as a runtime frame and fails the call on one it does not know ("当前服务的语音协议尚不支持"), so every App call ended about five seconds after connecting, whatever the model. The line now goes only to phone web pages; the App and speakers get the protocol ping alone, as before.

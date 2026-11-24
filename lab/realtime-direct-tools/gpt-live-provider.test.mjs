@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
 import {GptLiveBridge,GPT_LIVE_MODEL,GPT_LIVE_IDENTITY,gptLiveDelegationPolicy,gptLiveInitialItems,gptLiveResultText,gptLiveText,gptLiveVoice} from './gpt-live-provider.mjs';
+import {TOOL_RESULT_MAX_BYTES} from './search-result.mjs';
 import {createDelegationRouter} from './gpt-live-router.mjs';
 const signal=()=>({listeners:[],subscribe(fn){this.listeners.push(fn);},emit(v){for(const fn of this.listeners)fn(v);}});
 function media(state){
@@ -105,7 +106,19 @@ test('a failed lookup is said to have failed and unknown tools are refused by th
   assert.equal(gptLiveResultText('web_search',{error:'timeout'}),'没有成功：timeout');
   assert.equal(gptLiveResultText('current_time',{now:'2026-11-20 09:30:00',timezone:'Asia/Shanghai'}),'{"now":"2026-11-20 09:30:00","timezone":"Asia/Shanghai"}');
   assert.equal(gptLiveResultText('web_search',{content:[{type:'text',text:'{"a":1}'}],details:{a:1}}),'{"a":1}');
-  assert(Array.from(gptLiveResultText('web_fetch','长'.repeat(5000))).length<=2400);
+  // A page is given whole, up to the budget every model has; only past it is it cut.
+  assert.equal(gptLiveResultText('web_fetch','长'.repeat(5000)),'长'.repeat(5000));
+  const over=gptLiveResultText('web_fetch','长'.repeat(20000));
+  assert(Buffer.byteLength(over)<=TOOL_RESULT_MAX_BYTES&&over.endsWith(' [已截断]')&&Array.from(over).length>10000);
+});
+test('a day of meetings reaches GPT Live whole, as it reaches Doubao (cut at 2,400 it saw three of six)',()=>{
+  const meeting=i=>({event_id:`evt-${i}`,summary:`示例会议 ${i}`,description:'议程：同步进展、确认下周计划、讨论风险和分工。',start_time:{timestamp:String(1795000000+i*3600),timezone:'Asia/Shanghai'},end_time:{timestamp:String(1795001800+i*3600),timezone:'Asia/Shanghai'},status:'confirmed',location:{name:`示例会议室 ${i}`},app_link:`https://applink.example.com/calendar/event?key=evt-${i}&startTime=${1795000000+i*3600}`});
+  for(const count of [6,12]){
+    const value={ok:true,data:{items:Array.from({length:count},(_,i)=>meeting(i+1))}};
+    const text=gptLiveResultText('feishu_calendar',{content:[{type:'text',text:JSON.stringify(value)}],details:{status:'completed'}});
+    assert.doesNotMatch(text,/已截断/u);
+    for(let i=1;i<=count;i++)assert.match(text,new RegExp(`示例会议 ${i}"`,'u'));
+  }
 });
 test('barge-in clears playback and mutes until V is given something to say or starts a new turn',async()=>{
   let clock=1000;const f=await fixture({now:()=>clock});await ready(f);f.ws.peer.connectionStateChange.emit('connected');
@@ -152,7 +165,10 @@ test('search and memory results are given as plain facts without wrappers or lin
   assert.match(gptLiveResultText('memory_search',{results:[{snippet:'周末约了去爬山，早上七点出发',path:'memory/a.md'}]}),/^个人记忆里的相关记录[^\n]*不一定是现在的状态[^\n]*\n1\. ［memory\/a］周末约了去爬山，早上七点出发$/u);
   // A record is given as far as the search gave it: half a record answers half the question.
   const long=gptLiveResultText('memory_search',{results:Array.from({length:6},(_,i)=>({snippet:`第${i}条`+'这个项目的做法'.repeat(150),path:`projects/x/memory/plan-${i}.md`}))});
-  assert(Array.from(long).length>4000&&Array.from(long).length<=6000);assert.match(long,/\n6\. ［memory\/plan-5］第5条/u);
+  assert(Array.from(long).length>6000);assert.doesNotMatch(long,/…/u);assert(long.endsWith('第5条'+'这个项目的做法'.repeat(150)));
+  // Every passage a search returned, each as long as it came (Doubao is given the same, as JSON).
+  const passages=gptLiveResultText('web_search',{query:'q',results:Array.from({length:8},(_,i)=>({title:`标题${i}`,snippet:`第${i}段`+'比分和技术统计'.repeat(120)}))});
+  assert.match(passages,/\n8\. 标题7：第7段/u);assert.doesNotMatch(passages,/…/u);
   assert.equal(gptLiveResultText('memory_search',{results:[]}),'个人记忆里没有找到相关记录。');
 });
 test('the opening line is asked for again until V speaks, and never once the caller has',async()=>{
