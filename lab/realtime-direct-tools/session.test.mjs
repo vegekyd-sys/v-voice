@@ -1729,6 +1729,12 @@ test('a quiet call still sends something down to the caller every few seconds, a
  const lines=f.client.sent.filter(value=>value.type==='keepalive');assert(lines.length>=3);assert.deepEqual(lines[0],{type:'keepalive'});
  f.client.readyState=3;f.client.emit('close',1006);await delay(10);const after=f.client.pings;await delay(80);assert.equal(f.client.pings,after);
 });
+test('the keepalive line goes only to a web page; the iOS App gets the protocol ping alone',async t=>{
+ // The released App hangs up on any line of a native-runtime call it cannot read as a runtime frame.
+ const f=await fixture(undefined,'seeduplex',{pings:true,relayPingMs:20,nativeRuntimeVersion:1});t.after(()=>f.service.dispose());
+ await delay(110);assert(f.client.pings>=3,'the App is still pinged');
+ assert(!f.client.sent.some(value=>value.type==='keepalive'),'no line the App cannot read');
+});
 test('a running tool is not silence',async t=>{
  const f=await fixture(()=>new Promise(()=>{}),'seeduplex',idleTiming);t.after(()=>f.service.dispose());
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'slow',name:'current_time',arguments:'{}'}]});
