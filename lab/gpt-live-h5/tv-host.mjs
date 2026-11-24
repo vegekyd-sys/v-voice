@@ -81,7 +81,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         hasDocument:[...(state.transcript.history??[]),...(state.transcript.current??[])].some(row=>row.document===true),
         meter:Object.freeze({source:audio.source,peak:Math.max(0,...audio.levels)}),
         viewport:Object.freeze({width:Math.round(window.innerWidth??0),height:Math.round(window.innerHeight??0)}),
-        focus:['dial','end','mute','speaker','expand','fold','compact','return','compose','input','send','reader-back','reader-body','chat','lesson'].includes(focus)?focus:null});
+        focus:['dial','end','mute','speaker','expand','fold','compact','return','compose','input','send','reader-back','reader-body'].includes(focus)?focus:null});
     },
     // Only this lightweight surface subscribes to the 10 Hz visual meter.
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

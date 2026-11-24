@@ -1200,15 +1200,7 @@ html[data-tv="true"] #app{transition:opacity .16s ease}
 html[data-tv-transition="true"] #app{opacity:0}
 html[data-tv="true"] .settings-trigger{display:none}
 html[data-tv="true"][data-tv-layout="full"] .call-page:is([data-call="connected"],[data-call="ending"]){padding-top:64px}
-.tv-workspace{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:4px;padding:4px;border-radius:28px;background:#f4eef6;color:#584660}
-.tv-workspace button{display:flex;align-items:center;gap:6px;border:0;border-radius:22px;padding:8px 18px;background:transparent;color:inherit;font:inherit;font-size:18px;cursor:pointer}
-.tv-workspace button[aria-pressed="true"]{background:#594761;color:white}
-.tv-workspace button:disabled{opacity:.45}
-html[data-tv="true"] .tv-workspace button:focus-visible{outline:3px solid #806499;outline-offset:1px}
-.tv-lesson-prompt{justify-content:center;align-items:center;text-align:center;padding:24px}
-.tv-lesson-prompt h2{font-size:32px;margin:0}
-.tv-lesson-prompt p{font-size:20px}
-html:is([data-tv-layout="medium"],[data-tv-layout="compact"]) :is(.reader-layer,dialog[open]){display:none!important}
+.tv-return{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:6px;border:0;border-radius:22px;padding:8px 18px;background:#f4eef6;color:#584660;font:inherit;font-size:18px;cursor:pointer}
 .tv-board-pages{display:flex;gap:8px}
 .tv-board-pages button{border:0;border-radius:16px;background:#f1eaf6;color:#594761;font:inherit;padding:6px 14px;white-space:nowrap}
 html[data-tv-layout="full"] .chat-panel .turns .turn-text{font-size:21px}
