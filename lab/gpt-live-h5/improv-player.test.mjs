@@ -40,7 +40,7 @@ test('an older Makaron CLI without the new options still starts and directs',asy
  await api.command({action:'direct',shot:'下雨'},{text:'一只小橘猫跳上了柜台，老板递给他一个系着红丝带的小礼盒',id:'t3'},e=>events.push(e));
  assert.ok(!calls[0].includes('--story'));
  assert.ok(!calls[1].includes('--ready'));
- assert.equal(events.at(-1).text,'一只小橘猫跳上了柜台','without a model caption the first phrase of the caller is shown');
+ assert.equal(events.at(-1).text,'一只小橘猫跳上了柜台，老板递给他一个系着红丝带的小礼盒','without a model caption the whole request is shown');
 });
 
 test('reopening a playing show refocuses its single player and never buys a second session',async()=>{
@@ -225,4 +225,12 @@ test('the installed Makaron CLI is asked once which live options it has',async t
  assert.deepEqual(await run.features(),{story:true,ready:false});
  assert.deepEqual(await run.features(),{story:true,ready:false});
  assert.equal(readFileSync(count,'utf8'),'x');
+});
+
+test('a spoken request becomes a whole caption without its fillers',async()=>{
+ const {spokenCaption}=await import('../realtime-direct-tools/improv-live.mjs');
+ assert.equal(spokenCaption('好，来到了皮卡丘的世界里。'),'来到了皮卡丘的世界里');
+ assert.equal(spokenCaption('好，然后呢，宝可梦都离场了，然后呢，那个女生开始跳，韩国热舞。'),'宝可梦都离场了，女生开始跳，韩国热舞');
+ assert.equal(spokenCaption('那只小猫跳上柜台'),'那只小猫跳上柜台');
+ assert.equal(Array.from(spokenCaption('一'.repeat(60))).length,40);
 });

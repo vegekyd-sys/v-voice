@@ -6,6 +6,7 @@
 - The opening goes to the provider unchanged and the first plan runs beside connection setup, so the start is not held by planning.
 - A shot the voice model wrote is sent with `--ready`: it skips Makaron's spoken-draft cleanup and its 650 ms pacing. The live player keeps one poll open, so a new direction leaves for the provider as soon as it exists. The showrunner then drops its queued beats and replans around the caller's direction.
 - Each showrunner beat carries a short audience caption, shown under the picture like the host's captions.
+- When the voice model gives no caption, the caller's whole request is shown under the picture with spoken fillers (「好」「然后呢」) dropped, instead of only its first phrase.
 
 ## 2026-11-24 — Live broadcast review (Candidate)
 

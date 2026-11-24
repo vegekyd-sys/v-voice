@@ -72,8 +72,11 @@ export function improvArguments(args){
   return out;
 }
 export const clip=(text,limit=24)=>{const chars=Array.from(String(text??'').replace(/\s+/gu,' ').trim());return chars.length>limit?chars.slice(0,limit-1).join('')+'…':chars.join('');};
-// Without a caption from the model, the audience reads the first phrase of what the caller said.
-export const firstPhrase=text=>clip(String(text??'').trim().split(/[，。！？；,.!?;\n]/u).find(part=>part.trim())??'',20);
+// Without a caption from the model, the audience reads what the caller asked for, whole:
+// spoken fillers such as 「好」「然后呢」「那个」 are dropped, the rest is kept in order.
+const FILLER=/^(?:好的?|嗯+|啊|呃+|额|哦|噢|那么?|然后呢?|那个|这个|就是说?|ok|okay|行|对|可以)$/iu;
+const LEAD=/^(?:然后呢?|那个|就是说?|嗯+|呃+|额)\s*/u;
+export const spokenCaption=text=>clip(String(text??'').split(/[，。！？；,.!?;\n]/u).map(part=>part.trim().replace(LEAD,'').trim()).filter(part=>part&&!FILLER.test(part)).join('，'),40);
 const ENDINGS={time:'本场已到时长上限',failed:'直播连接中断',caller:'用户在画面上结束了直播',call:'通话结束'};
 // story: Makaron keeps the show moving between the caller's directions.
 export function createImprovShow({run,story=true}) {
@@ -123,7 +126,7 @@ export function createImprovShow({run,story=true}) {
       const ready=Boolean(shot?.trim()) && (await features()).ready;
       if(!directions.has(turn))directions.set(turn,run(['direct',id,'--turn-id',String(turn.id||randomUUID()),...(ready?['--ready']:[]),'--',words]));
       const result=await directions.get(turn);
-      if(Number.isInteger(result?.version) && show?.id===id)send({type:'improv.live',action:'label',id,version:result.version,text:label||firstPhrase(turn.text)});
+      if(Number.isInteger(result?.version) && show?.id===id)send({type:'improv.live',action:'label',id,version:result.version,text:label||spokenCaption(turn.text)});
       return {...result,instruction:'根据导演回执回应。已提交的下一幕仍需等待在画面中播出。'};
     },
     end:stop,
