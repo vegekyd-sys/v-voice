@@ -190,15 +190,17 @@ public final class CallService extends Service {
         if(!java.util.Arrays.asList("compact","medium","full").contains(value))return;
         mode=value;
         getSharedPreferences("diagnostics",0).edit().putString("window_mode",value).apply();
-        int screenW=getResources().getDisplayMetrics().widthPixels,screenH=getResources().getDisplayMetrics().heightPixels;
+        boolean full = value.equals("full");
+        web.setClipToOutline(!full);
         if(window==null)window=new WindowManager.LayoutParams();
         window.type=WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
         window.format=PixelFormat.TRANSLUCENT;
         window.gravity=Gravity.TOP|Gravity.RIGHT;
-        window.width=value.equals("full")?screenW-dp(48):dp(264);
-        window.height=value.equals("full")?screenH-dp(40):dp(300);
-        window.x=value.equals("full")?dp(24):dp(30);window.y=value.equals("full")?dp(16):dp(100);
+        window.width=full?WindowManager.LayoutParams.MATCH_PARENT:dp(264);
+        window.height=full?WindowManager.LayoutParams.MATCH_PARENT:dp(300);
+        window.x=value.equals("full")?0:dp(30);window.y=value.equals("full")?0:dp(100);
         interactive=!value.equals("compact");
+        if (android.os.Build.VERSION.SDK_INT >= 30) window.setFitInsetsTypes(full ? 0 : WindowInsets.Type.systemBars());
         window.flags=WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             |WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN|WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             |(interactive?0:WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
@@ -211,6 +213,11 @@ public final class CallService extends Service {
         getSharedPreferences("diagnostics",0).edit().putBoolean("interactive",interactive).apply();
         web.post(this::acknowledgeLayout);
     }
+    private void showCall(){
+        String target = "connected".equals(lastCall) ? "full" : "medium";
+        web.evaluateJavascript("window.vVoiceTV?.setLayout("+JSONObject.quote(target)+")",null);
+        resize(target);
+    }
     private void collapse(){
         if(web!=null)web.evaluateJavascript("window.vVoiceTV?.setLayout('compact')",null);
         resize("compact");
@@ -219,7 +226,7 @@ public final class CallService extends Service {
     private void announce(boolean active){
         sendBroadcast(new Intent("live.tianyi.vvoice.tv.SURFACE_READY").setPackage(launcherPackage).putExtra("active",active));
     }
-    private final BroadcastReceiver surfaceQuery=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(surfaceAnnounced){if(i.getBooleanExtra("expand",false)){web.evaluateJavascript("window.vVoiceTV?.setLayout('medium')",null);resize("medium");}announce(true);web.evaluateJavascript("window.vVoiceTV?.passiveFocus?.("+i.getBooleanExtra("focused",false)+")",null);}}};
+    private final BroadcastReceiver surfaceQuery=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(surfaceAnnounced){if(i.getBooleanExtra("expand",false)){showCall();}announce(true);web.evaluateJavascript("window.vVoiceTV?.passiveFocus?.("+i.getBooleanExtra("focused",false)+")",null);}}};
     private final BroadcastReceiver systemEvents=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){
         if(Intent.ACTION_SCREEN_OFF.equals(i.getAction())){action("end");stopSelf();}
         else if("homekey".equals(i.getStringExtra("reason")))collapse();
@@ -239,7 +246,7 @@ public final class CallService extends Service {
         if("END".equals(intent.getAction())){action("end");handler.postDelayed(this::stopSelf,300);return START_NOT_STICKY;}
         closing=false;idleSince=0;
         if(START_CALL.equals(intent.getAction())&&"idle".equals(lastCall)){hadCall=false;pendingLaunch="launch-"+java.util.UUID.randomUUID();}
-        if(surfaceAnnounced){web.evaluateJavascript("window.vVoiceTV?.setLayout('medium')",null);resize("medium");}
+        if(surfaceAnnounced){showCall();}
         return START_NOT_STICKY;
     }
 

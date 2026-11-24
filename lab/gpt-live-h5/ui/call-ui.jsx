@@ -149,7 +149,7 @@ function Conversation({state, options, history, setHistory, onOverflow, wide}) {
           {turns.earlier.slice(-3).map(row => <Turn key={row.key} row={row} options={options} quiet />)}
         </div>
       )}
-      <div ref={scroller} onScroll={onScroll} className={history ? 'turns all' : 'turns now'} role="log" aria-live="polite" aria-label={history ? '全部对话' : '当前这一轮'}>
+      <div ref={scroller} tabIndex={state.tvHost && state.tvLayout === 'full' ? 0 : undefined} onScroll={onScroll} className={history ? 'turns all' : 'turns now'} role="log" aria-live="polite" aria-label={history ? '全部对话' : '当前这一轮'}>
         {(history ? all : turns.now).map(row => <Turn key={row.key} row={row} options={options} />)}
       </div>
     </div>
@@ -444,7 +444,7 @@ function TvWaveform({orbit=false}) {
     {values.map((value,index)=><i key={index} style={{height:(orbit?Math.round(2+value*.18):2+value*.42)+'px',opacity:.38+.62*index/23,...orbit?{'--angle':((index<12?58:238)+(index%12)*5.45)+'deg'}:{}}} />)}
   </span>;
 }
-function TvIsland({state,actions,status}) {
+function TvIsland({state,actions,status,boardVisible,onBoardChange}) {
   const api=window.vVoiceTV, layout=state.tvLayout;
   const documentRequested=useRef(false), previousCall=useRef(state.call);
   const connected=state.call==='connected', active=state.call!=='idle';
@@ -454,21 +454,25 @@ function TvIsland({state,actions,status}) {
     if(state.call==='idle'&&state.homeNoteTone==='error')change('medium');
     else if(before!==state.call){if(state.call==='idle')change('compact');else if(before==='idle'&&layout==='compact')change('medium');}
   },[state.call,state.homeNoteTone]);
-  const expand=()=>{documentRequested.current=latestDocument;change('full');};
+  const expand=(openDocument=false)=>{documentRequested.current=openDocument===true;change('full');};
   useEffect(()=>{if(layout==='full'&&documentRequested.current){documentRequested.current=false;requestAnimationFrame(()=>[...document.querySelectorAll('.content-card')].at(-1)?.click());}},[layout]);
   useEffect(()=>{const id=requestAnimationFrame(()=>api.focusPrimary());return()=>cancelAnimationFrame(id);},[layout,state.call,state.dial.disabled]);
-  if(layout==='full')return state.reading?null:<button type="button" className="tv-return" data-tv-control="return" aria-label="收起到灵动岛" onClick={()=>change('medium')}><Icon d="m7 10 5 5 5-5"/><span>收起</span></button>;
-  if(layout==='compact')return <button type="button" className="tv-compact tv-avatar-action" data-tv-control="compact" data-tv-primary aria-label={!active?'和 V 直接通话':latestDocument?'查看本通话方案':`展开 V，${api.snapshot.label}`} onClick={()=>{if(!active){change('medium');actions.dial();}else if(latestDocument)expand();else change('medium');}}/>;
+  if(layout==='full')return state.reading?null:<nav className="tv-workspace" aria-label="通话视图">
+    {active&&<><button type="button" data-tv-primary data-tv-control="chat" aria-pressed={!boardVisible} onClick={()=>onBoardChange(false)}>聊天</button>
+    <button type="button" data-tv-control="lesson" disabled={!state.boardAvailable} aria-pressed={boardVisible} onClick={()=>onBoardChange(true)}>讲解</button></>}
+    <button type="button" className="tv-return" data-tv-control="return" aria-label="收起到桌面" onClick={()=>change('compact')}><Icon d="m7 10 5 5 5-5"/><span>收起</span></button></nav>;
+  if(layout==='compact')return <button type="button" className="tv-compact tv-avatar-action" data-tv-control="compact" data-tv-primary aria-label={!active?'和 V 直接通话':`展开 V，${api.snapshot.label}`} onClick={()=>{if(!active){change('medium');actions.dial();}else expand();}}/>;
   const error=status&&['error','warn','action'].includes(status.kind)||state.homeNoteTone==='error';
   return <section className="tv-island tv-avatar-dock" aria-label="V 通话">
     {connected&&<TvWaveform orbit/>}
-    <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
+    <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={connected||!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
     {(active||latestDocument||error)&&<div className="tv-dock-actions">
+      {connected&&<button type="button" className="tv-text-action" data-tv-control="expand" onClick={()=>expand()}>全屏</button>}
       {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
-      {connected&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" data-tv-primary aria-label="挂断通话" onClick={actions.hangup}><Icon d={HANG}/></button>}
+      {connected&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" aria-label="挂断通话" onClick={actions.hangup}><Icon d={HANG}/></button>}
       {active&&!connected&&<button className="tv-text-action" type="button" data-tv-control="end" data-tv-primary onClick={actions.hangup}>取消呼叫</button>}
       {!active&&error&&<button className="tv-text-action" type="button" data-tv-control="dial" data-tv-primary disabled={state.dial.disabled} onClick={actions.dial}>重新呼叫</button>}
-      {!active&&latestDocument&&<button type="button" className="tv-expand" data-tv-control="expand" onClick={expand}><span>查看方案</span><Icon d="M8 5h11v11M19 5 5 19"/></button>}
+      {!active&&latestDocument&&<button type="button" className="tv-expand" data-tv-control="expand" onClick={()=>expand(true)}><span>查看方案</span><Icon d="M8 5h11v11M19 5 5 19"/></button>}
     </div>}
   </section>;
 }
@@ -501,8 +505,9 @@ function CallPage({view, actions, options}) {
   const wide = viewport.width >= 701;
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
-  const scene = inCall && !state.tvHost && (state.board?.blocks.length || state.board?.title) ? state.board : null;
+  const scene = inCall && (!state.tvHost || state.tvLayout === 'full') && (state.board?.blocks.length || state.board?.title) ? state.board : null;
   const board = scene && !boardHidden && !(history && !wide) ? scene : null;
+  const awaitingLesson = state.tvHost && state.tvLayout === 'full' && inCall && state.boardAvailable && boardHidden === false && !scene;
   // What V is saying in answer to the caller's latest words: shown on a page that has nothing on it yet.
   const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
@@ -536,7 +541,7 @@ function CallPage({view, actions, options}) {
   );
   return (
     <>
-      {state.tvHost&&<TvIsland state={state} actions={actions} status={status}/>}
+      {state.tvHost&&<TvIsland state={state} actions={actions} status={status} boardVisible={Boolean(board)||awaitingLesson} onBoardChange={show=>setBoardHidden(!show)}/>}
       <SessionSheet state={state} actions={actions}/>
       {accessOpen&&!active&&<AccessSheet state={state} actions={actions} onClose={()=>setAccessOpen(false)}/>}
       {/* The iOS App has its own native settings (and dials natively): no page settings there. */}
@@ -547,11 +552,11 @@ function CallPage({view, actions, options}) {
       </button>
       <main ref={main} className="call-page" data-call={state.call} data-confirmation={Boolean(state.confirmation)} data-voice={voice} data-work={String(working)}
         data-alert={status && ['error', 'warn'].includes(status.key) ? status.key : undefined} data-history={String(!wide && history)} data-compact={String(compact)}
-        data-board={board ? 'true' : undefined}
+        data-board={board || awaitingLesson ? 'true' : undefined}
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
-          {scene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
+          {!state.tvHost && scene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
         </header>
         <section className="stage" aria-label="V">
           <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
@@ -583,7 +588,8 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+        {awaitingLesson && <section className="board tv-lesson-prompt" aria-label="讲解"><h2>想听 V 讲什么？</h2><p>说出想了解的主题，讲解画面会出现在这里。</p></section>}
+        {board && <Board tv={state.tvHost} scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
           works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
             : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing, autoSound: options.boardWorks.autoSound, film: options.boardWorks.film} : null}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}

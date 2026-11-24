@@ -35,7 +35,7 @@ const contentView = document.querySelector ? createContentView(document, window,
 const renderAssistant = (target, item) => {
   // With the call board on, a delivered document stays a card in the
   // conversation: the reader would cover the picture V is talking over.
-  if (contentView) contentView.render(target, item, { auto: item.document === true && !call?.board && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost });
+  if (contentView) contentView.render(target, item, { auto: item.document === true && !call?.board && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost || view.get().tvLayout === 'full' });
   else renderMarkdown(target, item.text, document);
 };
 if (document.querySelector) mountCallUi(document, view, {
@@ -1138,7 +1138,7 @@ function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
-    boardAvailable = status.board === true && !tvHost;
+    boardAvailable = status.board === true;
     const phoneOptions = phoneModelOptions(status, view.get().model);
     const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));
     const model = tvHost ? tvDefaultModel(models).model : phoneOptions.model;
@@ -1149,7 +1149,7 @@ function applyEntryStatus(status) {
     let liveVoice = null; try { liveVoice = localStorage.getItem('v.gptLive11.voice'); } catch {}
     const doubao = status.models?.find(item => item.id === "seeduplex"), doubaoVoices = doubao?.voices ?? [];
     let doubaoVoice = null; try { doubaoVoice = localStorage.getItem(VOICE_SLOTS.seeduplex.storage); } catch {}
-    view.set({ models, model, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
+    view.set({ models, model, boardAvailable, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),

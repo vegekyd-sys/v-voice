@@ -939,7 +939,7 @@ class BoardGuard extends React.Component {
 export function Board(props) {
   return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
 }
-function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
+function Canvas({scene, canvas, tv, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
@@ -967,6 +967,10 @@ function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onRepo
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
         {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
+        {tv && pages.length > 1 && <div className="tv-board-pages" aria-label="讲解翻页">
+          {[-1, 1].map(step => <button key={step} type="button" disabled={!pages[inView + step]}
+            onClick={() => track.current?.scrollTo({left: track.current.clientWidth * (inView + step)})}>{step < 0 ? '上一页' : '下一页'}</button>)}
+        </div>}
         {onReport && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>

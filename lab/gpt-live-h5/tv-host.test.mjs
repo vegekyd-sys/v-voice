@@ -157,7 +157,7 @@ test('native full window changes viewport scale without changing call owner, the
   window.document.querySelector=selector=>selector==='meta[name="viewport"]'?{getAttribute:()=>content,setAttribute:(key,value)=>{content=value;}}:null;
   view.set({call:'connected'});const owner=api.snapshot;
   api.setLayout('full',owner);assert.equal(api.commitLayout('full',owner,{width:912}),true);
-  assert.equal(content,'width=1600,initial-scale=0.57,viewport-fit=cover');
+  assert.equal(content,'width=1200,initial-scale=0.76,viewport-fit=cover');
   api.setLayout('medium',owner);api.commitLayout('medium',owner,{width:420});
   assert.equal(content,'width=420,initial-scale=1,viewport-fit=cover');
   assert.equal(api.commitLayout('medium',{...owner,owner:'stale'},{width:500}),false);
@@ -219,4 +219,22 @@ test('overlay layout changes preserve call ownership and avoid blank intermediat
   assert.equal(window.document.documentElement.dataset.tvRevealed,undefined);
   api.reveal();assert.equal(window.document.documentElement.dataset.tvRevealed,'true');
   assert.deepEqual(calls,['dial']);
+});
+
+test('Back closes enlarged media before collapsing the connected overlay to the desktop',()=>{
+  const {api, view, window, calls} = fixture('?tv=1&tvShell=1&tvOverlay=1');
+  view.set({call:'connected'});
+  const owner = api.snapshot;
+  api.setLayout('full', owner);
+  let viewerOpen = true;
+  window.document.querySelector = selector => selector === '.board-viewer .board-enlarged-close' && viewerOpen
+    ? {click(){viewerOpen = false;}} : null;
+  assert.equal(api.back(), 'handled');
+  assert.equal(viewerOpen, false);
+  assert.equal(api.snapshot.layout, 'full');
+  assert.equal(api.back(), 'handled');
+  assert.equal(api.snapshot.layout, 'compact');
+  assert.equal(api.snapshot.owner, owner.owner);
+  assert.equal(api.snapshot.generation, owner.generation);
+  assert.deepEqual(calls, []);
 });

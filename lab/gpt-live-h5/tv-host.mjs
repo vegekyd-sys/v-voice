@@ -23,7 +23,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   let inputLevels=[],outputLevels=[],inputEnvelope=0,outputEnvelope=0,inputEnergy=0,outputEnergy=0,observations=0,wasMuted=false,wasOutputMuted=false;
   document.documentElement.dataset.tvLayout = layout;
   const validOwner = expected => expected === undefined || Boolean(expected && expected.owner === owner && expected.generation === generation);
-  const focusable = () => [...((document.querySelector?.('dialog[open]') ?? (view.get().reading?document.getElementById?.('contentReader'):document))?.querySelectorAll?.('button,a[href],input,select,textarea,[tabindex]') ?? [])].filter(e => {
+  const focusable = () => [...((document.querySelector?.('dialog[open], .board-viewer[aria-modal="true"]') ?? (view.get().reading?document.getElementById?.('contentReader'):document))?.querySelectorAll?.('button,a[href],input,select,textarea,[tabindex]') ?? [])].filter(e => {
     const r = e.getBoundingClientRect();
     return !e.disabled && e.tabIndex >= 0 && r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth && !e.closest('[inert]');
   });
@@ -81,7 +81,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         hasDocument:[...(state.transcript.history??[]),...(state.transcript.current??[])].some(row=>row.document===true),
         meter:Object.freeze({source:audio.source,peak:Math.max(0,...audio.levels)}),
         viewport:Object.freeze({width:Math.round(window.innerWidth??0),height:Math.round(window.innerHeight??0)}),
-        focus:['dial','end','mute','speaker','expand','fold','compact','return','compose','input','send','reader-back','reader-body'].includes(focus)?focus:null});
+        focus:['dial','end','mute','speaker','expand','fold','compact','return','compose','input','send','reader-back','reader-body','chat','lesson'].includes(focus)?focus:null});
     },
     // Only this lightweight surface subscribes to the 10 Hz visual meter.
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -94,7 +94,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       // Full pages use the original desktop layout at a wider CSS viewport;
       // compact/medium windows retain their established island scale.
       if(shell&&Number.isFinite(bounds?.width)&&bounds.width>=48&&bounds.width<=7680) {
-        const width=value==='full'?Math.max(1600,bounds.width):bounds.width;
+        const width=value==='full'?Math.max(1200,bounds.width):bounds.width;
         const scale=value==='full'?bounds.width/width:1;
         const viewport=document.querySelector?.('meta[name="viewport"]');
         const content=`width=${Math.round(width)},initial-scale=${scale},viewport-fit=cover`;
@@ -116,9 +116,11 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     back() {
       const dialog = document.querySelector?.('dialog[open]');
       if (dialog) { dialog.dispatchEvent(new window.Event('cancel', {cancelable:true})); dialog.close(); return 'handled'; }
+      const viewerClose = document.querySelector?.('.board-viewer .board-enlarged-close');
+      if (viewerClose) { viewerClose.click(); return 'handled'; }
       if (view.get().reading) { document.getElementById?.('readerBack')?.click(); return 'handled'; }
       if (shell && view.get().call === 'idle' && layout !== 'full') return 'exit';
-      if (layout === 'full') { setLayout('medium'); return 'handled'; }
+      if (layout === 'full') { setLayout(overlay ? 'compact' : 'medium'); return 'handled'; }
       if (layout === 'medium') { setLayout('compact'); return 'handled'; }
       return 'exit';
     },
@@ -142,6 +144,14 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         }
         if((direction==='up'&&inDock&&active?.tagName!=='INPUT')||(direction==='down'&&['readerBack','readerDownload'].includes(active?.id))) {
           document.getElementById?.('readerBody')?.focus({preventScroll:true});return true;
+        }
+      }
+      const scroller = document.activeElement;
+      if (scroller?.matches?.('.turns[role="log"], .board-scroll') && ['up','down'].includes(direction)) {
+        const down = direction === 'down';
+        if (down ? scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1 : scroller.scrollTop > 1) {
+          scroller.scrollBy({top: (down ? 1 : -1) * scroller.clientHeight * .8});
+          return true;
         }
       }
       const items=focusable(), active=document.activeElement;

@@ -6,8 +6,8 @@ android {
         applicationId 'live.tianyi.vvoice.tv.lab'
         minSdk 26
         targetSdk 34
-        versionCode 123
-        versionName '0.3.11-host-focus-local'
+        versionCode 124
+        versionName '0.4.0-full-call-local'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildTypes { release { minifyEnabled false; signingConfig signingConfigs.debug } }
