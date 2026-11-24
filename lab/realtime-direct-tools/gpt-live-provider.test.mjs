@@ -102,6 +102,9 @@ test('with lesson notes, a lesson comes back as material GPT Live tells in its o
   assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*用你自己的话讲给用户听/u);assert.match(spoken,/第二天去万神殿。$/u);
   assert.doesNotMatch(spoken,/<say>|原样念/u);
   assert(!f.bridge.script); // no script: the captions are V's own words
+  // The page is drawn after the material is handed over: its names follow as a note, never a turn of their own.
+  const before=appends(f).length;f.bridge.lessonShown(['斗兽场','万神殿']);
+  const note=appends(f).slice(before);assert.equal(note.length,1);assert.equal(note[0].channel,'commentary');assert.match(note[0].content[0].text,/按顺序是：斗兽场、万神殿/u);
 });
 test('completions for tasks this bridge never began are ignored',async()=>{
   const f=await fixture();await ready(f);

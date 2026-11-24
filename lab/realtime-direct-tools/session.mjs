@@ -343,8 +343,10 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // (`lessonNotes`, experiment: the lesson pipeline researches and draws as for any model, and GPT Live tells
   // the lesson in its own words while the page waits for each thing's name.)
   const traitsOf=s=>s.model==='gpt-live-11'&&(gptLive?.scriptedLessons===true||gptLive?.lessonNotes===true)?{...modelTraits(s.model),explains:'lesson',retells:gptLive?.lessonNotes===true}:modelTraits(s.model);
-  // The things a retold lesson's page shows, in order, once drawn; never waited for long.
-  const shownNames=async s=>{try{return await Promise.race([lesson?.shown?.(s.id)??[],new Promise(resolve=>{const timer=setTimeout(()=>resolve([]),8000);timer.unref?.();})]);}catch{return [];}};
+  // A retold lesson is handed over the moment it is written; its page is still being drawn then (the
+  // illustrator takes several seconds more), and the names on it follow when it is (`lessonShown`).
+  // (Waiting for the page first kept the caller waiting 10 to 14 s, the writing itself taking 2 to 4.)
+  const tellShown=(s,bridge)=>{void Promise.resolve(lesson?.shown?.(s.id)).then(names=>{if(current(s)&&Array.isArray(names)&&names.length)bridge?.lessonShown?.(names);}).catch(()=>{});};
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&traitsOf(s).explains==='lesson'&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
@@ -847,7 +849,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(current(s)&&s.epoch===epoch){
-              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true,...(traitsOf(s).retells?{retell:{names:await shownNames(s),points:script.sentences??[]}}:{})});
+              if(script){ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true,...(traitsOf(s).retells?{retell:{points:script.sentences??[]}}:{})});if(traitsOf(s).retells)tellShown(s,ownerBridge);}
               else{
                 // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
                 // and the caller had to ask again: call 83315f5d). The page is drawn from what it then says.
@@ -890,7 +892,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           // or it answers "still looking" in those seconds.
           target.backgroundResultReady?.(call.callId);
           try{const script=await lesson.prepare({...(traitsOf(s).retells?{retell:true}:{}),result:true,quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.question??'',ask:s.latestUserTurn?.text,reference:String(presentation.text),signal:AbortSignal.timeout(9000)});
-            if(script?.say){spokenText=script.say;told=traitsOf(s).retells?{names:await shownNames(s),points:script.sentences??[]}:true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
+            if(script?.say){spokenText=script.say;told=traitsOf(s).retells?{points:script.sentences??[]}:true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
           catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
           if(!current(s)||s.epoch!==epoch)return;
         }
@@ -911,6 +913,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           // spoken outside a host turn is queued or dropped with that turn.
           if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));
           target.completeBackgroundTool(call.callId,payload,options);
+          if(options.retell)tellShown(s,target);
         }
       }else if(lessonHandled){/* already answered through the background hand-over */}
       else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}

@@ -445,6 +445,11 @@ export class GptLiveBridge {
     const material=(Array.isArray(points)&&points.length?points.map(point=>String(point)).join('\n'):String(text));
     this.append(`讲解材料到了。${shown.length&&this.display!==false?onScreen(shown):''}现在用你自己的话讲给用户听，内容以下面的材料为准：\n${bound(material,SCRIPT_MAX_CHARS)}`,{...target,channel:'speakable',whole:true});
   }
+  // The retold lesson's page is drawn: what is on it, in order, so that V names those things as it comes to them.
+  lessonShown(names){
+    const shown=(Array.isArray(names)?names:[]).map(name=>gptLiveText(name)).filter(name=>name&&Array.from(name).length<=24).slice(0,6);
+    if(shown.length&&!this.closed&&!this.ending&&this.display!==false)this.append(`（屏幕）讲解的画面摆好了，按顺序是：${shown.join('、')}。讲到哪一样就说出它的名字，画面会跟着亮起来；已经讲过的不用回头重讲。`,{channel:'commentary'});
+  }
   // Text given to the model to read out as it is, a lesson or a finished task told as one.
   readScript(text,target={}){
     const script=bound(String(text),SCRIPT_MAX_CHARS);
