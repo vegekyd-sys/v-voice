@@ -22,6 +22,8 @@ npm run release:fleet -- publish --artifact /absolute/private/artifact-directory
 
 这个命令只在一次已授权的正式发布中执行；合入普通代码并不绕过既有上线授权。发布者必须使用本入口，不再只切网页电话服务。
 
+跨境节点用 ssh 管道上传会中途断开（2026-11-24 两次在约 1 MB 处断开）：目标可设 `"upload": "vrelay"`（可选 `"vrelayUser"`，节点上以该用户取件），产物先 `vrelay put` 一次，节点再 `vrelay get` 到临时路径（sha256 校验、断点续传），装完即删，中转站上的件发布结束时删除。默认仍是 ssh 管道。
+
 发布机到设备节点的直连很慢时（曾低至约 6 KB/s），可在发布机的 SSH 配置里给设备节点加一个 `ProxyJump v` 的别名，并把私有 inventory 的 `ssh` 指向它。凭据仍留在发布机，V 只转发连接。
 
 ## 通话保护
