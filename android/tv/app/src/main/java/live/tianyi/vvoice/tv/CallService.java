@@ -322,7 +322,9 @@ public final class CallService extends Service {
                     .putString("meter_source",meter==null?"none":meter.optString("source","none"))
                     .putInt("meter_peak",meter==null?0:meter.optInt("peak",0))
                     .putInt("viewport_width",viewport==null?0:viewport.optInt("width",0)).putInt("viewport_height",viewport==null?0:viewport.optInt("height",0)).apply();}
-                String next=p.optString("layout","full");if(!closing&&!next.equals(mode)){if("full".equals(next))flight.begin(p.optJSONObject("portraitOrigin"));resize(next);}
+                String next=p.optString("layout","full");if(!closing&&!next.equals(mode)){
+                    if(!"full".equals(next)||!flight.begin(p.optJSONObject("portraitOrigin"),()->{if(visible&&!closing)resize("full");}))resize(next);
+                }
                 prepareNativeFocus();
                 JSONObject actions=p.optJSONObject("actions");
                 if(pendingLaunch!=null&&!"idle".equals(p.optString("call")))pendingLaunch=null;

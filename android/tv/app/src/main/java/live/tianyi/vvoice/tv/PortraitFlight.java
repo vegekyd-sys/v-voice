@@ -18,13 +18,14 @@ final class PortraitFlight {
     private final Runnable timeout=this::cancel;
     PortraitFlight(WindowManager windows,WebView web){this.windows=windows;this.web=web;}
 
-    void begin(JSONObject origin){
-        if(origin==null||layer!=null||!web.isAttachedToWindow())return;
+    boolean begin(JSONObject origin,Runnable expand){
+        if(layer!=null)return true;
+        if(origin==null||!web.isAttachedToWindow())return false;
         float density=web.getResources().getDisplayMetrics().density;
         int x=Math.round((float)origin.optDouble("x")*density);
         int y=Math.round((float)origin.optDouble("y")*density);
         int size=Math.round((float)origin.optDouble("size")*density);
-        if(size<=0||size>web.getWidth()||size>1024)return;
+        if(size<=0||size>web.getWidth()||size>1024)return false;
         int[] at=new int[2];web.getLocationOnScreen(at);
         Bitmap frame=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888);
         Canvas canvas=new Canvas(frame);canvas.translate(at[0]-x,at[1]-y);web.draw(canvas);
@@ -39,8 +40,17 @@ final class PortraitFlight {
         params.gravity=Gravity.TOP|Gravity.LEFT;
         if(android.os.Build.VERSION.SDK_INT>=30)params.setFitInsetsTypes(0);
         windows.addView(layer,params);
-        web.setAlpha(0);
-        web.postDelayed(timeout,2800);
+        FrameLayout owner=layer;
+        // First composite the copy at its Home position, then composite the
+        // invisible old WebView while it still occupies its original window.
+        // Resizing in the same traversal briefly paints the old window at (0,0).
+        owner.postOnAnimation(()->owner.postOnAnimation(()->{
+            if(layer!=owner)return;
+            web.setAlpha(0);
+            owner.postOnAnimation(()->owner.postOnAnimation(()->{if(layer==owner)expand.run();}));
+        }));
+        web.postDelayed(timeout,3000);
+        return true;
     }
     void move(double x,double y,double width){
         if(layer==null || moving || !(x>=0&&x<=1&&y>=0&&y<=1&&width>0&&width<=1))return;
