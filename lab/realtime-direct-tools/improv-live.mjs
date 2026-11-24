@@ -56,7 +56,8 @@ export function directorCommand(environment=process.env) {
 // position 0 on a direction. Those mean "not given", not a different request.
 export function improvArguments(args){
   if(!args||typeof args!=='object'||Array.isArray(args))return args;
-  const out={...args};
+  // Keys the tool does not have are dropped rather than refusing the whole call.
+  const out=Object.fromEntries(Object.entries(args).filter(([key])=>key in IMPROV_TOOL.parameters.properties));
   for(const key of ['shot','caption','openingImage'])if(typeof out[key]==='string'&&!out[key].trim())delete out[key];
   if(out.imagePosition===0||out.imagePosition===null||out.imagePosition==='')delete out.imagePosition;
   if(out.action!=='start'){delete out.openingImage;delete out.imagePosition;}

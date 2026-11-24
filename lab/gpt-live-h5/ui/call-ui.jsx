@@ -188,15 +188,16 @@ function Controls({state, actions, onHeight}) {
     <div className="controls" ref={box}>
       <form id="steerForm" className="composer" data-open={String(open && active)} onSubmit={submit}
         onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); actions.compose(false); } }}>
+        {/* A picture to make things from goes with what is typed: it lands on the board as the caller's own. */}
+        {state.referenceUpload && state.model !== 'gpt-live' && <label className="reference-picker" title="添加图片">
+          <input aria-label="添加图片" type="file" accept="image/jpeg,image/png,image/webp" disabled={!enabled} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void actions.uploadReference(file);}}/>
+          <Icon><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="m4 18 5-5 3 3 4-6 4 6"/></Icon>
+        </label>}
         <label className="sr-only" htmlFor="steerText">补充内容</label>
         <input id="steerText" ref={input} placeholder="补充给 V 的文字…" maxLength={2000} autoComplete="off" disabled={!enabled} />
         <button id="steer" type="submit" aria-label="发送补充内容" disabled={!enabled}><Icon d="m3 3 19 8-9 3-3 9-7-20Zm9 10L22 3" /></button>
       </form>
       <div id="callPill" className="pill" aria-label="通话控制">
-        {active && state.referenceUpload && state.model !== 'gpt-live' && <label className="reference-picker" title="添加参考图">
-          <input aria-label="添加参考图" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void actions.uploadReference(file);}}/>
-          <Icon><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="m4 18 5-5 3 3 4-6 4 6"/></Icon>
-        </label>}
         {active && (
           <button id="textToggle" type="button" aria-label={open ? '收起文字输入' : '打开文字输入'} aria-expanded={open} aria-controls="steerForm" onClick={toggleComposer}>
             <Icon><rect x="2" y="5" width="20" height="14" rx="3" /><path d="M6 9h1m3 0h1m3 0h1m3 0h1M6 12h1m3 0h1m3 0h1m3 0h1M7 16h10" /></Icon>

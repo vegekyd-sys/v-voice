@@ -942,7 +942,7 @@ export function Board(props) {
 // A broadcast that has ended stays on the board as its recording, framed like any made video.
 function Recorded({clip, save}) {
   const [saved, setSaved] = useState('');
-  return <div className="board-scroll board-live-media"><figure className="board-work improv-stage" data-kind="live" data-state="ready">
+  return <div className="board-scroll"><div className="board-body board-live-media"><figure className="board-work improv-stage" data-kind="live" data-state="ready">
     <div className="board-work-frame" style={{'--shape': clip.shape || 16 / 9}}>
       {clip.recording ? <video className="board-work-print" data-loaded="true" src={clip.recording} poster={clip.poster} playsInline controls preload="metadata" aria-label="直播录像" />
         : clip.poster ? <img className="board-work-print" data-loaded="true" src={clip.poster} alt="直播停下时的画面" />
@@ -954,7 +954,7 @@ function Recorded({clip, save}) {
       {clip.recording && <button type="button" className="improv-end" onClick={async () => setSaved(await save({src: clip.recording, kind: 'video', name: clip.name ? clip.name + ' 直播' : '直播录像'}))}>{saved || '保存录像'}</button>}
     </figcaption>
     {clip.caption && <p className="improv-cue">{clip.caption}</p>}
-  </figure></div>;
+  </figure></div></div>;
 }
 function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
@@ -978,7 +978,7 @@ function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, s
     setInView(index);
   };
   const lastLive = useRef(null);
-  const lastScene = useRef(scene.serial);
+  const lastScene = useRef(`${scene.serial}:${scene.rev}`);
   useLayoutEffect(() => {
     if (liveId) {
       if (lastLive.current !== liveId || liveFocus) go(pages.length - 1);
@@ -986,12 +986,14 @@ function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, s
     else go(active);
     lastLive.current = liveId;
   }, [liveId, liveFocus]);
+  // V drawing anything on its page brings the view there, from a recording too.
+  // During a broadcast the live page keeps the view; V's page waits one swipe away.
   useLayoutEffect(() => {
-    const newScene = lastScene.current !== scene.serial;
-    lastScene.current = scene.serial;
-    if (!liveId && (newScene || !pages[inView]?.clip)) go(active);
-    else if (track.current && inView >= pages.length - 1) go(pages.length - 1);
-  }, [active, pages.length, scene.serial]);
+    const key = `${scene.serial}:${scene.rev}`, changed = lastScene.current !== key;
+    lastScene.current = key;
+    if (liveId) { if (track.current && inView >= pages.length - 1) go(pages.length - 1); }
+    else if (changed) go(active);
+  }, [active, pages.length, scene.serial, scene.rev]);
   const onScroll = () => { const strip = track.current; if (strip?.clientWidth) setInView(Math.max(0, Math.min(pages.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)))); };
   const page = pages[Math.min(inView, pages.length - 1)];
   useEffect(() => {
@@ -1029,7 +1031,7 @@ function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, s
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
             <BoardGuard retry={`${item.serial}:${item.rev}`}>
-              {item.serial === liveId ? <div className="board-scroll board-live-media">{liveMedia}</div> : item.clip ? <Recorded clip={item.clip} save={works?.save}/> : <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />}
+              {item.serial === liveId ? <div className="board-scroll"><div className="board-body board-live-media">{liveMedia}</div></div> : item.clip ? <Recorded clip={item.clip} save={works?.save}/> : <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />}
             </BoardGuard>
           </div>
         ))}

@@ -181,3 +181,9 @@ test('the player captions a shot with the host caption, never the Director promp
  assert.deepEqual(ended,['time']);
  delete globalThis.window;delete globalThis.document;delete globalThis.location;
 });
+
+test('live arguments the tool does not have are dropped instead of refusing the call',async()=>{
+ const {improvArguments}=await import('../realtime-direct-tools/improv-live.mjs');
+ assert.deepEqual(improvArguments({action:'direct',shot:'下雨',image:'a1',mood:'',openingImage:'a1'}),{action:'direct',shot:'下雨'});
+ assert.deepEqual(improvArguments({action:'start',shot:'开场',openingImage:'a1',imagePosition:0,extra:1}),{action:'start',shot:'开场',openingImage:'a1'});
+});
