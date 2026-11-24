@@ -40,6 +40,8 @@ names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5
 names.push('lab/robot/robot-semantics.mjs');
 names.push('lab/realtime-direct-tools/idle-hangup.mjs');
 names.push(...['peer','provider','router','auth'].map(n=>`lab/realtime-direct-tools/gpt-live-${n}.mjs`));
+// What differs between voice models, asked by session.mjs and the GPT Live bridge (docs/model-capabilities.md).
+names.push('lab/realtime-direct-tools/capabilities.mjs');
 names.push('lab/realtime-direct-tools/playback-echo.mjs');
 names.push('lab/gpt-live-h5/upload-backpressure.mjs');
 names.push('lab/gpt-live-h5/assets/v-avatar.jpg','lab/gpt-live-h5/board-assets.mjs','lab/gpt-live-h5/board-assets-client.mjs','lab/gpt-live-h5/board-picture-size.mjs','lab/realtime-direct-tools/media-script.mjs','lab/realtime-direct-tools/material-check.mjs','lab/gpt-live-h5/board-scene.mjs','lab/gpt-live-h5/board-director.mjs','lab/gpt-live-h5/board-client.mjs','lab/gpt-live-h5/board-sketch.mjs','lab/gpt-live-h5/board-photo.mjs','lab/gpt-live-h5/board-lesson.mjs','lab/gpt-live-h5/board-cue.mjs','lab/gpt-live-h5/board-clause.mjs','lab/gpt-live-h5/board-eye.mjs');
