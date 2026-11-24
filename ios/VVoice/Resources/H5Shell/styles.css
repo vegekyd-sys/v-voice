@@ -38,7 +38,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [role="button"]:focu
   outline: 3px solid #a28eb7;
   outline-offset: 4px;
 }
-button svg, .status svg, .entry-notice-icon svg, .task-icon svg {
+button svg, .reference-picker svg, .status svg, .entry-notice-icon svg, .task-icon svg {
   width: 22px;
   height: 22px;
   stroke: currentColor;
@@ -538,7 +538,7 @@ body[data-reading="true"] .content-card { opacity: 0; }
   backdrop-filter: blur(12px) saturate(145%);
   -webkit-backdrop-filter: blur(12px) saturate(145%);
 }
-.pill button {
+.pill button, .pill .reference-picker {
   width: 46px;
   height: 46px;
   border-radius: 50%;
@@ -2293,10 +2293,9 @@ video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 .improv-stage figcaption small { color: var(--pencil); }
 .board-dots { pointer-events: auto; gap: 0; bottom: 0; }
 .board-dots button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.reference-picker { position: relative; display: grid; place-items: center; width: 40px; color: inherit; cursor: pointer; }
+.reference-picker { position: relative; cursor: pointer; }
 .reference-picker input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .reference-picker:focus-within { outline: 2px solid var(--pen); border-radius: 12px; }
-.reference-picker svg { width: 20px; height: 20px; }
 
 .improv-controls{display:flex;align-items:center;gap:.45rem}
 .improv-sound svg{width:1em;height:1em;vertical-align:middle}
