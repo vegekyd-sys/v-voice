@@ -93,7 +93,28 @@ let boardAvailable = false, improvAvailable = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
-let webDialVersion = null, dialGreeting = false;
+let webDialVersion = null, dialGreeting = false, standbyEnabled = false;
+let standbySocket, standbyRetry;
+function warmTvTransport(){
+  if(!standbyEnabled||standbySocket||phoneEntry||location.protocol!=='https:')return;
+  clearTimeout(standbyRetry);
+  const url=new URL('./api/dial-standby',document.baseURI);
+  url.protocol='wss:';
+  const socket=standbySocket=new WebSocket(url);
+  socket.onclose=()=>{
+    if(standbySocket!==socket)return;
+    standbySocket=null;
+    standbyRetry=setTimeout(warmTvTransport,60000);
+  };
+}
+function takeTvTransport(){
+  clearTimeout(standbyRetry);
+  const socket=standbySocket;
+  standbySocket=null;
+  if(socket?.readyState===1)return socket;
+  socket?.close();
+}
+window.addEventListener('pagehide',()=>{standbyEnabled=false;clearTimeout(standbyRetry);takeTvTransport()?.close();});
 const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
 function speakerEvent(value){
   if(!speakerCandidate())return;
@@ -658,7 +679,7 @@ function providerMessage(event) {
 }
 async function stopCall({failure}={}) {
   const active = call; call = null;
-  if (active && !failure && tvHost) {tvHost.landPortrait?.();warmTvAudio();}
+  if (active && !failure && tvHost) {tvHost.landPortrait?.();warmTvAudio();warmTvTransport();}
   if (starting === active) starting = null;
   if (active) {
     active.improv?.finish('call');
@@ -806,7 +827,7 @@ async function startCall(options = {}) {
     if(webDialVersion===2&&(phoneEntry||tvHost&&location.protocol==='https:')&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
       endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:selectedModel,dialVersion:'2',...(tvHost&&dialGreeting&&!fixtureId?{greeting:'1'}:{}),...(improvLive?{improvLive:'1'}:{}),...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
-      active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
+      active.dialConnection=createDialConnection({url:endpoint,standby:standbyEnabled?takeTvTransport():null,signal:active.captureAbort.signal});
       reservation=await withCapture(active.dialConnection.reservation);
     }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));
     active.provider=reservation.provider;
@@ -1177,6 +1198,8 @@ function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
     dialGreeting = status.dialGreeting===true;
+    standbyEnabled=Boolean(tvHost&&window.VTVArray&&status.tvDialStandby);
+    if(standbyEnabled)warmTvTransport();
     liveReady = status.ready === true;
     improvAvailable = status.improvLive === true && !tvHost && typeof RTCPeerConnection === 'function';
     view.set({referenceUpload:status.referenceUpload === true && !tvHost});

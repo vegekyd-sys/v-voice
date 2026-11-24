@@ -226,7 +226,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const conversationPresentation=binding=>{const context=voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools});return {name:context.conversationLabel,kind:binding.kind,replySync:binding.replySync,accountLabel:context.accountLabel,entryKind:context.entryKind,scopeNote:context.scopeNote};};
   const improvAllowed = binding => Boolean(director) && binding.permissionProfile === 'personal-tianyi';
   const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
-    ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2,dialGreeting:true}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
+    ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2,dialGreeting:true,tvDialStandby:hosted}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
     models:phoneModels(),...entryPresentation(binding,req),...(improvAllowed(binding)?{improvLive:true,...(director.uploadReference && boardAssets && boardAllowed(binding) ? {referenceUpload:true} : {})}:{}),...(boardAllowed(binding)?{board:true}:{})});
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
@@ -926,7 +926,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return json(res,revoked?200:404,revoked?{ok:true}:{error:'没有这个 App 绑定。'});
       }
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2,dialGreeting:true}:{}), conversation:conversationPresentation(binding),iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
+        ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2,dialGreeting:true,tvDialStandby:hosted}:{}), conversation:conversationPresentation(binding),iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         models:phoneModels(),...entryPresentation(binding,req),
@@ -1252,26 +1252,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     publish(message);
 
   };
-  server.on('upgrade',async(req,socket,head)=>{
-    const host=req.headers.host??'';
-    // Hardware clients authenticate with their own device token, not a browser
-    // cookie or Origin. They still arrive only through the configured host.
-    const devicePath=deviceEndpoint&&new URL(req.url,'http://device.invalid').pathname;
-    if(deviceEndpoint&&(devicePath===deviceEndpoint.path||deviceEndpoint.xiaozhiPath&&devicePath===deviceEndpoint.xiaozhiPath)){
-      // Device clients authenticate by token; some firmware omits the port in Host.
-      const hostname=(()=>{try{return new URL(`http://${host}`).hostname;}catch{return '';}})();
-      if(hosted?hostname!==origin.hostname:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)){socket.destroy();return;}
-      if(releaseGate.blocked()){socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');return;}
-      deviceEndpoint.handleUpgrade(req,socket,head,{dialect:devicePath===deviceEndpoint.path?'native':'xiaozhi'});return;
-    }
-    const expectedOrigin=hosted?publicOrigin:`http://${host}`;
-    if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
-    const url=new URL(req.url,expectedOrigin);
-    if(url.pathname===`${basePath}/api/dial`){
+  const waitingDials=new Map();
+  async function admitDial(req,url,accept,rejectRequest){
       // While this dial's live admission is in flight, the reads it will need
       // may start for the conversation the caller was last admitted to.
       let prefetched=null;
-      const reject=status=>{prefetched?.discard();socket.end(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);};
+      const reject=status=>{prefetched?.discard();rejectRequest(status);};
       if(stopping||releaseGate.blocked()||!backendReady())return reject(503);
       if(typeof directVoice.attach!=='function')return reject(404);
       const dialVersion=url.searchParams.get('dialVersion');
@@ -1299,7 +1285,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       let actions;try{actions=url.searchParams.has('nativeDeviceActions')?JSON.parse(url.searchParams.get('nativeDeviceActions')):undefined;normalizeDeviceActions(actions);}catch{return reject(400);}
       const params={model:url.searchParams.get('model'),...(dialVersion==='2'&&url.searchParams.get('improvLive')==='1'?{improvLive:true}:{}),...(dialVersion==='1'?{nativeRuntimeVersion:1,inputPolicy:phoneInputPolicy}:url.searchParams.has('inputPolicy')?{inputPolicy:url.searchParams.get('inputPolicy')}:{}),...(actions?{nativeDeviceActions:actions}:{}),
         ...(url.searchParams.has('voice')?{voice:url.searchParams.get('voice')}:{}),...(url.searchParams.has('resumed')?{resumed:(()=>{try{return JSON.parse(url.searchParams.get('resumed'));}catch{return {};}})()}:{})};
-      dialSockets.handleUpgrade(req,socket,head,client=>{
+      accept(client=>{
         client.on('error',()=>{});
         // Until attach owns the socket, reject all input. No microphone data
         // or arbitrary startup messages may race reservation/authentication.
@@ -1321,6 +1307,64 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             if(!cancelled()){client.send(JSON.stringify({type:'dial.error',status:503}));client.close(1011);}
           }
         })();
+      });
+  }
+  server.on('upgrade',async(req,socket,head)=>{
+    const host=req.headers.host??'';
+    // Hardware clients authenticate with their own device token, not a browser
+    // cookie or Origin. They still arrive only through the configured host.
+    const devicePath=deviceEndpoint&&new URL(req.url,'http://device.invalid').pathname;
+    if(deviceEndpoint&&(devicePath===deviceEndpoint.path||deviceEndpoint.xiaozhiPath&&devicePath===deviceEndpoint.xiaozhiPath)){
+      // Device clients authenticate by token; some firmware omits the port in Host.
+      const hostname=(()=>{try{return new URL(`http://${host}`).hostname;}catch{return '';}})();
+      if(hosted?hostname!==origin.hostname:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host)){socket.destroy();return;}
+      if(releaseGate.blocked()){socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');return;}
+      deviceEndpoint.handleUpgrade(req,socket,head,{dialect:devicePath===deviceEndpoint.path?'native':'xiaozhi'});return;
+    }
+    const expectedOrigin=hosted?publicOrigin:`http://${host}`;
+    if(!directVoice||(hosted?host!==origin.host:!/^(127\.0\.0\.1|localhost)(:\d+)?$/u.test(host))||req.headers.origin!==expectedOrigin){socket.destroy();return;}
+    const url=new URL(req.url,expectedOrigin);
+    const rejectUpgrade=status=>socket.end(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    if(url.pathname===`${basePath}/api/dial`){
+      await admitDial(req,url,handler=>dialSockets.handleUpgrade(req,socket,head,handler),rejectUpgrade);
+      return;
+    }
+    if(url.pathname===`${basePath}/api/dial-standby`){
+      // Hold only an authenticated browser transport. Admission, prefetch, and the
+      // provider start inside admitDial, after the explicit dial message.
+      if(!hosted||stopping||releaseGate.blocked()||!req.headers.cookie||url.searchParams.size)return rejectUpgrade(403);
+      const ip=String(req.headers['cf-connecting-ip']??socket.remoteAddress??'unknown').slice(0,128);
+      if(waitingDials.size>=64||[...waitingDials.values()].filter(value=>value===ip).length>=4)return rejectUpgrade(429);
+      waitingDials.set(socket,ip);
+      const release=()=>waitingDials.delete(socket);
+      socket.once('close',release);
+      const binding=await resolveBinding(req,url).catch(()=>null);
+      if(socket.destroyed){release();return;}
+      if(!binding||!readVisitor(req,binding)||phoneLogin?.protects(binding)&&!phoneLogin.permits(req,binding)&&!iosBindings?.read(req,binding)){
+        release();return rejectUpgrade(403);
+      }
+      dialSockets.handleUpgrade(req,socket,head,client=>{
+        client.on('error',()=>{});
+        let alive=true;
+        const pong=()=>{alive=true;};
+        client.on('pong',pong);
+        const timer=setInterval(()=>{if(!alive){client.terminate();return;}alive=false;client.ping();},30000);
+        timer.unref?.();
+        const cleanup=()=>{release();clearInterval(timer);client.off('pong',pong);};
+        client.once('close',cleanup);
+        client.once('message',(raw,binary)=>{
+          cleanup();
+          if(binary||raw.length>2048){client.close(1008);return;}
+          const dial=new URL(`${basePath}/api/dial`,expectedOrigin);
+          dial.search=raw.toString();
+          if(dial.searchParams.has('phone')||dial.searchParams.get('dialVersion')!=='2'){client.close(1008);return;}
+          const reject=()=>client.close(1008);
+          client.once('message',reject);
+          void admitDial(req,dial,handler=>{
+            client.off('message',reject);
+            handler(client);
+          },reject).catch(()=>client.close(1011));
+        });
       });
       return;
     }

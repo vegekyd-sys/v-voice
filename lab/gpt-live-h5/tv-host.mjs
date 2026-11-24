@@ -63,7 +63,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         enteringAvatar = {x:hostBounds.x+rect.left*toScreen, y:hostBounds.y+rect.top*toScreen,
           size:rect.width*toScreen, windowWidth:hostBounds.width};
         const image=document.getElementById?.('avatar');
-        if (image?.naturalWidth) {
+        if (!window.VTVPortrait&&image?.naturalWidth) {
           const ghost=document.createElement('canvas');
           ghost.width=ghost.height=Math.min(512,image.naturalWidth);
           try {
@@ -109,7 +109,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const focus=element?.getAttribute?.('data-tv-control')??({textToggle:'compose',steerText:'input',steer:'send',readerBack:'reader-back',readerBody:'reader-body',mute:'mute',stop:'end'})[element?.id];
       const state=view.get();
       const mic=window.__gptLiveDuplexDiagnostics?.microphone;
-      return Object.freeze({...snapshot,landing:document.documentElement.dataset.tvLanding==='moving',reading:state.reading===true,
+      return Object.freeze({...snapshot,portraitOrigin:enteringAvatar??null,landing:document.documentElement.dataset.tvLanding==='moving',reading:state.reading===true,
         microphone:Object.freeze({driver:state.call==='idle'?'none':mic?.kind==='tv-array-microphone'?'tv-array':'browser',
           channels:mic?.kind==='tv-array-microphone'&&[4,6].includes(mic.channels)?mic.channels:null,
           acousticEchoTestPassed:false}),
@@ -143,6 +143,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         if(viewport&&viewport.getAttribute('content')!==content)viewport.setAttribute('content',content);
       }
       const from = enteringAvatar;
+      if(from&&window.VTVPortrait)document.documentElement.dataset.tvEntering='true';
       enteringAvatar = null;
       commitLayout();
       if (from && bounds) {
@@ -165,6 +166,12 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
           }
           const face=avatar(), rect=face?.getBoundingClientRect();
           if(!rect?.width||!face.animate){finishFlight();return;}
+          if(window.VTVPortrait){
+            window.VTVPortrait.move(rect.left/window.innerWidth,rect.top/window.innerWidth,rect.width/window.innerWidth);
+            // An older native window can already have collapsed before its callback.
+            window.setTimeout(()=>{if(layout==='full'&&document.documentElement.dataset.tvEntering)finishFlight();},3000);
+            return;
+          }
           const origin=start(window.innerWidth);
           const translate=(x,y,scale)=>`translate3d(${x}px,${y}px,0) scale(${scale})`;
           const frameset=ghost ? [
@@ -212,6 +219,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       }));
       window.setTimeout(finish,1100);
     },
+    finishEnter:finishFlight,
     focusPrimary,
     passiveFocus(focused){if(overlay)document.documentElement.dataset.tvPassiveFocused=String(focused===true);},
     reveal(){if(overlay)document.documentElement.dataset.tvRevealed='true';return true;},

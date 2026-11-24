@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Bitmap;
 import android.os.PowerManager;
 import android.webkit.*;
 import org.json.JSONObject;
@@ -20,6 +19,7 @@ public final class DesktopPage extends BroadcastReceiver {
         final String entry;
         final TvArrayCapture capture;
         Runnable resized, finishCue;
+        PortraitFlight flight;
         final BroadcastReceiver screenOff = new BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) { if (idle == Page.this) discard(); }
         };
@@ -31,6 +31,11 @@ public final class DesktopPage extends BroadcastReceiver {
             addJavascriptInterface(new Object() {
                 @JavascriptInterface public void finish() { post(() -> { if (finishCue != null) finishCue.run(); }); }
             }, "VTVStartupCue");
+            addJavascriptInterface(new Object(){
+                @JavascriptInterface public void move(double x,double y,double width){
+                    post(()->{if(flight!=null)flight.move(x,y,width);});
+                }
+            },"VTVPortrait");
             WebSettings settings = getSettings();
             settings.setJavaScriptEnabled(true);
             settings.setDomStorageEnabled(true);

@@ -24,7 +24,7 @@ public final class CallService extends Service {
     private static CallService current;
     private static boolean entryVisible;
     static void entryStarted(){entryVisible=true;if(current!=null&&current.attached){current.windows.removeView(current.surface);current.attached=false;}}
-    static void entryFinished(){entryVisible=false;if(current!=null)current.handler.postDelayed(()->{if(current!=null&&!current.standby&&!entryVisible)current.resize(current.mode);},250);}
+    static void entryFinished(){entryVisible=false;if(current!=null)current.handler.postDelayed(()->{if(current!=null&&!current.standby&&!entryVisible)current.resize(current.mode);},current.adopted?0:250);}
     private WindowManager windows;
     private WindowManager.LayoutParams window;
     private boolean standby, configChanged;
@@ -39,6 +39,8 @@ public final class CallService extends Service {
     private final String launcherPackage="live.tianyi.familytv.dev";
     private final Handler handler=new Handler();
     private WebView web;
+    private PortraitFlight flight;
+    private boolean adopted;
     private android.widget.FrameLayout surface;
     private TvArrayCapture arrayCapture;
     private boolean visible,personal,surfaceAnnounced,visualPending,hostPresented,audioPageProvisioned,nativeMicReady,nativeFocusPending,pageFocusReady;
@@ -66,8 +68,9 @@ public final class CallService extends Service {
         personalUrl=DesktopPage.configured(this);
         personal=personalUrl!=null;
         DesktopPage.Page page=DesktopPage.take(personalUrl);
-        boolean preloaded=page!=null;
+        boolean preloaded=adopted=page!=null;
         if(!preloaded)page=new DesktopPage.Page(this,personalUrl);
+        flight=page.flight=new PortraitFlight(windows,page);
         page.resized=this::acknowledgeLayout;
         page.finishCue=this::finishStartupCue;
         web=page;arrayCapture=page.capture;
@@ -131,7 +134,7 @@ public final class CallService extends Service {
         audioPageProvisioned=true;long page=pageVersion;
         String token=arrayCapture.newPage();
         web.evaluateJavascript(personal?"window.vTvAudioCapability=Object.freeze({version:1,pageToken:"+JSONObject.quote(token)+"})":"delete window.vTvAudioCapability",value->{
-            if(visible&&page==pageVersion)nativeMicReady=true;
+            if(visible&&page==pageVersion){nativeMicReady=true;dialWarmPage();}
         });
     }
     // Keep the old Home portrait visible until this page has a committed visual frame.
@@ -178,6 +181,7 @@ public final class CallService extends Service {
     }
     private void resize(String value){
         if(!java.util.Arrays.asList("compact","medium","full").contains(value))return;
+        if(!"full".equals(value)&&flight!=null)flight.cancel();
         mode=value;
         getSharedPreferences("diagnostics",0).edit().putString("window_mode",value).apply();
         boolean full = value.equals("full");
@@ -229,10 +233,17 @@ public final class CallService extends Service {
         getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",true).putString("failure_code","").apply();
         handler.removeCallbacks(poll);handler.post(poll);
     }
+    private void dialWarmPage(){
+        if(!adopted||!nativeMicReady||pendingLaunch==null||checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)return;
+        String request=pendingLaunch;
+        web.evaluateJavascript("window.vVoiceTV?.requestDial("+JSONObject.quote(request)+")",accepted->{
+            if("true".equals(accepted)&&request.equals(pendingLaunch))pendingLaunch=null;
+        });
+    }
     private void showCall(){
         String target = "connected".equals(lastCall) ? "full" : "medium";
         web.evaluateJavascript("window.vVoiceTV?.setLayout("+JSONObject.quote(target)+")",null);
-        resize(target);
+        if(!"full".equals(target))resize(target);
     }
     private void collapse(){
         if(web!=null)web.evaluateJavascript("window.vVoiceTV?.setLayout('compact')",null);
@@ -263,6 +274,7 @@ public final class CallService extends Service {
         if("END".equals(intent.getAction())){action("end");handler.postDelayed(this::stopSelf,300);return START_NOT_STICKY;}
         closing=false;idleSince=0;
         if(START_CALL.equals(intent.getAction())&&"idle".equals(lastCall)){hadCall=false;pendingLaunch="launch-"+java.util.UUID.randomUUID();}
+        dialWarmPage();
         if(surfaceAnnounced){showCall();}
         return START_NOT_STICKY;
     }
@@ -310,7 +322,7 @@ public final class CallService extends Service {
                     .putString("meter_source",meter==null?"none":meter.optString("source","none"))
                     .putInt("meter_peak",meter==null?0:meter.optInt("peak",0))
                     .putInt("viewport_width",viewport==null?0:viewport.optInt("width",0)).putInt("viewport_height",viewport==null?0:viewport.optInt("height",0)).apply();}
-                String next=p.optString("layout","full");if(!closing&&!next.equals(mode))resize(next);
+                String next=p.optString("layout","full");if(!closing&&!next.equals(mode)){if("full".equals(next))flight.begin(p.optJSONObject("portraitOrigin"));resize(next);}
                 prepareNativeFocus();
                 JSONObject actions=p.optJSONObject("actions");
                 if(pendingLaunch!=null&&!"idle".equals(p.optString("call")))pendingLaunch=null;
@@ -326,6 +338,7 @@ public final class CallService extends Service {
         try{unregisterReceiver(systemEvents);unregisterReceiver(surfaceQuery);}catch(Exception ignored){}
         if(arrayCapture!=null)arrayCapture.foreground(false);
         finishStartupCue();announce(false);
+        if(flight!=null)flight.cancel();
         if(web!=null){if(attached)windows.removeView(surface);surface.removeView(web);web.destroy();web=null;}
         getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",false).putBoolean("interactive",false).putString("projected_call","idle")
           .putString("mic_driver","none").putInt("mic_channels",0).putString("meter_source","none").putInt("meter_peak",0).apply();

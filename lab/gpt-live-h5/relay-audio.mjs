@@ -371,7 +371,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       // A render-thread nonzero PCM receipt excludes pickup cues and silent
       // packets. This is an observation upper bound, not physical audibility.
       if(e.type==='first-render'&&stats.dialToFirstRenderObservedMs===undefined){stats.dialToFirstRenderObservedMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.rendered');
-        if(buffered)console.info('VTVAudio stats '+JSON.stringify({firstVoiceRenderMs:stats.dialToFirstRenderObservedMs,readyMs:stats.dialToReadyMs}));
+        if(buffered)console.info('VTVAudio stats '+JSON.stringify({firstVoiceRenderMs:stats.dialToFirstRenderObservedMs,readyMs:stats.dialToReadyMs,firstPcmMs:stats.dialToFirstPcmMs,preconnected:connection?.preconnected===true}));
         reportStats();return;}
       if(e.epoch!==epoch)return;
       if(e.type==='render-reference'){renderReference?.(e.buffer,e.sampleRate);return;}
