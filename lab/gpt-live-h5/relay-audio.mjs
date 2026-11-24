@@ -286,7 +286,9 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     // Only a transport identity can establish duplication. Never compare PCM:
     // identical silence and repeated syllables are valid audio.
     if(Number.isSafeInteger(e.sequence)&&e.sequence>0){if(e.sequence<=lastSequence){stats.duplicateFrames++;return;}lastSequence=e.sequence;}
-    const bytes=Uint8Array.from(atob(e.audio),c=>c.charCodeAt(0));
+    // Avoid allocating a JavaScript element for every byte of the lecture audio.
+    const binary=atob(e.audio),bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
     if(!bytes.length||bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
     if(stats.dialToFirstPcmMs===undefined){stats.dialToFirstPcmMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.received');}
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
