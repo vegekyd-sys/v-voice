@@ -4,7 +4,7 @@
 import React, {memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createPortal, flushSync} from 'react-dom';
-import {clock, resolveStatus, splitTurns} from '../call-view.mjs';
+import {clock, resolveStatus, splitTurns, voiceChoice} from '../call-view.mjs';
 import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
 import {Board} from './board.jsx';
 import {emptyScene} from '../board-scene.mjs';
@@ -17,6 +17,8 @@ const SPEAKER='M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14';
 const SPEAKER_OFF='M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6';
 const HANG = 'M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z';
 const SPARK = 'M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1';
+const GEAR = <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></Icon>;
+const WAVE = 'M4 10v4m4-7v10m4-13v16m4-12v8m4-6v4';
 const ACTIVITY_ICON = {
   web: <Icon><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" /></Icon>,
   memory: <Icon d="M12 4.5c-1.6-1.4-4.4-1.2-5.6.7-1.7.2-2.9 1.9-2.4 3.6-1.2 1.2-1.1 3.3.3 4.3-.3 1.9 1.3 3.6 3.2 3.4.9 1.7 3.1 2.3 4.5 1.2m0-13.2c1.6-1.4 4.4-1.2 5.6.7 1.7.2 2.9 1.9 2.4 3.6 1.2 1.2 1.1 3.3-.3 4.3.3 1.9-1.3 3.6-3.2 3.4-.9 1.7-3.1 2.3-4.5 1.2m0-13.2v13.2" />,
@@ -265,6 +267,58 @@ function GrokPicker({state, actions}) {
   );
 }
 
+// V's voice is half of its character, and only the listener can pick it: in Settings, the same place for
+// every model. (The home page does not say which one is on: nothing but V and the dial.)
+
+// Settings: the voice of the model chosen on the home page, and the way to the iPhone App.
+// A voice is fixed when a call is set up (both models take it in the session they open), so a
+// choice made here is for the next dial; during a call the list can be read, not changed.
+function SettingsSheet({state, actions, onClose}) {
+  const dialog = useRef(null), {model, voices, current} = voiceChoice(state);
+  const label = state.models.find(item => item.id === model)?.label, busy = state.call !== 'idle';
+  useEffect(() => { dialog.current?.showModal(); return () => dialog.current?.close(); }, []);
+  const move = event => {
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+    event.preventDefault();
+    const rows = [...event.currentTarget.querySelectorAll('button:not(:disabled)')], index = rows.indexOf(document.activeElement);
+    rows[(index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus();
+  };
+  return createPortal(<dialog ref={dialog} id="settingsDialog" className="session-dialog access-dialog settings-dialog" aria-labelledby="settingsTitle" onCancel={onClose}>
+    <header><div><span className="session-eyebrow">V Voice</span><h2 id="settingsTitle">设置</h2></div><button type="button" aria-label="关闭" onClick={onClose}>×</button></header>
+    <div className="session-dialog-body">
+      <section className="settings-section" aria-labelledby="settingsVoiceTitle">
+        <h3 id="settingsVoiceTitle">V 的声音{label && <small>{label}</small>}</h3>
+        {voices.length > 1 ? <>
+          <div className="voice-options" role="radiogroup" aria-labelledby="settingsVoiceTitle" aria-describedby="settingsVoiceNote" onKeyDown={move}>
+            {voices.map(voice => {
+              const [name, ...trait] = voice.label.split(' · '), on = voice.id === current?.id;
+              return (
+                <button key={voice.id} type="button" role="radio" className="voice-option" aria-checked={on} disabled={busy} data-voice={voice.id}
+                  onClick={() => actions.chooseVoice(model, voice.id)}>
+                  <span className="voice-option-mark" aria-hidden="true" />
+                  <span className="voice-option-copy"><strong>{name}</strong>{trait.length > 0 && <small>{trait.join(' · ')}</small>}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p id="settingsVoiceNote" className="settings-note">{busy ? '通话中不能换声音，挂断后再选。' : '选好会记住，下次拨号起用这个声音。'}</p>
+        </> : <p className="settings-note settings-single">{
+          model === 'grok' ? 'Grok 是试用模型，候选女声在首页选择。'
+          : voices.length === 1 ? `${label ?? '这个模型'}目前只有「${voices[0].label}」这一种声音。`
+          : label ? `${label} 只有一种声音，不能更换。换一个模型可以选别的声音。` : '当前没有可以选择的声音。'}</p>}
+      </section>
+      <section className="settings-section" aria-labelledby="settingsDeviceTitle">
+        <h3 id="settingsDeviceTitle">设备</h3>
+        <div className="access-options">
+          <button className="access-option" type="button" disabled={!state.iosBindingAvailable || Boolean(state.confirmation) || busy} onClick={() => { onClose(); actions.openBinding(); }}>
+            <span>iOS 绑定<small>{state.iosBindingAvailable ? '把当前身份与会话带到 iPhone' : '这个入口暂不支持绑定 iPhone'}</small></span><span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  </dialog>, document.body);
+}
+
 function EntryNotice({entry}) {
   return (
     <section id="entryNotice" className="entry-notice" data-kind={entry.kind} role="status" aria-live="polite" aria-atomic="true">
@@ -511,6 +565,7 @@ function CallPage({view, actions, options}) {
   const [overflow, setOverflow] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [accessOpen,setAccessOpen]=useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlsHeight, setControlsHeight] = useState(0);
   // The caller can put one picture away; the next new picture comes back.
   const [boardHidden, setBoardHidden] = useState(null);
@@ -567,7 +622,9 @@ function CallPage({view, actions, options}) {
       {state.tvHost&&<TvIsland state={state} actions={actions} status={status}/>}
       <SessionSheet state={state} actions={actions}/>
       {accessOpen&&!active&&<AccessSheet state={state} actions={actions} onClose={()=>setAccessOpen(false)}/>}
-      {!active&&!state.nativeSettings&&<button className="ios-binding-trigger" type="button" disabled={!state.iosBindingAvailable||Boolean(state.confirmation)} onClick={actions.openBinding}>iOS 绑定</button>}
+      {/* The iOS App has its own native settings (and dials natively): no page settings there. */}
+      {settingsOpen && !state.nativeSettings && <SettingsSheet state={state} actions={actions} onClose={() => setSettingsOpen(false)} />}
+      {!active && !state.nativeSettings && <button id="settingsOpen" className="settings-trigger" type="button" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>{GEAR}设置</button>}
       <button id="changelogOpen" className="changelog-trigger" type="button" aria-haspopup="dialog" aria-controls="changelogDialog" aria-expanded="false" hidden={active}>
         <Icon d={SPARK} />更新日志
       </button>
@@ -592,11 +649,12 @@ function CallPage({view, actions, options}) {
                 </>
               ) : state.entry&&!state.confirmation ? <EntryNotice entry={state.entry} /> : (
                 <>
-                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<GrokPicker state={state} actions={actions} />}
+                  {state.confirmation?<InlineConfirmation value={state.confirmation} actions={actions}/>:<><GrokPicker state={state} actions={actions} /></>}
                   <button id="start" className={`dial${state.confirmation?' confirmation-dial':''}`} type="button" disabled={state.confirmation?state.confirmation.phase!=='failed':state.dial.disabled} aria-label={state.confirmation?(state.confirmation.phase==='failed'?'重试身份确认':'等待飞书确认'):state.dial.label} title={state.dial.label} onClick={state.confirmation?actions.connectIdentity:actions.dial}><Icon d={PHONE} /></button>
                   {state.confirmation?<div className="confirmation-actions"><button type="button" disabled={state.confirmation.phase==='cancelling'} onClick={actions.skipConfirmation}>访客通话</button></div>:<>
                   <ModelPicker state={state} actions={actions} />
-                  <span id="badge" className="home-badge" role="status">{state.badge}</span>
+                  {/* (Ready to dial is what the dial itself says: the line is kept for when something is not ready.) */}
+                  {state.badge !== '可以拨号' && <span id="badge" className="home-badge" role="status">{state.badge}</span>}
                   <IdentitySummary context={state.accessContext} onClick={state.nativeSettings?undefined:()=>setAccessOpen(true)}/>
                   {state.nativeSettings&&!state.accessContext&&state.entrySummary&&<span className="access-summary">{state.entrySummary}</span>}
                   {state.accountLoginHref&&!state.accountLabel&&(state.confirmationAvailable?<button type="button" className="home-note identity-connect" onClick={actions.connectIdentity}>连接飞书身份</button>:<a className="home-note" href={state.accountLoginHref}>连接飞书账号</a>)}

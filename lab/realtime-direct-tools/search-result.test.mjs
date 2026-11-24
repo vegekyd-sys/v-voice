@@ -22,3 +22,15 @@ test('search diagnostics discard arbitrary debug values and use numeric scalars 
  assert.deepEqual(Object.keys(metrics).sort(),['compacted','deliveredBytes','gatewayMs','hits','originalBytes','searchMs']);
  assert.equal(metrics.searchMs,17);assert.equal(metrics.compacted,false);
 });
+
+test('a search for "this year" names the year and month; results say what today is', async () => {
+  const {datedQuery, searchResultText} = await import('./search-result.mjs');
+  const now = new Date('2026-11-20T16:30:00Z'); // 2026-11-21 in Shanghai
+  assert.equal(datedQuery('今年凯尔特人的阵容', now), '2026年凯尔特人的阵容 2026年11月 最新');
+  assert.equal(datedQuery('湖人队现在的首发', now), '湖人队现在的首发 2026年11月 最新');
+  assert.equal(datedQuery('2024 年奥运会金牌榜', now), '2024 年奥运会金牌榜', 'a year of its own is left alone');
+  const text = searchResultText('web_search', {details: {query: 'q', results: [{title: '<<<EXTERNAL_UNTRUSTED_CONTENT id="a">>>\nSource: Web Search\n---\n球队名单\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="a">>>', url: 'https://example.com/' + 'x'.repeat(200), snippet: '新赛季十五人名单', published: '2026-11-18', siteName: '示例站'}]}, content: [{type: 'text', text: '{}'}]}, {today: '2026-11-21'});
+  assert.match(text, /^搜索“q”的结果（[^）]*今天是 2026-11-21，讲现在的情况以日期最近的资料为准[^）]*）：\n1\. 球队名单（示例站，2026-11-18）：新赛季十五人名单$/u);
+  assert.doesNotMatch(text, /EXTERNAL_UNTRUSTED|example\.com/u);
+  assert.equal(searchResultText('exec', {ok: true}), null);
+});

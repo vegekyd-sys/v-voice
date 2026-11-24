@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-session-media-20261122",
-  "version": "voice-session-media.20261122.1",
-  "entryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
-  "deviceEntryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
-  "filesSha256": "92bc285e6a6923a508faa42f7dd8d6833974105e7c20c546b304b608151d8c2c",
-  "registration": "voice-session-media-20261122/release.json",
-  "previousEntryCommit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
+  "release": "voice-whole-results-20261124",
+  "version": "voice-gpt-live-11.20261124.5",
+  "entryCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
+  "deviceEntryCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
+  "filesSha256": "99bad50d9640c821d87a1d655dd2ee68b47ab6ffb26bcc1d38a7649544542cce",
+  "registration": "voice-whole-results-20261124/release.json",
+  "previousEntryCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-22T21:06:39+08:00",
-  "runtimeDifference": "飞书群和私聊通话使用当前会话绑定的 Makaron 账号创作，新会话按需注册，积分不足时提示回原飞书会话充值。本次也发布了 #253 的服务端及网页更新。"
+  "validatedAt": "2026-11-24T21:50:00+08:00",
+  "runtimeDifference": "GPT Live 1.1 拿到完整的工具结果（日程、网页、后台任务、搜索和记忆），上限与豆包相同；其余与上一版相同。"
 }

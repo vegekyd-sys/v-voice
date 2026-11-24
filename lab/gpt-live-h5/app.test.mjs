@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { createAvatarTasks, ACTIVITY_LABELS } from "./avatar-state.mjs";
-import { createCallView } from "./call-view.mjs";
+import { createCallView, VOICE_SLOTS } from "./call-view.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
 import { createScreenWakeLock } from "./screen-wake-lock.mjs";
@@ -120,7 +120,8 @@ async function fixture(t, options = {}) {
   const context = vm.createContext({
     renderMarkdown: (target,text) => { target.textContent = text; }, createTranscriptPresentation, createPageMicrophoneSession, createScreenWakeLock, createAvatarTasks, ACTIVITY_LABELS,
     createContentView: () => options.contentView,
-    createCallView: (...values) => (view = createCallView(...values)), mountCallUi: () => {},
+    createCallView: (...values) => (view = createCallView(...values)), VOICE_SLOTS, mountCallUi: (...values) => options.mountCallUi?.(...values),
+    ...(options.localStorage ? { localStorage: options.localStorage } : {}),
     phoneModelOptions, installTvHost, createFeishuConfirmation, entryStartup, startVoiceEntry, markVoiceTiming: () => {}, mountChangelog,
     createRelayAudio: values => options.relayFactory(values),
     mountAvatar: () => options.avatar,
@@ -1277,4 +1278,55 @@ test('authenticated GPT reservation installs account context before greeting and
  peer.channel.onmessage({data:JSON.stringify({type:'session.context.appended'})});assert.equal(peer.tracks[0].enabled,true);
  peer.channel.onmessage({data:JSON.stringify({type:'session.started'})});assert.equal(sent.length,1);
  await f.context.stopCall();assert.equal(peer.closed,true);
+});
+
+test('a GPT Live 1.1 call whose connection is cut is dialled again by itself with what the page saw; never a call that was hung up, another model, or a third time in a row',async t=>{
+ const relays=[],dials=[];let provider='gpt-live-11';
+ const f=await fixture(t,{api:(route,payload,result)=>{if(route==='session'){dials.push(payload);return {...result,transport:'gateway-relay',provider};}return result;},
+  relayFactory:values=>{relays.push(values);return {start:async()=>{},dispose(){}};}});
+ const settle=async()=>{for(let i=0;i<20;i++)await new Promise(r=>setImmediate(r));};
+ await f.context.startCall();await settle();assert.equal(dials.length,1);assert.equal(dials[0].resumed,undefined);
+ const contexts=f.contexts.length;
+ // Held for 40 s, then the socket closes without a close frame.
+ f.setNow(40000);relays[0].onClosed({code:1006,clean:false,quietMs:300});await settle();
+ assert.equal(dials.length,2,'dialled again');assert(!f.requests.some(r=>r.route==='close'),'and the lost call is not hung up on the service: its board is for the call that follows');assert.deepEqual([dials[1].resumed.code,dials[1].resumed.clean,dials[1].resumed.quietMs,dials[1].resumed.heldMs>=39000],[1006,false,300,true]);
+ assert.equal(f.contexts.length,contexts,'the audio context made in the tap is kept: no new one');assert.equal(f.sounds.at(-1).dialing,0,'no ringing for a call that is coming back');
+ // Cut again within seconds of coming back, twice: the second is still tried, the third is left to the caller.
+ f.setNow(45000);relays[1].onClosed({code:1006,clean:false,quietMs:0});await settle();assert.equal(dials.length,3);
+ f.setNow(50000);relays[2].onClosed({code:1006,clean:false,quietMs:0});await settle();assert.equal(dials.length,3);
+ assert.equal(f.view.get().failureCode,'RELAY_CLOSED');
+ // A call the service is ending is not dialled again; nor is another model's.
+ f.context.actions?.dial?.();
+ provider='seeduplex';await f.context.startCall();await settle();const before=dials.length;
+ f.setNow(120000);relays.at(-1).onClosed({code:1006,clean:false,quietMs:0});await settle();assert.equal(dials.length,before);assert.equal(f.view.get().failureCode,'RELAY_CLOSED');
+});
+
+test('Doubao dials in the voice chosen in Settings and remembers it; a service that lists no voices is sent none', async t => {
+ const voices=[{id:'xiaohe',label:'小何 · 甜美活泼'},{id:'taozi',label:'桃子 · 甜美'}];
+ const page=async(stored,model={id:'seeduplex',label:'豆包 SeedDuplex',available:true,voice:'xiaohe',voices})=>{
+  const saved=new Map(stored);let ui;
+  const f=await fixture(t,{contentView:{reset(){},render(){}},mountCallUi:(_document,_view,value)=>{ui=value;},
+   localStorage:{getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value)},
+   api:(route,payload,result)=>route==='status'?{ready:true,defaultModel:'seeduplex',models:[model]}:route==='session'?{...result,transport:'gateway-relay',provider:'seeduplex'}:result,
+   relayFactory:()=>({start:async()=>{},dispose(){}})});
+  return {f,saved,actions:ui.actions,dialed:async()=>{await f.context.startCall();return f.requests.find(row=>row.route==='session').payload;}};
+ };
+ // Nothing chosen yet: the model's own default, and the list Settings shows.
+ const fresh=await page();
+ // (The page's objects come from its own realm: compare what they hold.)
+ const held=value=>JSON.parse(JSON.stringify(value));
+ assert.deepEqual(held(fresh.f.view.get().doubao),{voices,voice:'xiaohe'});
+ fresh.actions.chooseVoice('seeduplex','taozi');
+ assert.equal(fresh.saved.get('v.doubao.voice'),'taozi');assert.equal(fresh.f.view.get().doubao.voice,'taozi');
+ // (Not one of this model's voices, or a model without a choice: nothing changes.)
+ fresh.actions.chooseVoice('seeduplex','sol');fresh.actions.chooseVoice('gpt-live','taozi');
+ assert.equal(fresh.saved.get('v.doubao.voice'),'taozi');assert.equal(fresh.f.view.get().doubao.voice,'taozi');
+ assert.equal((await fresh.dialed()).voice,'taozi');
+ // The next visit starts from the remembered voice; one the service no longer offers falls back.
+ assert.equal((await page([['v.doubao.voice','taozi']])).f.view.get().doubao.voice,'taozi');
+ assert.equal((await page([['v.doubao.voice','retired']])).f.view.get().doubao.voice,'xiaohe');
+ // GPT Live 1.1's choice is kept apart from Doubao's.
+ assert.equal((await page([['v.gptLive11.voice','maple']])).f.view.get().doubao.voice,'xiaohe');
+ const old=await page([['v.doubao.voice','taozi']],{id:'seeduplex',label:'豆包 SeedDuplex',available:true});
+ assert.deepEqual(held(old.f.view.get().doubao),{voices:[],voice:null});assert.equal('voice' in await old.dialed(),false);
 });

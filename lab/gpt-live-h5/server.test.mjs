@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createLiveH5Server ,callAttemptLimit} from "./server.mjs";
 import {createDirectVoiceService} from '../realtime-direct-tools/session.mjs';
+import {SEEDUPLEX_VOICE_CHOICES} from '../seeduplex-realtime-provider.mjs';
 import { transcriptEvent } from "./events.mjs";
 import { AVATAR_FILES } from "./avatar-state.mjs";
 import { GPT_LIVE_PERSONAL_SESSION_KEY } from "./personal-session.mjs";
@@ -16,7 +17,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, enableGptLive11: overrides.enableGptLive11 ?? false, enableGptLiveOne: overrides.enableGptLiveOne ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -512,4 +513,46 @@ test('only anonymous callers keep the tight dial limit',()=>{
   assert.equal(callAttemptLimit({permissionProfile:'unidentified'}),6);
   assert.equal(callAttemptLimit({permissionProfile:'personal-tianyi'}),30);
   assert.equal(callAttemptLimit({permissionProfile:'feishu-current'}),30);
+});
+
+test('GPT Live One can be taken out of the phone catalog: not listed, not dialled, and the default moves to a model that is offered',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'gpt-live-11',available:true}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-relay',transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ // With GPT Live 1.1 offered, it takes the default's place; without it, Doubao does.
+ const both=await fixture(t,{enableGptLiveOne:false,enableGptLive11:true,directVoice});
+ const status=await(await fetch(both.url+'/api/status',{headers:{cookie:both.cookie}})).json();
+ assert.deepEqual(status.models.map(m=>m.id),['seeduplex','gpt-live-11']);assert.equal(status.defaultModel,'gpt-live-11');
+ // An old page or App that still asks for it is told to choose again; nothing is reserved.
+ for(const params of [{},{model:'gpt-live'}]){const blocked=await both.request('session',params);assert.equal(blocked.status,409);const body=await blocked.json();assert.deepEqual([body.code,body.fallbackModel],['model_hidden','gpt-live-11']);}
+ assert.equal(reserved.length,0);
+ assert.equal((await both.request('session',{model:'seeduplex'})).status,200);assert.equal(reserved[0].model,'seeduplex');
+ const doubao=await fixture(t,{enableGptLiveOne:false,directVoice});
+ const only=await(await fetch(doubao.url+'/api/status',{headers:{cookie:doubao.cookie}})).json();
+ assert.deepEqual(only.models.map(m=>m.id),['seeduplex']);assert.equal(only.defaultModel,'seeduplex');
+});
+
+test('GPT Live 1.1 stays out of the catalog until the service enables it, then reserves through the relay',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',available:true},{id:'gpt-live-11',available:true}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-gpt-live-11',transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ const hidden=await fixture(t,{defaultModel:'gpt-live-11',directVoice});
+ const status=await(await fetch(hidden.url+'/api/status',{headers:{cookie:hidden.cookie}})).json();
+ assert.deepEqual(status.models.map(m=>m.id),['gpt-live','seeduplex']);assert.notEqual(status.defaultModel,'gpt-live-11');
+ const blocked=await hidden.request('session',{model:'gpt-live-11'});assert.equal(blocked.status,409);assert.equal((await blocked.json()).code,'model_hidden');
+ const shown=await fixture(t,{enableGptLive11:true,defaultModel:'gpt-live-11',directVoice});
+ const open=await(await fetch(shown.url+'/api/status',{headers:{cookie:shown.cookie}})).json();
+ assert.equal(open.models.at(-1).id,'gpt-live-11');assert.equal(open.defaultModel,'gpt-live-11');
+ // The caller's choice of voice is one of the model's own, or the call is not made.
+ assert.equal((await shown.request('session',{model:'gpt-live-11',voice:'xiaohe'})).status,400);assert.equal(reserved.length,0);
+ assert.equal((await shown.request('session',{model:'gpt-live-11',voice:'maple'})).status,200);assert.equal(reserved[0].model,'gpt-live-11');assert.equal(reserved[0].voice,'maple');
+});
+
+test('a Doubao voice sent by the page is one the page offers, or the call is not made; no voice dials as before',async t=>{
+ const reserved=[];const directVoice={models:()=>[{id:'seeduplex',label:'豆包 SeedDuplex',available:true,voice:'xiaohe',voices:SEEDUPLEX_VOICE_CHOICES}],reserve:async p=>{reserved.push(p);return {voiceSessionId:'test-doubao-'+reserved.length,transport:'gateway-relay'};},close:async()=>{},dispose:async()=>{}};
+ const f=await fixture(t,{directVoice});
+ const status=await(await fetch(f.url+'/api/status',{headers:{cookie:f.cookie}})).json();
+ assert.deepEqual(status.models.find(m=>m.id==='seeduplex').voices,JSON.parse(JSON.stringify(SEEDUPLEX_VOICE_CHOICES)));
+ // (GPT Live's voice, a raw speaker id, a mapped speaker the page does not offer, nothing.)
+ for(const voice of ['sol','zh_female_vv_uranus_bigtts','companion','',null]){const refused=await f.request('session',{model:'seeduplex',voice});assert.equal(refused.status,400);assert.match((await refused.json()).error,/豆包音色/u);}
+ assert.equal(reserved.length,0);
+ assert.equal((await f.request('session',{model:'seeduplex',voice:'taozi'})).status,200);assert.equal(reserved[0].voice,'taozi');
+ assert.equal((await f.request('close',{voiceSessionId:'test-doubao-1'})).status,200);
+ assert.equal((await f.request('session',{model:'seeduplex'})).status,200);assert.equal(reserved[1].voice,undefined);
 });

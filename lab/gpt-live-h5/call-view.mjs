@@ -108,6 +108,18 @@ export function splitTurns(snapshot) {
 
 const speakerId = id => String(id).startsWith('speaker:') ? String(id) : 'speaker:' + id;
 
+// The models whose voice the caller chooses in Settings: where each choice is kept in the view and
+// in this browser. (Grok is a trial with its own picker on the home page; GPT Live One has one voice.)
+export const VOICE_SLOTS = Object.freeze({
+  seeduplex: Object.freeze({state: 'doubao', storage: 'v.doubao.voice'}),
+  'gpt-live-11': Object.freeze({state: 'live11', storage: 'v.gptLive11.voice'}),
+});
+/** The selected model's voices and the one that is on; an empty list where there is nothing to choose. */
+export function voiceChoice(state) {
+  const slot = VOICE_SLOTS[state.model], value = slot ? state[slot.state] : null, voices = value?.voices ?? [];
+  return {model: state.model, voices, current: voices.find(voice => voice.id === value?.voice) ?? null};
+}
+
 export const INITIAL_VIEW = Object.freeze({
   call: 'idle', voice: 'idle', thinkingAt: null, callStartedAt: null,
   dial: {disabled: true, label: '拨号'}, stopLabel: '结束通话', badge: '连接中',
@@ -118,6 +130,8 @@ export const INITIAL_VIEW = Object.freeze({
   composer: {enabled: false, open: false}, muted: false, outputMuted: false,
   models: [], model: 'seeduplex', modelDisabled: false,
   grok: {voices: [], voice: null, hint: '', listenHref: './compare', listenAvailable: false},
+  live11: {voices: [], voice: null},
+  doubao: {voices: [], voice: null},
   reading: false,
   // The call board (board-scene.mjs); null until the director draws something.
   board: null,

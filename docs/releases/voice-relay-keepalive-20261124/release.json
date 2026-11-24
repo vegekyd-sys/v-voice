@@ -1,0 +1,38 @@
+{
+  "version": "voice-gpt-live-11.20261124.2",
+  "verifiedAt": "2026-11-24T18:45:10+08:00",
+  "sourceCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
+  "mergePRs": [
+    263
+  ],
+  "previousRunningCommit": "7f8bfc5f656472c019e5223321994a8a2b2a7ffa",
+  "filesSha256": "8d3173ea461720db4743c8daa4d682c61719a27530dff345323cd1e7bc8dea04",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45373802919",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "29d6232574bd48d73d3e7de54dd29ddd980a82cf84b3049609a837886b14b0db",
+  "serviceConfiguration": [
+    "私有配置不变（发布前后配置哈希一致）。"
+  ],
+  "fixes": [
+    "11-24 上线后已安装的 iOS App 每通电话接通约 5 秒即报「当前服务的语音协议尚不支持」挂断：通话连接上的 keepalive 文字行改为只发给网页，App 和音箱只收协议 ping。"
+  ],
+  "acceptance": [
+    "App 自身通话日志定位：接通、开场白已播放后 4.9 秒（第一条 keepalive）报 protocolMismatch；服务端两通 2–5 秒、零轮次的通话与之对应。",
+    "两个运行节点的提交、文件哈希和 iOS UI revision 已核对，均已恢复接入；Gateway 未重启。",
+    "运行目录中的 session.mjs 含本次修复。",
+    "npm test、test:speaker-native、check:ios-shell、release_fleet_test 和 main CI 均通过；新测试在没有修复时失败。"
+  ],
+  "notVerified": [
+    "修复后的真实 iOS App 通话尚未打，由用户在手机上验收。"
+  ]
+}

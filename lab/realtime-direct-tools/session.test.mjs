@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createImprovShow} from './improv-live.mjs';
-import {createDirectVoiceService} from './session.mjs';
+import {createDirectVoiceService,directInstructions} from './session.mjs';
+import {GPT_LIVE_VOICE_CHOICES} from './gpt-live-provider.mjs';
+import {SEEDUPLEX_VOICES,SEEDUPLEX_VOICE_CHOICES} from '../seeduplex-realtime-provider.mjs';
 import {speakerProfile} from '../speaker-native/stream-service.mjs';
 import {VOICE_CAPABILITY_POLICY} from '../gpt-live-h5/capability-policy.mjs';
 
@@ -23,9 +25,9 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   if(method==='voice.product.task.cancel'){sdkTask.status='cancelled';return {taskId:sdkTask.taskId,cancelled:true};}
   return invoke(args,method);
  }};
- const service=createDirectVoiceService({gateway,...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
+ const service=createDirectVoiceService({gateway,...(options.relayPingMs?{relayPingMs:options.relayPingMs}:{}),...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
  const reservation=await service.reserve({model,improv:options.improv,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
- const client=new EventEmitter();client.readyState=1;client.sent=[];client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
+ const client=new EventEmitter();client.readyState=1;client.sent=[];if(options.pings)client.ping=()=>{client.pings=(client.pings??0)+1;};client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
  // Wait for the protocol readiness event, not a machine-dependent 5ms sleep.
@@ -1691,6 +1693,49 @@ test('speech keeps the call alive and speaking during the idle farewell cancels 
  assert(await until(()=>f.client.sent.some(e=>e.type==='end.cancelled')));
  await delay(200);assert.equal(f.client.readyState,1,'a cancelled host end never closes the call');
 });
+test('speech during a hang-up is a change of mind, unless the voice path says it is only the caller\'s goodbye',async t=>{
+ // The session keeps no list of farewells: a voice path that can judge is asked, every other one is as before.
+ const {SeeduplexRealtimeVoiceBridge}=await import('../seeduplex-realtime-provider.mjs');
+ const asked=[];let undone=0;
+ SeeduplexRealtimeVoiceBridge.prototype.keepsEnding=async text=>{asked.push(text);return text==='只是道别';};
+ SeeduplexRealtimeVoiceBridge.prototype.endingCancelled=function(){undone++;};
+ t.after(()=>{delete SeeduplexRealtimeVoiceBridge.prototype.keepsEnding;delete SeeduplexRealtimeVoiceBridge.prototype.endingCancelled;});
+ const f=await fixture(undefined,'seeduplex',idleTiming);t.after(()=>f.service.dispose());
+ assert(await until(()=>hostEnded(f,'silence')));
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'只是道别'});
+ await delay(80);assert.deepEqual(asked,['只是道别']);assert(!f.client.sent.some(e=>e.type==='end.cancelled'),'the hang-up stands');assert.equal(undone,0);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'还有一件事'});
+ assert(await until(()=>f.client.sent.some(e=>e.type==='end.cancelled')));assert.equal(undone,1,'and the voice path is told');
+});
+test('the page is not told to hang up while the voice path still hears the caller; what they say may undo it',async t=>{
+ const {GrokVoiceBridge}=await import('./grok-provider.mjs');
+ let release;GrokVoiceBridge.prototype.endingHeld=()=>new Promise(resolve=>{release=resolve;});
+ t.after(()=>{delete GrokVoiceBridge.prototype.endingHeld;});
+ const farewell=(f,id)=>{f.event({type:'response.created',response:{id}});f.event({type:'response.output_audio.delta',response_id:id,delta:Buffer.alloc(960).toString('base64')});f.event({type:'response.done',response:{id,status:'completed'}});};
+ const f=await fixture();t.after(()=>f.service.dispose());
+ f.call('end_call',{});await delay(5);farewell(f,'bye');await delay(20);
+ assert(!f.client.sent.some(e=>e.type==='end.after-playback'),'held');release();await delay(10);
+ assert(f.client.sent.some(e=>e.type==='end.after-playback'),'the caller was only saying goodbye: it goes on');
+ // A hang-up undone while it was held is not carried out afterwards.
+ const g=await fixture();t.after(()=>g.service.dispose());
+ g.call('end_call',{});await delay(5);farewell(g,'bye');await delay(10);
+ g.event({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下,还有个事'});
+ assert(await until(()=>g.client.sent.some(e=>e.type==='end.cancelled')));release();await delay(10);
+ assert(!g.client.sent.some(e=>e.type==='end.after-playback'));
+});
+test('a quiet call still sends something down to the caller every few seconds, and stops when the caller has gone',async t=>{
+ const f=await fixture(undefined,'seeduplex',{pings:true,relayPingMs:20});t.after(()=>f.service.dispose());
+ await delay(110);assert(f.client.pings>=3,'pings while nobody speaks');
+ // A line of data goes with each ping; it names no call, so a page drops it unread.
+ const lines=f.client.sent.filter(value=>value.type==='keepalive');assert(lines.length>=3);assert.deepEqual(lines[0],{type:'keepalive'});
+ f.client.readyState=3;f.client.emit('close',1006);await delay(10);const after=f.client.pings;await delay(80);assert.equal(f.client.pings,after);
+});
+test('the keepalive line goes only to a web page; the iOS App gets the protocol ping alone',async t=>{
+ // The released App hangs up on any line of a native-runtime call it cannot read as a runtime frame.
+ const f=await fixture(undefined,'seeduplex',{pings:true,relayPingMs:20,nativeRuntimeVersion:1});t.after(()=>f.service.dispose());
+ await delay(110);assert(f.client.pings>=3,'the App is still pinged');
+ assert(!f.client.sent.some(value=>value.type==='keepalive'),'no line the App cannot read');
+});
 test('a running tool is not silence',async t=>{
  const f=await fixture(()=>new Promise(()=>{}),'seeduplex',idleTiming);t.after(()=>f.service.dispose());
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'slow',name:'current_time',arguments:'{}'}]});
@@ -1746,7 +1791,7 @@ test('call 649709d0: a lesson about today looks it up first; a search made for a
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲解一下今天黄仁勋的事情'});
  f.call('explain_on_board',{topic:'今天黄仁勋的事情'},'direct');
  assert(await until(()=>prepared.length===1));
- assert.deepEqual(searched,['今天黄仁勋的事情'],'the lesson searched before it was written');
+ assert.equal(searched.length,1,'the lesson searched before it was written');assert.match(searched[0],/^今天黄仁勋的事情 20\d\d年\d{1,2}月 最新$/u,'with the year and month a search engine cannot guess');
  assert.match(prepared[0].reference,/英伟达公告/u);
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你先网上查一查，再给我讲解一下苹果折叠屏和竞品的比较'});
  f.call('web_search',{query:'苹果折叠屏 竞品 对比'},'searching');
@@ -1799,6 +1844,15 @@ test('the board for everyone: a guest caller gets the lesson tool only where the
  assert.equal(open.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'),true);
 });
 
+test('a call says whether its V is ever handed a lesson\'s script: where it is not, the board may open a page of pictures on the question alone',async t=>{
+ const lessonFor=audience=>({available:true,audience,prepare:async()=>({say:'好。'})});
+ const scripted=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('all')});t.after(()=>scripted.service.dispose());
+ const guest=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson:lessonFor('owner'),unidentified:true});t.after(()=>guest.service.dispose());
+ // (The answer is the same one that decides whether the lesson tool is offered.)
+ for(const f of [scripted,guest])assert.equal(f.service.unscripted(f.reservation.voiceSessionId),!f.upstream.sent.find(e=>e.type==='session.update').session.tools.some(tool=>tool.name==='explain_on_board'));
+ assert.deepEqual([scripted.service.unscripted(scripted.reservation.voiceSessionId),guest.service.unscripted(guest.reservation.voiceSessionId),guest.service.unscripted('no-such-call')],[false,true,false]);
+});
+
 test('call 9427aac1: with the board, a finished background task is told as one lesson written from its result; without a script it is said as before',async()=>{
  for(const works of [true,false]){
   const prepared=[];
@@ -1848,6 +1902,21 @@ test('call 8a67bd27: a record Seeduplex refused is left out of the next call in 
  assert(second.audit.some(e=>e.type==='call.record-skipped'));
  const opened=second.upstream.sent.find(e=>e.type==='session.create'||e.type==='session.update');
  assert.doesNotMatch(JSON.stringify(opened),/一条群消息/);
+});
+
+test('GPT Live 1.1 is offered only with a login and media stack, and is told nothing about tool schemas',async t=>{
+ const wsModule={WebSocket:class{},WebSocketServer:class{on(){}handleUpgrade(){}close(){}}},gateway={request:async()=>({})};
+ const off=createDirectVoiceService({gateway,wsModule,apiKeys:{seeduplex:'k'}});t.after(()=>off.dispose?.());
+ assert.deepEqual(off.models().find(m=>m.id==='gpt-live-11'),{id:'gpt-live-11',label:'GPT Live 1.1',model:'gpt-live-1.1-codex',voice:'sol',voices:GPT_LIVE_VOICE_CHOICES,available:false,billing:'subscription',nativeTransport:'gateway-relay'});
+ const on=createDirectVoiceService({gateway,wsModule,apiKeys:{},gptLive:{resolveAuth:async()=>({token:'t',accountId:'a'}),loadMedia:async()=>({}),voice:'maple'}});t.after(()=>on.dispose?.());
+ const model=on.models().find(m=>m.id==='gpt-live-11');assert.equal(model.available,true);assert.equal(model.voice,'maple');
+ assert.equal(on.models().find(m=>m.id==='seeduplex').available,false);
+ assert.throws(()=>createDirectVoiceService({gateway,wsModule,gptLive:{resolveAuth:async()=>({}),loadMedia:async()=>({}),voice:'xiaohe'}}),/音色/u);
+ const text=directInstructions([{id:'web_search',description:'搜索'}],'[00:01:00] 用户: 之前聊过扫地机器人','gpt-live-11',{surface:'phone'});
+ assert.match(text,/^Delivery \(highest priority\): This is a live phone call[^\n]*Keep each turn short[^\n]*\n你是 V，/u);assert.match(text,/不说自己是 ChatGPT/u);assert.match(text,/电话接通时的上海时间：[^（]+（只表示接通那一刻/u);assert.match(text,/不提下面记录里的旧话题/u);assert.match(text,/之前聊过扫地机器人/u);
+ assert.doesNotMatch(text,/timeoutSeconds|show_content\(|可直接执行的原生工具目录/u);
+ // Who V is and how V thinks come from the shared persona; how to speak is this model's own, and short.
+ assert.match(text,/\nIdentity:\nYou are a self-evolving AI partner/u);assert.match(text,/\nAgency and judgment:/u);assert.doesNotMatch(text,/Pacing policy|Human presence policy|Conversation style:|我想一下/u);
 });
 
 test('a call says which way it ended: the voice service closing it, or the page going away', async t => {
@@ -2071,4 +2140,33 @@ test('a confirmation can open the exact picture the model selects from the call'
  f.call('improv_live',{action:'start',shot:'开门营业',openingImage:portrait.id},'start');
  await delay(0);
  assert.deepEqual(calls.filter(c=>c[0]==='start').map(c=>c.at(-1)),['https://cdn.example/portrait.jpg']);
+});
+test('Doubao speaks in the voice the caller chose on the page; a dial without one, and a speaker, keep the default',async t=>{
+ const output=f=>f.upstream.sent.find(e=>e.type==='session.create').session.audio.output.voice;
+ const plain=await fixture(undefined,'seeduplex');t.after(()=>plain.service.dispose());
+ assert.deepEqual(plain.service.models().find(m=>m.id==='seeduplex').voices,SEEDUPLEX_VOICE_CHOICES);
+ assert.equal(plain.reservation.voice,'xiaohe');assert.equal(output(plain),SEEDUPLEX_VOICES.xiaohe);
+ const chosen=await fixture(undefined,'seeduplex',{voice:'taozi'});t.after(()=>chosen.service.dispose());
+ assert.equal(chosen.reservation.voice,'taozi');assert.equal(output(chosen),SEEDUPLEX_VOICES.taozi);
+ assert(chosen.audit.some(e=>e.type==='call.created'&&e.voice==='taozi'));
+ // A device record may name another model's voice: Doubao never used it, and a speaker still does not.
+ const device=await fixture(undefined,'seeduplex',{voice:'eve',surface:'speaker'});t.after(()=>device.service.dispose());
+ assert.equal(device.reservation.voice,'xiaohe');assert.equal(output(device),SEEDUPLEX_VOICES.xiaohe);
+ // Not on the page's list: refused before a session exists (upstream it would open and stay silent).
+ await assert.rejects(plain.service.reserve({model:'seeduplex',sessionKey:'agent:makaron:explicit:personal-fixture',voice:'sol'}),/豆包音色/u);
+});
+
+test('the cached waiting line is in the default voice: a call in another Doubao voice waits quietly',async t=>{
+ const {TOOL_PROGRESS_LINES}=await import('./tool-start-audio.mjs');
+ const PROGRESS=TOOL_PROGRESS_LINES.map((text,i)=>({text,pcm:Buffer.alloc(240,i+1),source:'cached-native-tool-progress',sha256:'fixture-'+i}));
+ for(const [voice,spoken] of [[undefined,true],['vv',false]]){
+  let finish;
+  const f=await fixture(()=>new Promise(resolve=>{finish=resolve;}),'seeduplex',{toolProgressClips:PROGRESS,voice});
+  t.after(()=>f.service.dispose());
+  f.event({type:'response.function_call_arguments.done',items:[{call_id:'mem',name:'memory_search',arguments:JSON.stringify({query:'项目'})}]});
+  for(let i=0;i<100&&!finish;i++)await delay(2);
+  assert.equal(f.service.progressNotice(f.reservation.voiceSessionId,0),spoken);
+  assert.equal(f.client.sent.some(e=>e.type==='audio'&&e.source==='cached-native-tool-progress'),spoken);
+  finish({ok:true,output:{answer:'V Voice'}});
+ }
 });

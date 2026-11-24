@@ -11,7 +11,7 @@ import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs'
 // guest and browser Public. Default ("owner") keeps it to the owner's entry, as before.
 const fixed={id:'fixed-office',agentId:'makaron',accountId:'fixture-account',callerId:'tianyi',permissionProfile:'personal-tianyi',sessionKey:'agent:makaron:feishu:group:oc_fixed',kind:'group',displayName:'固定工作会话',accountLabel:'工作账号',accessToken:'f'.repeat(40)};
 const dynamic=feishuConversationPhone('fixture-account','oc_dynamic');
-async function fixture(t,audience){
+async function fixture(t,audience,voice={}){
  const dir=await mkdtemp(join(tmpdir(),'voice-board-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const calls=[],runs=[];
  const board={available:true,run:async args=>{runs.push(args);args.onOp({op:'sync',scene:{serial:1,rev:1,title:'t',blocks:[]}});return {reason:'drawn',rev:1,durationMs:1};},
@@ -20,7 +20,7 @@ async function fixture(t,audience){
   board,boardAudience:audience,boardPhotos:{find:async()=>({type:'image/jpeg',bytes:Buffer.from('fixture')})},
   feishuLogin:{conversations:true,allowUnidentified:true,appId:'cli_fixture',appSecret:'fixture-secret',accountId:'fixture-account',actors:[]},
   gateway:{ready:true,request:async(method,params)=>{if(method==='tools.catalog')return {groups:[{tools:[{id:'web_search'},{id:'memory_search'},{id:'exec'}]}]};if(method==='sessions.describe')return {session:{key:params.key,agentId:'makaron'}};return {ok:true};}},
-  directVoice:{models:()=>[{id:'seeduplex',available:true}],reserve:async args=>{calls.push(args);return {voiceSessionId:'fixture-'+calls.length,relayTicket:'fixture',provider:args.model};},close:async()=>{},dispose:async()=>{}}});
+  directVoice:{models:()=>[{id:'seeduplex',available:true}],reserve:async args=>{calls.push(args);return {voiceSessionId:'fixture-'+calls.length,relayTicket:'fixture',provider:args.model};},close:async()=>{},dispose:async()=>{},...voice}});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
  const send=(path,{body,cookie=''}={})=>new Promise((resolve,reject)=>{
   const req=httpRequest({host:'127.0.0.1',port:bridge.server.address().port,path:'/voice'+path,method:body===undefined?'GET':'POST',headers:{host:'voice.example',origin:'https://voice.example',cookie,'content-type':'application/json'}},res=>{
@@ -49,6 +49,15 @@ for(const audience of ['owner','all'])for(const [name,open] of Object.entries(en
  assert.equal(photo.status,200,'a photograph on this call\'s board is served');
  // Another call's board is not readable from here.
  assert.equal((await f.send('/api/board?phone='+phone,{cookie:'',body:drawRequest(call.json().voiceSessionId)})).status===200,false);
+});
+
+test('the board is told whether the call\'s V is ever handed a lesson\'s script: one that is not may open a page of pictures on the question alone',async t=>{
+ for(const [voice,expected] of [[{},false],[{unscripted:id=>id==='fixture-1'},true],[{unscripted:()=>false},false]]){
+  const f=await fixture(t,'all',voice),{phone,cookie}=await entries.owner(f);
+  const call=await f.send('/api/session?phone='+phone,{cookie,body:{model:'seeduplex'}});
+  await f.send('/api/board?phone='+phone,{cookie,body:drawRequest(call.json().voiceSessionId)});
+  assert.equal(f.runs[0].unscripted,expected);
+ }
 });
 
 test('page features: the iOS App asks /api/page/<name> and gets the board\'s run and a photograph as JSON',async t=>{

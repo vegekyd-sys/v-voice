@@ -1081,15 +1081,18 @@ body[data-reading="true"] .changelog-trigger { visibility: hidden; pointer-event
 
 .conversation-name { font-size: 13px; color: var(--muted, #727881); max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.ios-binding-trigger{position:fixed;z-index:5;top:max(16px,env(safe-area-inset-top));right:max(24px,env(safe-area-inset-right));min-height:44px;border:0;background:transparent;padding:0 4px;color:#8e809d;font-size:12px;cursor:pointer}
-.ios-binding-trigger:hover{color:#4e365f}
+/* Settings sits opposite the changelog and is as quiet as it is. */
+.settings-trigger{position:fixed;z-index:5;top:max(16px,env(safe-area-inset-top));right:max(24px,env(safe-area-inset-right));min-height:44px;display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;padding:0 4px;color:#8e809d;font-size:12px;cursor:pointer;transition:color .18s}
+.settings-trigger svg{width:15px;height:15px}
+.settings-trigger:hover{color:#4e365f}
+body[data-reading="true"] .settings-trigger{visibility:hidden;pointer-events:none}
 .binding-choice{padding:20px 0;border-top:1px solid rgba(125,99,146,.12)}
 .binding-choice h3{font-size:15px;font-weight:500;margin:0 0 8px}
 .binding-choice .session-primary{display:inline-block;text-decoration:none;margin-top:12px}
 .binding-download{color:#735782;font-size:14px;text-underline-offset:4px}
 .binding-fallback,.binding-devices{margin-top:12px;color:#8e809d;font-size:12px}
 .binding-fallback summary,.binding-devices summary{cursor:pointer}
-@media(max-width:700px){.ios-binding-trigger{top:max(8px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right))}}
+@media(max-width:700px){.settings-trigger{top:max(8px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right))}}
 .session-dialog{width:min(640px,calc(100vw - 28px));max-height:88dvh;padding:0;border:1px solid #e6e1eb;border-radius:24px;color:#302a37;background:#fbfafc;box-shadow:0 24px 100px #26173530}.session-dialog::backdrop{background:#21172e66;backdrop-filter:blur(6px)}.session-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:24px 26px 18px;border-bottom:1px solid #e9e4ed}.session-dialog h2{font-size:22px;margin:5px 0 0}.session-eyebrow{font-size:11px;letter-spacing:.1em;color:#867b93}.session-dialog button{cursor:pointer;font:inherit}.session-dialog>header button{border:0;border-radius:50%;width:32px;height:32px;background:#eeebf1;font-size:22px}.session-dialog-body{padding:20px 26px 28px;line-height:1.7;font-size:14px}.session-muted{color:#837a8e;font-size:12px}.binding-steps{padding-left:22px;margin:24px 0}.binding-steps li{margin:12px 0}.session-primary{border:0;background:#6b4b91;color:white;padding:12px 18px;border-radius:12px}.session-primary:disabled{opacity:.55}.binding-link{display:grid;gap:10px;margin-top:16px}.binding-link textarea{width:100%;box-sizing:border-box;min-height:76px;border:1px solid #ded6e6;border-radius:10px;padding:10px;font-size:12px;resize:none}.binding-link button,.binding-devices button{border:1px solid #ddd4e7;border-radius:9px;padding:8px 12px;background:white;color:#684c85}.binding-devices{margin-top:28px;border-top:1px solid #e6e0eb}.binding-devices>div{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;font-size:12px}.session-error{color:#a34040;background:#fff0f0;padding:12px;border-radius:10px}.call-report-summary{background:#f0eaf6;border-radius:16px;padding:18px 20px;margin:22px 0}.call-report-summary h3{font-size:13px;margin:0;color:#6c5286}.call-report-summary p{white-space:pre-wrap;margin-bottom:0}.report-transcript-heading{font-size:13px;color:#83758f;margin-top:28px}.report-transcript{display:flex;flex-direction:column;gap:18px}.report-transcript article{max-width:90%;align-self:flex-start}.report-transcript article>span{font-size:11px;color:#958a9e;padding:0 4px}.report-transcript article>p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;border-radius:16px 16px 16px 4px;background:#eeebf1;padding:13px 17px;line-height:1.8}.report-transcript article[data-role=user]{align-self:flex-end}.report-transcript article[data-role=user]>span{display:block;text-align:right}.report-transcript article[data-role=user]>p{background:#41374d;color:#fff;border-radius:16px 16px 4px 16px}
 
 /* iPhone handoff: the conversation is the thing being carried across. */
@@ -1153,7 +1156,6 @@ button.access-summary{cursor:pointer;border-radius:12px}button.access-summary:ho
 .access-summary>span{display:flex;align-items:center;gap:6px;justify-content:center;color:#93849d;font-size:11px}
 .access-summary svg{width:13px;height:13px;flex:none;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .identity-connect{border:0;background:none;cursor:pointer;padding:6px 12px;font:inherit;font-size:11px;color:#8e759d}
-.ios-binding-trigger:disabled{opacity:.4;cursor:default}
 .access-dialog{width:min(430px,calc(100vw - 32px));border-radius:28px;background:#fcfafd}
 .access-dialog>header{padding:28px 28px 12px;border:0}.access-dialog h2{font-size:25px;font-weight:600;letter-spacing:-.5px}.access-dialog .session-dialog-body{padding:12px 28px 20px}
 .access-identity{display:flex;align-items:center;gap:14px;margin:8px 0 14px}.access-monogram{display:grid;place-items:center;width:48px;height:48px;flex:none;background:#eee5f3;border-radius:17px;color:#80628f;font-size:21px}
@@ -1170,11 +1172,34 @@ button.access-summary{cursor:pointer;border-radius:12px}button.access-summary:ho
 .dial.confirmation-dial:disabled{opacity:.72;box-shadow:0 8px 22px #d7497026}
 @media(max-height:700px){.identity-confirmation{margin-top:10px}.identity-confirmation h2{font-size:14px}.confirmation-actions{margin-top:3px}}
 
+/* Settings: the account card's shape. The header stays; a long list of voices scrolls under it. */
+.settings-dialog[open]{display:flex;flex-direction:column;overflow:hidden;max-height:calc(100dvh - 32px)}
+.settings-dialog>header{flex:none}
+.settings-dialog .session-dialog-body{overflow-y:auto;overscroll-behavior:contain;padding-top:6px}
+.settings-section+.settings-section{margin-top:26px}
+.settings-section h3{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px;font-size:13px;font-weight:600;color:#6c5286}
+.settings-section h3 small{font-size:11px;font-weight:400;color:#a08eaa}
+.voice-options{display:grid;gap:2px;padding:5px;border:1px solid #e9e2ed;border-radius:18px;background:#fff}
+.voice-option{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:6px 12px;border:0;border-radius:13px;background:none;color:#5f4d6b;text-align:left}
+.voice-option[aria-checked="true"]{background:#f1eaf7;color:#4e365f}
+/* (Hover only where there is a pointer: on a phone it would stay on the row last touched.) */
+@media(hover:hover){.voice-option:hover:not(:disabled):not([aria-checked="true"]){background:#f7f3fa}}
+.voice-option-mark{display:grid;place-items:center;flex:none;width:18px;height:18px;border:1.5px solid #cdbfd6;border-radius:50%}
+.voice-option[aria-checked="true"] .voice-option-mark{border-color:#7d5b93}
+.voice-option[aria-checked="true"] .voice-option-mark::after{content:"";width:8px;height:8px;border-radius:50%;background:#7d5b93}
+.voice-option-copy{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;min-width:0}
+.voice-option strong{font-size:14px;font-weight:500}
+.voice-option small{font-size:12px;color:#a08eaa}
+.voice-option:disabled{opacity:.55;cursor:default}
+.settings-note{margin:10px 2px 0;font-size:12px;line-height:1.7;color:#91829a}
+.settings-single{margin-top:0}
+.settings-dialog .access-option:disabled{opacity:.5;cursor:default}
+
 /* TV: the shared page stays mounted behind a small, transparent companion. */
 html[data-tv="true"]{--voice-height:100dvh;--island-ink:#111014;--island-lilac:#d6c2ed;--island-rose:#c96385}
 html[data-tv="true"] #app{transition:opacity .16s ease}
 html[data-tv-transition="true"] #app{opacity:0}
-html[data-tv="true"] .ios-binding-trigger{display:none}
+html[data-tv="true"] .settings-trigger{display:none}
 html[data-tv="true"][data-tv-layout="full"] .call-page:is([data-call="connected"],[data-call="ending"]){padding-top:64px}
 .tv-return{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:6px;border:0;background:#ebe6efb3;color:#796c87;border-radius:24px;padding:9px 16px;font:inherit;font-size:13px;cursor:pointer}
 .tv-return svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none}
