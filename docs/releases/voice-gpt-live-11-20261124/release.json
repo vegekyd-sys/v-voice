@@ -1,0 +1,42 @@
+{
+  "version": "voice-gpt-live-11.20261124.1",
+  "verifiedAt": "2026-11-24T16:22:49+08:00",
+  "sourceCommit": "7f8bfc5f656472c019e5223321994a8a2b2a7ffa",
+  "mergePRs": [
+    231
+  ],
+  "releaseToolPRs": [
+    259,
+    261
+  ],
+  "previousRunningCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
+  "filesSha256": "ebfa68189bc2fb731e2898e3477deaa3419630fd7f69c7ab5297bca887f620d8",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45347172755",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "29d6232574bd48d73d3e7de54dd29ddd980a82cf84b3049609a837886b14b0db",
+  "webBundleSha256": "ee71cb65ecd3235a5f8f0e59501d2c35652e4bae4efd67f3cda73edf06880027",
+  "serviceConfiguration": [
+    "网页节点新增私有配置：开启 GPT Live 1.1、登录文件（服务状态目录内，0600）、Decisions 选择密钥；值不入库。",
+    "GPT Live One 未开启（未设 VOICE_ENABLE_GPT_LIVE_ONE），默认模型仍为豆包。"
+  ],
+  "acceptance": [
+    "两个运行节点的提交、文件哈希和 iOS UI revision 已核对，均已恢复接入；Gateway 未重启。",
+    "正式服务模型目录为 seeduplex、grok、gpt-live-11，不含 GPT Live One。",
+    "服务在自身运行环境中可读到 GPT Live 1.1 登录文件；WebRTC 依赖已安装。",
+    "正式 HTTPS 返回的网页包与发布产物逐字节一致，包内含本次首页更新日志。"
+  ],
+  "notVerified": [
+    "正式环境的真实 GPT Live 1.1 通话由 Tianyi 线上验收。",
+    "登录文件是 Gateway 登录的一份副本，2026-12-02 22:00 (UTC+8) 前需换成 Gateway 取登录（需重启 Gateway）或定期同步。"
+  ]
+}
