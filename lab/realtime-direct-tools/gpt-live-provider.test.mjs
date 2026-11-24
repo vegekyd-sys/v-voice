@@ -662,7 +662,8 @@ test('a page that does not report in time does not hold the answer',async()=>{
 
 test('the policy asks the model to look up what the results it holds do not say',()=>{
   const policy=gptLiveDelegationPolicy(new Set(['web_search','memory_search','end_call']),{display:false});
-  assert.match(policy,/每个具体事实[^\n]*必须出自这通电话里已经查回来的结果[^\n]*没有就再委派去查/u);
+  assert.match(policy,/追问[^\n]*结果没写到这一点：重新委派，不要凭印象补/u);
   assert.match(policy,/拿不准要不要查，就查/u);
-  assert.match(policy,/复述刚才查到的结果里明明白白写着的内容/u);
+  // No line hands the model words to say: a sample opener became the opener of every reply, said even with nothing looked up.
+  assert.doesNotMatch(policy,/对一下|半句/u);
 });

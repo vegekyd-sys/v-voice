@@ -9,7 +9,7 @@
     "content-view.mjs": "b0b3fd358d3c3343b6f9bd7d78a5c3d08d7d3c4b934679142037435b4493b415",
     "markdown.mjs": "a556476a8a88b35aba790f993a8bde333150aebab9dc7fdce14aa2e3c586ace0",
     "media-references.mjs": "ca8509fad6ef83f83f9365432652058e1a364b5adb1a199508d3239521d581f8",
-    "changelog.mjs": "67f034b2dd74a59ec84a4af97071ecade895dccf3028099000feaebb569a190b",
+    "changelog.mjs": "fbb11415b06f9bc85c014d081a7203743845a884806a5ed1a4bb52142ff06b03",
     "avatar.mjs": "65ea1485a75d69816e2cb408b508716f151e7d33b9a8957af5a3d0f55e360df7",
     "avatar-reactions.mjs": "69880767130ffc0ff6adcecd6e4ea13b65073def959ce9a5189ab8806f9f1b1e",
     "avatar-telemetry.mjs": "236b9d6e5ad67009d83347f72002b69b01f3c5e7eb71bdde7d4166d59c9b254c",
@@ -130,7 +130,7 @@
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
     "ios/H5/native-h5.mjs": "e7abf7ff85ccdeec83ddbc888cabf169117b2debec1a28c916dada9c3a883993"
   },
-  "build": "9993a4225374",
+  "build": "af41434eb0e1",
   "updated": "2026-11-22",
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
