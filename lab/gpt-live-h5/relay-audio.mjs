@@ -92,12 +92,13 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
   let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
   let paused=false,held=false,complete=false,muted=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
+  let firstAudibleAt=null,reportedFirstRender=false;
   const rate=24000,blockFrames=2400,lead=.72;
   const port={onmessage:null,postMessage:command,close:dispose};output.port=port;
   const futureFrames=(block,now)=>Math.max(0,block.pcm.length-Math.max(0,Math.min(block.pcm.length,Math.floor((now-block.at)*rate+1e-5))));
   function trim(now){scheduled=scheduled.filter(b=>b.at+b.pcm.length/rate>now);}
   function reclaim(){
-    const now=context.currentTime,rest=[];let count=0;
+    const now=context.currentTime,rest=[];let count=0;firstAudibleAt=null;
     for(const b of scheduled){const n=futureFrames(b,now);if(n){rest.push(b.pcm.subarray(b.pcm.length-n));count+=n;}try{b.node.stop();b.node.disconnect();}catch{}}
     if(offset&&chunks.length)chunks[0]=chunks[0].subarray(offset);
     chunks=rest.concat(chunks);offset=0;frames+=count;consumed-=count;scheduled=[];nextAt=null;firstAt=context.currentTime-prefillMs/1000;
@@ -106,7 +107,7 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   function notify(data){port.onmessage?.({data:{epoch,...data}});}
   function command(e){if(closed)return;
     if(e.type==='clear'){reclaim();chunks=[];offset=frames=consumed=underflows=0;epoch=e.epoch;nextAt=firstAt=lastPlayedAt=null;paused=held=complete=starved=false;return;}
-    if(e.type==='output-mute'){muted=e.muted===true;output.gain.value=muted?0:1;return;}
+    if(e.type==='output-mute'){muted=e.muted===true;if(muted)firstAudibleAt=null;output.gain.value=muted?0:1;return;}
     if(e.epoch!==epoch)return;
     if(e.type==='pause'){if(e.paused===true&&!paused)reclaim();paused=e.paused===true;return;}
     if(e.type==='hold'){if(!held)reclaim();held=true;return;}
@@ -119,6 +120,9 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
     }
   }
   function tick(){if(closed)return;const now=context.currentTime;
+    if(!reportedFirstRender&&!muted&&!paused&&context.state==='running'&&firstAudibleAt!==null&&now>=firstAudibleAt){
+      reportedFirstRender=true;notify({type:'first-render',contextTime:firstAudibleAt});
+    }
     let pending=0,playing=false;
     for(const b of scheduled){const left=futureFrames(b,now);pending+=left;if(now>=b.at&&left>0)playing=true;if(now>=b.at)lastPlayedAt=Math.min(now,b.at+b.pcm.length/rate);}
     trim(now);
@@ -129,6 +133,10 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
       while(frames&&nextAt<now+lead){
         const pcm=take(Math.min(blockFrames,frames)),buffer=context.createBuffer(1,pcm.length,rate),out=buffer.getChannelData(0);
         for(let i=0;i<pcm.length;i++)out[i]=pcm[i]/32768;
+        if(!reportedFirstRender&&firstAudibleAt===null&&!muted){
+          const first=pcm.findIndex(value=>value!==0);
+          if(first>=0)firstAudibleAt=nextAt+first/rate;
+        }
         const node=context.createBufferSource();node.buffer=buffer;node.connect(output);node.start(nextAt);
         node.onended=()=>{try{node.disconnect();}catch{}};
         scheduled.push({node,pcm,at:nextAt});nextAt+=pcm.length/rate;consumed+=pcm.length;pending+=pcm.length;
@@ -362,7 +370,9 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       if(closed)return;
       // A render-thread nonzero PCM receipt excludes pickup cues and silent
       // packets. This is an observation upper bound, not physical audibility.
-      if(e.type==='first-render'&&stats.dialToFirstRenderObservedMs===undefined){stats.dialToFirstRenderObservedMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.rendered');reportStats();return;}
+      if(e.type==='first-render'&&stats.dialToFirstRenderObservedMs===undefined){stats.dialToFirstRenderObservedMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.rendered');
+        if(buffered)console.info('VTVAudio stats '+JSON.stringify({firstVoiceRenderMs:stats.dialToFirstRenderObservedMs,readyMs:stats.dialToReadyMs}));
+        reportStats();return;}
       if(e.epoch!==epoch)return;
       if(e.type==='render-reference'){renderReference?.(e.buffer,e.sampleRate);return;}
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
