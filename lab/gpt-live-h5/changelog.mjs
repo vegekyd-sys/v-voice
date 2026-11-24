@@ -229,6 +229,13 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-makaron-director.20261125.1',date:'2026-11-25',
+    title:'直播录像边播边存，收播后很快就存好',
+    items:[
+      '直播进行中录像就分成小段陆续存到服务器，收播后只剩最后一小段；网速慢时也不会因为单次上传太久被切断。',
+    ],
+  },
+  {
     version:'voice-owner-media.20261125.1',date:'2026-11-25',
     title:'私人入口里作图和后台任务一样扣你的主账号',
     items:[
