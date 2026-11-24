@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-gpt-live-11-20261124",
-  "version": "voice-gpt-live-11.20261124.1",
-  "entryCommit": "7f8bfc5f656472c019e5223321994a8a2b2a7ffa",
-  "deviceEntryCommit": "7f8bfc5f656472c019e5223321994a8a2b2a7ffa",
-  "filesSha256": "ebfa68189bc2fb731e2898e3477deaa3419630fd7f69c7ab5297bca887f620d8",
-  "registration": "voice-gpt-live-11-20261124/release.json",
-  "previousEntryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
+  "release": "voice-relay-keepalive-20261124",
+  "version": "voice-gpt-live-11.20261124.2",
+  "entryCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
+  "deviceEntryCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
+  "filesSha256": "8d3173ea461720db4743c8daa4d682c61719a27530dff345323cd1e7bc8dea04",
+  "registration": "voice-relay-keepalive-20261124/release.json",
+  "previousEntryCommit": "7f8bfc5f656472c019e5223321994a8a2b2a7ffa",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-24T16:22:49+08:00",
-  "runtimeDifference": "GPT Live 1.1 正式上线（电话里在设置中选择），GPT Live One 下线；默认模型仍为豆包，机器人和音箱不提供 GPT Live 1.1。"
+  "validatedAt": "2026-11-24T18:45:10+08:00",
+  "runtimeDifference": "热修复：iOS App 通话不再在接通约 5 秒后报协议不支持挂断；其余与 GPT Live 1.1 正式版相同。"
 }
