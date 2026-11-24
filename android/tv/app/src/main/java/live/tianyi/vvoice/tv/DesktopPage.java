@@ -20,6 +20,7 @@ public final class DesktopPage extends BroadcastReceiver {
         final TvArrayCapture capture;
         Runnable resized, finishCue;
         PortraitFlight flight;
+        String launchId;
         final BroadcastReceiver screenOff = new BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) { if (idle == Page.this) discard(); }
         };
@@ -95,6 +96,13 @@ public final class DesktopPage extends BroadcastReceiver {
             }
         });
         page.loadUrl(entry);
+    }
+    static String userDial(Context context) {
+        Page page=idle;
+        if(page==null||!page.entry.equals(configured(context)))return null;
+        if(page.launchId==null)page.launchId="launch-"+java.util.UUID.randomUUID();
+        page.evaluateJavascript("window.vVoiceTV?.primeDial?.("+JSONObject.quote(page.launchId)+")",null);
+        return page.launchId;
     }
     static Page take(String entry) {
         Page page = idle;

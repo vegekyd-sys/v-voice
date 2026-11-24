@@ -47,7 +47,7 @@ public final class CallService extends Service {
     private String personalUrl,projectionOwner,mode="medium";
     private long generation=-1,revision=-1,pageVersion;
     private String pendingLaunch;
-    private static final String START_CALL="live.tianyi.vvoice.tv.action.START_CALL";
+    static final String START_CALL="live.tianyi.vvoice.tv.action.START_CALL";
     private final String local="http://127.0.0.1:26326/?tv=1&tvShell=1&tvSurface=1&tvOverlay=1";
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
@@ -273,7 +273,7 @@ public final class CallService extends Service {
         if(standby)resumeStandby();
         if("END".equals(intent.getAction())){action("end");handler.postDelayed(this::stopSelf,300);return START_NOT_STICKY;}
         closing=false;idleSince=0;
-        if(START_CALL.equals(intent.getAction())&&"idle".equals(lastCall)){hadCall=false;pendingLaunch="launch-"+java.util.UUID.randomUUID();}
+        if(START_CALL.equals(intent.getAction())&&"idle".equals(lastCall)){hadCall=false;pendingLaunch=intent.getStringExtra("launch");if(pendingLaunch==null)pendingLaunch="launch-"+java.util.UUID.randomUUID();}
         dialWarmPage();
         if(surfaceAnnounced){showCall();}
         return START_NOT_STICKY;

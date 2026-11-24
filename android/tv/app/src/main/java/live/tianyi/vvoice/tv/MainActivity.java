@@ -22,7 +22,10 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("前往设置",(d,w)->startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),8))
                 .setNegativeButton("返回",(d,w)->finish()).setOnCancelListener(d->finish()).show();return;
         }
-        startForegroundService(new Intent(this,CallService.class).setAction(getIntent().getAction()));
+        String action=getIntent().getAction();
+        Intent service=new Intent(this,CallService.class).setAction(action);
+        if(CallService.START_CALL.equals(action))service.putExtra("launch",DesktopPage.userDial(this));
+        startForegroundService(service);
         launchedCall=true;
         finish();overridePendingTransition(0,0);
     }

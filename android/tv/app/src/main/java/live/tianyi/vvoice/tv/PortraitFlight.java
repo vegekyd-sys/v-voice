@@ -49,17 +49,32 @@ final class PortraitFlight {
         web.postVisualStateCallback(0,new WebView.VisualStateCallback(){@Override public void onComplete(long id){
             if(layer!=owner)return;
             int span=web.getWidth();
-            web.animate().alpha(1).setDuration(220).start();
-            float scale=(float)(width*span/face.getWidth());
-            face.animate().translationX((float)x*span).translationY((float)y*span).scaleX(scale).scaleY(scale)
-                .setDuration(420).setInterpolator(new PathInterpolator(.32f,0,.2f,1)).withEndAction(()->{
+            float endX=(float)x*span,endY=(float)y*span,endScale=(float)(width*span/face.getWidth());
+            float startX=face.getTranslationX(),startY=face.getTranslationY();
+            PathInterpolator ease=new PathInterpolator(.32f,0,.2f,1);
+            // Relayout can occupy several vsyncs on first entry. Count displayed
+            // frames so a stalled compositor cannot skip directly to the end.
+            layer.postOnAnimation(new Runnable(){
+                long previous; float elapsed;
+                public void run(){
                     if(layer!=owner)return;
+                    long now=android.os.SystemClock.uptimeMillis();
+                    if(previous!=0)elapsed+=Math.min(28,now-previous);
+                    previous=now;
+                    float t=android.animation.ValueAnimator.areAnimatorsEnabled()?Math.min(1,elapsed/420):1;
+                    float progress=ease.getInterpolation(t);
+                    face.setTranslationX(startX+(endX-startX)*progress);
+                    face.setTranslationY(startY+(endY-startY)*progress);
+                    face.setScaleX(1+(endScale-1)*progress);face.setScaleY(face.getScaleX());
+                    web.setAlpha(Math.min(1,t*2));
+                    if(t<1){layer.postOnAnimation(this);return;}
                     web.evaluateJavascript("window.vVoiceTV?.finishEnter?.()",unused->{
                         if(layer==owner)web.postVisualStateCallback(1,new WebView.VisualStateCallback(){
                             @Override public void onComplete(long request){if(layer==owner)clear();}
                         });
                     });
-                }).start();
+                }
+            });
         }});
     }
     void cancel(){

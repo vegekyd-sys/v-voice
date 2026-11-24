@@ -95,6 +95,10 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     end: state.call !== 'idle',
   });
   const api = Object.freeze({
+    primeDial(requestId){
+      if(!/^launch-[a-zA-Z0-9-]{8,64}$/.test(requestId)||view.get().call!=='idle'||!available(view.get()).dial)return false;
+      return actions.primeDial?.(requestId)===true;
+    },
     requestDial(requestId, expected) {
       if(typeof requestId!=='string'||!/^launch-[a-zA-Z0-9-]{8,64}$/.test(requestId)||!validOwner(expected))return false;
       if(launchRequests.has(requestId))return true;
@@ -102,6 +106,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       if(!available(view.get()).dial)return false;
       launchRequests.add(requestId);
       if(launchRequests.size>128)launchRequests.delete(launchRequests.values().next().value);
+      if(actions.dialFromHome){Promise.resolve(actions.dialFromHome(requestId)).catch(onError);return true;}
       return api.action('dial',expected);
     },
     get snapshot() {

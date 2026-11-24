@@ -31,7 +31,7 @@ const $ = (id) => document.getElementById(id);
 // app.js is the call engine; everything the page shows is written to this view
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
-const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
+const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),primeDial:primeTvDial,dialFromHome:id=>startCall({homeRequest:id}),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
 if(tvHost)warmTvAudio();
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
@@ -94,7 +94,30 @@ let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
 let webDialVersion = null, dialGreeting = false, standbyEnabled = false;
-let standbySocket, standbyRetry;
+let standbySocket, standbyRetry, desktopRequest, desktopDeviceActions, expiredDesktopId;
+function dialEndpoint(params,resumed,greeting){
+      const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
+      endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:params.model,dialVersion:'2',...(greeting?{greeting:'1'}:{}),...(params.improvLive?{improvLive:'1'}:{}),...(resumed?{resumed:JSON.stringify(resumed)}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:JSON.stringify(params.nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      return endpoint;
+}
+function discardDesktopRequest(){
+  if(!desktopRequest)return;
+  clearTimeout(desktopRequest.timeout);
+  desktopRequest.connection.dispose();
+  desktopRequest=null;
+}
+function primeTvDial(id){
+  if(desktopRequest)return desktopRequest.id===id;
+  const state=view.get();
+  if(!liveReady||call||starting||state.confirmation||state.confirmOnDial||standbySocket?.readyState!==1||
+      !desktopDeviceActions||state.model!=='seeduplex'||webDialVersion!==2)return false;
+  // The permission-checked Home click owns this dial. Only the socket starts
+  // here. Recording and playback still belong to the foreground service.
+  const params={model:state.model,voice:state.doubao.voice,nativeDeviceActions:desktopDeviceActions};
+  const connection=createDialConnection({url:dialEndpoint(params,null,dialGreeting),standby:takeTvTransport()});
+  desktopRequest={id,connection,timeout:setTimeout(()=>{expiredDesktopId=id;discardDesktopRequest();},8000)};
+  return true;
+}
 function warmTvTransport(){
   if(!standbyEnabled||standbySocket||phoneEntry||location.protocol!=='https:')return;
   clearTimeout(standbyRetry);
@@ -114,7 +137,7 @@ function takeTvTransport(){
   if(socket?.readyState===1)return socket;
   socket?.close();
 }
-window.addEventListener('pagehide',()=>{standbyEnabled=false;clearTimeout(standbyRetry);takeTvTransport()?.close();});
+window.addEventListener('pagehide',()=>{standbyEnabled=false;discardDesktopRequest();clearTimeout(standbyRetry);takeTvTransport()?.close();});
 const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
 function speakerEvent(value){
   if(!speakerCandidate())return;
@@ -748,6 +771,7 @@ async function redialLostCall(active, failure, closed = {}) {
 }
 async function startCall(options = {}) {
   if (starting || call || view.get().confirmation) return;
+  if(options.homeRequest&&options.homeRequest===expiredDesktopId){setStatus('拨号已超时，请重新拨号。',{tone:'error'});return;}
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
   if(tvHost&&hasTvArrayCapture()&&!tvArraySupportsModel(view.get().model)){setStatus("当前电视阵列输入支持豆包和 Grok，请选择豆包。",{tone:"error"});return;}
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
@@ -759,6 +783,11 @@ async function startCall(options = {}) {
   resetTranscript();view.set({failureCode:null});
   const chosenModel = view.get().model;
   const active = { pc:tvHost&&tvArraySupportsModel(chosenModel)?null:new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
+  if(desktopRequest&&desktopRequest.id===options.homeRequest){
+    clearTimeout(desktopRequest.timeout);
+    active.dialConnection=desktopRequest.connection;
+    desktopRequest=null;
+  }
   if (speakerCandidate()||['seeduplex','grok','gpt-live-11'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
     active.context = options.context ?? new AudioContext({latencyHint:"interactive"});
@@ -820,14 +849,15 @@ async function startCall(options = {}) {
     const withCapture=async pending=>captureReady?(await Promise.all([pending,captureReady]))[0]:pending;
     const selectedModel = ['seeduplex','grok','gpt-live-11'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
-    const nativeDeviceActions=await browserDeviceActions();
+    const nativeDeviceActions=active.dialConnection?desktopDeviceActions:await browserDeviceActions();
     const improvLive = improvAvailable && selectedModel !== 'gpt-live';
     const params={model:selectedModel,...(improvLive?{improvLive:true}:{}),nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:selectedModel==='seeduplex'&&view.get().doubao.voice?{voice:view.get().doubao.voice}:{})};
     let reservation;
     if(webDialVersion===2&&(phoneEntry||tvHost&&location.protocol==='https:')&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
-      const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:selectedModel,dialVersion:'2',...(tvHost&&dialGreeting&&!fixtureId?{greeting:'1'}:{}),...(improvLive?{improvLive:'1'}:{}),...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
-      active.dialConnection=createDialConnection({url:endpoint,standby:standbyEnabled?takeTvTransport():null,signal:active.captureAbort.signal});
+      if(!active.dialConnection){
+        const endpoint=dialEndpoint(params,options.resumed,tvHost&&dialGreeting&&!fixtureId);
+        active.dialConnection=createDialConnection({url:endpoint,standby:standbyEnabled?takeTvTransport():null,signal:active.captureAbort.signal});
+      }
       reservation=await withCapture(active.dialConnection.reservation);
     }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));
     active.provider=reservation.provider;
@@ -1199,7 +1229,7 @@ function applyEntryStatus(status) {
     webDialVersion = status.webDialVersion;
     dialGreeting = status.dialGreeting===true;
     standbyEnabled=Boolean(tvHost&&window.VTVArray&&status.tvDialStandby);
-    if(standbyEnabled)warmTvTransport();
+    if(standbyEnabled){void browserDeviceActions().then(value=>{desktopDeviceActions=value;});warmTvTransport();}
     liveReady = status.ready === true;
     improvAvailable = status.improvLive === true && !tvHost && typeof RTCPeerConnection === 'function';
     view.set({referenceUpload:status.referenceUpload === true && !tvHost});
