@@ -376,35 +376,63 @@ def validate_target(target):
     require(re.fullmatch(r'[A-Za-z0-9_-]*', target.get('prefix','')), 'Invalid release prefix')
     if target.get('pointer'):
         require(target['pointer'] == str(Path(target['releaseRoot']).parent / 'current'), 'Invalid pointer')
-    require(target.get('upload', 'ssh') in ['ssh', 'vrelay'], 'Invalid upload method')
+    require(target.get('upload', 'ssh') in ['ssh', 'vrelay', 'vrelay-link'], 'Invalid upload method')
     require(re.fullmatch(r'[a-z_][a-z0-9_-]*', target.get('vrelayUser', 'root')), 'Invalid vrelay user')
 
 
 def upload(target, archive, remote_archive, relay):
     """Put the archive at remote_archive on the target. A pipe over ssh breaks on a lossy line (the web
     node is across a border); `upload: vrelay` sends it once through the relay, resumable and checked
-    by sha256, and the target fetches it, as `vrelayUser` when named. Returns the command to remove it."""
+    by sha256, and the target fetches it, as `vrelayUser` when named; `upload: vrelay-link` is the same for a
+    target without vrelay, which fetches a signed link with curl. Returns the command to remove it."""
     if target.get('upload', 'ssh') == 'ssh':
         # A broken pipe resumes from what arrived (2026-11-24: the line to the device node broke 2.2 MB
         # into 7.7 MB); what is on the node is checked by sha256 before it is staged.
+        # A broken append can leave its remote `cat` still writing after the next one starts (11-24: a full-size
+        # file whose sha256 was wrong). Such a file is removed and sent again; the stale writer then writes to
+        # the removed file. Twice wrong in a row is a real fault and stops the release before anything is staged.
         data, path = archive.read_bytes(), shlex.quote(remote_archive)
-        for attempt in range(20):
+        restarts = 0
+        for attempt in range(30):
             size = subprocess.run(['ssh', target['ssh'], 'stat -c %s ' + path + ' 2>/dev/null || echo 0'], capture_output=True, timeout=60)
             have = int(size.stdout.decode().strip() or 0) if size.returncode == 0 and size.stdout.decode().strip().isdigit() else None
-            if have is None or have > len(data):
+            if have is None:
                 continue
             if have < len(data):
                 subprocess.run(['ssh', target['ssh'], 'umask 077; cat >> ' + path], input=data[have:], capture_output=True, timeout=1800)
                 continue
-            check = subprocess.run(['ssh', target['ssh'], 'sha256sum -- ' + path], capture_output=True, timeout=60)
-            require(check.returncode == 0 and check.stdout.decode().split()[:1] == [digest(data)], 'Artifact upload corrupted')
-            return ['rm', '--', remote_archive]
+            if have == len(data):
+                check = subprocess.run(['ssh', target['ssh'], 'sha256sum -- ' + path], capture_output=True, timeout=60)
+                if check.returncode != 0:
+                    continue
+                if check.stdout.decode().split()[:1] == [digest(data)]:
+                    return ['rm', '--', remote_archive]
+            require(restarts < 2, 'Artifact upload corrupted')
+            restarts += 1
+            subprocess.run(['ssh', target['ssh'], 'rm -f -- ' + path], capture_output=True, timeout=60)
         raise RuntimeError('Artifact upload failed')
     if 'id' not in relay:
         result = subprocess.run(['vrelay', 'put', str(archive)], capture_output=True, timeout=1800)
         lines = result.stdout.decode().split()
         require(result.returncode == 0 and lines and re.fullmatch(r'[A-Za-z0-9_-]{6,64}', lines[-1]), 'Artifact upload to the relay failed')
         relay['id'] = lines[-1]
+    if target['upload'] == 'vrelay-link':
+        # A node without vrelay (the device node, which is not to get one) fetches a one-hour signed link with
+        # curl (2026-11-24: 8 MB in 19 s, against ~13 min over the resumed ssh pipe). The link goes on stdin,
+        # never on a command line; what arrived is checked by sha256 and fetched again if wrong.
+        if 'link' not in relay:
+            result = subprocess.run(['vrelay', 'link', relay['id'], '--hours', '1'], capture_output=True, timeout=120)
+            lines = result.stdout.decode().split()
+            require(result.returncode == 0 and lines and lines[-1].startswith('https://'), 'Relay link failed')
+            relay['link'] = lines[-1]
+        data, path = archive.read_bytes(), shlex.quote(remote_archive)
+        config = 'url = "' + relay['link'].replace('\\', '\\\\').replace('"', '\\"') + '"\n'
+        for attempt in range(3):
+            subprocess.run(['ssh', target['ssh'], 'rm -f -- ' + path + '; umask 077; curl -fsS --retry 5 --max-time 1500 -K - -o ' + path], input=config.encode(), capture_output=True, timeout=1800)
+            check = subprocess.run(['ssh', target['ssh'], 'sha256sum -- ' + path], capture_output=True, timeout=60)
+            if check.returncode == 0 and check.stdout.decode().split()[:1] == [digest(data)]:
+                return ['rm', '--', remote_archive]
+        raise RuntimeError('Artifact download from the relay link failed')
     sudo = ['sudo', '-n', '-u', target['vrelayUser']] if target.get('vrelayUser') else []
     result = subprocess.run(['ssh', target['ssh'], 'umask 077; ' + shlex.join([*sudo, 'vrelay', 'get', relay['id'], remote_archive])], capture_output=True, timeout=1800)
     require(result.returncode == 0, 'Artifact download from the relay failed')
