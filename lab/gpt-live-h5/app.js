@@ -95,6 +95,7 @@ let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
 let webDialVersion = null, dialGreeting = false, standbyEnabled = false;
 let standbySocket, standbyRetry, desktopRequest, desktopDeviceActions, expiredDesktopId;
+const standbyStats={opens:0,closes:0,lastCode:0,prime:false};
 function dialEndpoint(params,resumed,greeting){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
       endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:params.model,dialVersion:'2',...(greeting?{greeting:'1'}:{}),...(params.improvLive?{improvLive:'1'}:{}),...(resumed?{resumed:JSON.stringify(resumed)}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:JSON.stringify(params.nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
@@ -114,6 +115,7 @@ function primeTvDial(id){
   // The permission-checked Home click owns this dial. Only the socket starts
   // here. Recording and playback still belong to the foreground service.
   const params={model:state.model,voice:state.doubao.voice,nativeDeviceActions:desktopDeviceActions};
+  standbyStats.prime=true;
   const connection=createDialConnection({url:dialEndpoint(params,null,dialGreeting),standby:takeTvTransport()});
   desktopRequest={id,connection,timeout:setTimeout(()=>{expiredDesktopId=id;discardDesktopRequest();},8000)};
   return true;
@@ -124,10 +126,11 @@ function warmTvTransport(){
   const url=new URL('./api/dial-standby',document.baseURI);
   url.protocol='wss:';
   const socket=standbySocket=new WebSocket(url);
-  socket.onclose=()=>{
+  socket.onopen=()=>{standbyStats.opens++;};
+  socket.onclose=event=>{
     if(standbySocket!==socket)return;
-    standbySocket=null;
-    standbyRetry=setTimeout(warmTvTransport,60000);
+    standbyStats.closes++;standbyStats.lastCode=event.code;standbySocket=null;
+    standbyRetry=setTimeout(warmTvTransport,Math.min(60000,4000*2**Math.min(4,standbyStats.closes-1)));
   };
 }
 function takeTvTransport(){
@@ -783,6 +786,7 @@ async function startCall(options = {}) {
   resetTranscript();view.set({failureCode:null});
   const chosenModel = view.get().model;
   const active = { pc:tvHost&&tvArraySupportsModel(chosenModel)?null:new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
+  if(tvHost)console.info('VTVAudio stats '+JSON.stringify({standby:standbyStats,transportState:standbySocket?.readyState??null,claimed:desktopRequest?.id===options.homeRequest}));
   if(desktopRequest&&desktopRequest.id===options.homeRequest){
     clearTimeout(desktopRequest.timeout);
     active.dialConnection=desktopRequest.connection;

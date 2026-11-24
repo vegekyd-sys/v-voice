@@ -15,6 +15,7 @@ export function createDialConnection({url,signal,Socket=WebSocket,standby,timeou
     try {
       if(typeof event.data!=='string'||event.data.length>1024*1024)throw Error('拨号响应无效');
       const value=JSON.parse(event.data);
+      if(standby&&!settled&&value.type==='standby.pulse')return;
       if(value.type==='dial.error')throw Error('暂时无法接通，请重新拨号');
       if(!settled){
         if(value.type!=='reservation'||value.dialVersion!==2||value.transport!=='gateway-relay'||typeof value.voiceSessionId!=='string'||!value.voiceSessionId)throw Error('拨号响应无效');

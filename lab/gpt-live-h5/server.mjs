@@ -1345,12 +1345,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       }
       dialSockets.handleUpgrade(req,socket,head,client=>{
         client.on('error',()=>{});
-        let alive=true;
-        const pong=()=>{alive=true;};
-        client.on('pong',pong);
-        const timer=setInterval(()=>{if(!alive){client.terminate();return;}alive=false;client.ping();},30000);
+        // Cached TV renderers may suspend their event loop. Keep the authenticated
+        // transport alive through proxies without requiring an idle renderer to answer.
+        const timer=setInterval(()=>{
+          if(client.readyState!==WebSocket.OPEN||client.bufferedAmount>2048){client.terminate();return;}
+          client.send('{"type":"standby.pulse"}');
+        },25000);
         timer.unref?.();
-        const cleanup=()=>{release();clearInterval(timer);client.off('pong',pong);};
+        const cleanup=()=>{release();clearInterval(timer);};
         client.once('close',cleanup);
         client.once('message',(raw,binary)=>{
           cleanup();
