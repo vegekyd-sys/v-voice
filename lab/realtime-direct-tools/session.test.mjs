@@ -26,7 +26,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,...(options.relayPingMs?{relayPingMs:options.relayPingMs}:{}),...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,improv:options.improv,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
+ const reservation=await service.reserve({model,improv:options.improv,ownerMedia:options.ownerMedia,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];if(options.pings)client.ping=()=>{client.pings=(client.pings??0)+1;};client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
@@ -2169,4 +2169,15 @@ test('the cached waiting line is in the default voice: a call in another Doubao 
   assert.equal(f.client.sent.some(e=>e.type==='audio'&&e.source==='cached-native-tool-progress'),spoken);
   finish({ok:true,output:{answer:'V Voice'}});
  }
+});
+
+test('the owner entry hands the media runner an owner scope; other sessions keep their own binding',async t=>{
+ const scopes=[];
+ const media={sessionAccounts:true,forCall:async({scope})=>{scopes.push(scope);return {execute:async()=>({content:[{type:'text',text:'ok'}]})};}};
+ for(const ownerMedia of [true,false]){
+  const f=await fixture(async()=>{throw Error('must not use Gateway');},'grok',{mediaCli:media,ownerMedia,sessionKey:'agent:makaron:feishu:group:oc_room'});t.after(()=>f.service.dispose());
+  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'x'"},'media-'+ownerMedia);
+  await until(()=>scopes.length===(ownerMedia?1:2));
+ }
+ assert.deepEqual(scopes,[{chat:'oc_room',owner:true},{chat:'oc_room'}]);
 });

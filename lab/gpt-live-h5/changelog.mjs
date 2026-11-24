@@ -229,6 +229,14 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-owner-media.20261125.1',date:'2026-11-25',
+    title:'私人入口里作图和后台任务一样扣你的主账号',
+    items:[
+      '从 Tianyi 的私人入口打电话让 V 画图或做视频，现在和同一会话的后台任务一样使用你的 Makaron 主账号，不再用会话群自己注册的小账号，不会再误报积分不足。',
+      '同事已确认身份的来电不变，仍使用各自会话绑定的账号。',
+    ],
+  },
+  {
     version:'voice-makaron-director.20261124.5',date:'2026-11-24',
     title:'直播录像在网速慢时也能存到服务器',
     items:[
