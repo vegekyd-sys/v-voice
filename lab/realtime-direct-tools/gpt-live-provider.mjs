@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {compactSearchResult,isSearchTool,plainText as plain,searchDigest,memoryDigest,shanghaiDate} from './search-result.mjs';
+import {compactSearchResult,plainText as plain,searchDigest,memoryDigest,shanghaiDate} from './search-result.mjs';
 import {processExited} from './tools.mjs';
 import {GptLivePeer} from './gpt-live-peer.mjs';
 import {GPT_LIVE_SELF_TOOL} from './gpt-live-router.mjs';
@@ -25,8 +25,6 @@ const APPEND_MAX_BYTES=480,RESULT_MAX_CHARS=2400,SCRIPT_MAX_CHARS=3200,SEARCH_MA
 const EARLY_PAUSE_MS=200,EARLY_MAX_MS=4000,EARLY_FRESH_MS=1000;
 const AUDIBLE=200,TAIL_MS=700,POLL_MS=5000,MAX_POLLS=48,MEDIA_TIMEOUT_MS=8000;
 // The model is not certain to speak when asked to open the call: ask again until it does.
-// (A lookup started on the caller's words: given if the model has not asked for it this long after V's reply.)
-const UNASKED_MS=2600;
 const GREETING_RETRY_MS=1900,GREETING_TRIES=3,HISTORY_TURNS=12,GUESS_MS=8000,TURN_WAIT_MS=1500,UNPROMPTED_MS=2500,SERVED_MS=30000;
 const same=(a,b)=>a.replace(/[\s\p{P}]/gu,'')===b.replace(/[\s\p{P}]/gu,'');
 // A script V is given to read: its own characters, and for each letter of it (punctuation and
@@ -392,7 +390,7 @@ export class GptLiveBridge {
         }else{
           if(rest&&this.reading===false&&!this.heldBack)this.request.onTranscript?.('assistant',rest,false,undefined,{responseId:id});
           this.request.onTranscript?.('assistant',transcript,true,undefined,{responseId:id});this.remember('assistant',transcript);
-          if(id===this.turnId){this.afterReply(transcript);this.unasked();}
+          if(id===this.turnId){this.afterReply(transcript);}
         }
         this.heldBack=false;
         if(id===this.turnId){this.turnOpen=false;this.turnDoneAt=this.now();}
@@ -505,18 +503,6 @@ export class GptLiveBridge {
     const working=this.working,guess={text,working,at:this.now()};
     guess.choice=this.route({text,userText:text,tools:this.offered(working),notes:this.notes,history:this.history.slice(),running:working,signal:this.abort.signal,speculative:true});
     guess.choice.catch(()=>{});this.guess=guess;
-    // A lookup is started as soon as the caller's words call for one (the routing model's judgement, read-only, a second):
-    // the model asks for it a second or more later if at all (the first question of a call was answered "我先看看" with
-    // nothing asked for, and the lookup started 4.5 s on), and answered "heartbeat" from its own idea when the records said
-    // otherwise. Its result waits here for whichever comes first: the model's delegation, a promise kept, or the end of V's
-    // reply (see `unasked`).
-    void guess.choice.then(choice=>{
-      if(!choice||choice.via==='fallback'||!isSearchTool(choice.name)||this.closed||this.guess!==guess)return;
-      const id=`host_${++this.ownCalls}`;
-      this.delegations.set(id,{text,state:'running',polls:0,name:choice.name,own:true,prefetch:true});
-      this.prefetched={id,text,name:choice.name,seen:this.delegated_,used:false};
-      this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
-    }).catch(()=>{});
     // The model sometimes answers "好，我讲讲" and never delegates. When the caller's own words ask for an
     // explanation, the lesson is prepared anyway; a delegation that still comes for them is already served.
     void guess.choice.then(choice=>{
@@ -531,31 +517,6 @@ export class GptLiveBridge {
         this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
       },UNPROMPTED_MS);timer.unref?.();
     }).catch(()=>{});
-  }
-  // The lookup started for these words (see `speculate`), taken by the first to need it: `deliver(result)` gets its result now or when it comes.
-  takePrefetch(text,name,deliver){
-    const p=this.prefetched;
-    if(!p||p.used||p.name!==name||!same(p.text,text))return false;
-    const entry=this.delegations.get(p.id);if(!entry)return false;
-    p.used=true;
-    if(entry.state==='ready'){entry.state='done';deliver(entry.result);}else entry.go=deliver;
-    return true;
-  }
-  // V's reply is over and the model asked for nothing, though the caller's words called for a lookup: it is given now.
-  unasked(){
-    const p=this.prefetched,turn=this.turnId;
-    if(!p||p.used||p.seen!==this.delegated_||!same(p.text,gptLiveText(this.userText)))return;
-    const timer=setTimeout(()=>{
-      if(this.closed||this.ending||this.userSpeaking||this.turnId!==turn||p.seen!==this.delegated_||this.prefetched!==p||!same(p.text,gptLiveText(this.userText)))return;
-      const id=`host_${++this.ownCalls}`,asked=bound(gptLiveText(p.text),160);
-      if(!this.takePrefetch(p.text,p.name,result=>{
-        if(this.closed||this.ending||this.turnId!==turn)return;
-        this.delegations.set(id,{text:p.text,state:'running',polls:0,name:p.name,own:true,unasked:asked});
-        this.remember('tool','',{name:p.name,query:asked});
-        this.request.onDiagnostic?.({stage:'lookup-unasked',elapsedMs:Math.round(this.now()-this.startedAt)});
-        this.submitToolResult(id,result);
-      }))return;
-    },UNASKED_MS);timer.unref?.();
   }
   get working(){return this.background.size>0||[...this.delegations.values()].some(entry=>entry.state==='background');}
   async delegated(item){
@@ -596,11 +557,9 @@ export class GptLiveBridge {
       this.append(`这件事不用查，后台也没有在办的事：你自己现在就讲给用户听${asked?`——“${asked}”`:''}。按讲解或讲故事的方式讲完整，像当面讲给朋友听，不要说“我想想”“等一下”。${shown.length?onScreen(shown):''}`,{delegationId:id,channel:'speakable'});
       return;
     }
-    // Already being looked up since the caller stopped speaking.
-    if(this.takePrefetch(gptLiveText(this.userText),choice.name,result=>this.submitToolResult(id,result)))return;
     this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
   }
-  get busy(){return this.working||Boolean(this.script)||[...this.delegations.values()].some(entry=>!entry.prefetch&&(entry.state==='routing'||entry.state==='running'));}
+  get busy(){return this.working||Boolean(this.script)||[...this.delegations.values()].some(entry=>entry.state==='routing'||entry.state==='running');}
   // The page draws what V explains from what V has already said, so a thing appears after V has moved on
   // and the mark is always a step behind. The other way round works: on the caller's question the page puts
   // up the best-known things at once, and V is told which, so that it names them in that order; the mark
@@ -666,7 +625,6 @@ export class GptLiveBridge {
         this.delegations.set(id,{text:guess.text,state:'running',polls:0,name:choice.name,own:true});
         this.remember('tool','',{name:choice.name,query:String(choice.args?.query??choice.args?.topic??choice.args?.question??choice.args?.url??'')});
         this.request.onDiagnostic?.({stage:'promise-kept',elapsedMs:Math.round(this.now()-this.startedAt)});
-        if(this.takePrefetch(guess.text,choice.name,result=>this.submitToolResult(id,result)))return;
         this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
         return;
       }
@@ -702,8 +660,6 @@ export class GptLiveBridge {
       return;
     }
     if(entry.state==='background')return; // answered by completeBackgroundTool
-    // A lookup started ahead (see `speculate`) is held for whoever takes it.
-    if(entry.prefetch){if(entry.state!=='running')return;const go=entry.go;entry.go=null;if(go){entry.state='done';go(result);}else{entry.state='ready';entry.result=result;}return;}
     entry.state='done';
     this.resultAt=this.now();
     if(entry.name==='end_call'&&typeof result?.error==='string')this.ending=false;
@@ -714,7 +670,6 @@ export class GptLiveBridge {
     const text=gptLiveResultText(entry.name,result);
     // (Kept for a call that follows this one if it is cut: what was found is not looked up again, nor contradicted from memory.)
     this.found=[...(this.found??[]),{name:entry.name,text:Array.from(text).slice(0,1500).join('')}].slice(-2);
-    if(entry.unasked){this.append(`${entry.name}：${text}\n（上面是为用户刚才那句话“${entry.unasked}”查到的资料，你还没有用过它。你刚才如果还没回答，现在就按它回答；如果已经回答了，对照你说的：有说错、说偏或漏了关键的地方，就接着用一两句更正、补上（比如“我刚对了一下记录……”）；说的都对，就只用一句很短的话说记录里也是这样。不要把资料从头念一遍。）`,{channel:'speakable',whole:true});return;}
     this.append(`${entry.name}：${text}${Array.from(text).length>=200?this.answerNow():''}`,{...this.on(id),channel:'speakable',whole:true});
   }
   fail(message){if(this.closed)return;this.reject?.(Error(message));this.request.onError?.(Error(message));this.close();}

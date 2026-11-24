@@ -195,12 +195,11 @@ test('a dropped or skipped conversation record is logged by name only',async t=>
   assert.deepEqual(rows.slice(1).map(row=>[row.type,row.stage??row.reason]),[['call.provider-status','context-dropped'],['call.record-skipped','refused-earlier']]);
 });
 
-test('a lookup given to the model after V\'s reply, and V\'s first words kept before its reply, are logged as numbers only',async t=>{
+test('V\'s first words kept before its reply are logged as numbers only',async t=>{
   const f=await fixture(t);f.created();
-  f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'lookup-unasked',elapsedMs:35100,text:'SECRET'});
   f.log.audit({type:'call.provider-status',voiceSessionId:'v1',stage:'media-early',earlyMs:420,lateMs:60,elapsedMs:18200,audio:'SECRET'});
   await f.log.close();const rows=await f.rows();assert(!JSON.stringify(rows).includes('SECRET'));
-  assert.deepEqual(rows.slice(1).map(row=>[row.stage,row.elapsedMs,row.earlyMs,row.lateMs]),[['lookup-unasked',35100,undefined,undefined],['media-early',18200,420,60]]);
+  assert.deepEqual(rows.slice(1).map(row=>[row.stage,row.elapsedMs,row.earlyMs,row.lateMs]),[['media-early',18200,420,60]]);
 });
 
 test('a call dialled again after a cut connection records what the page saw, as numbers and flags only',async t=>{
