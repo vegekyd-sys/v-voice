@@ -91,7 +91,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owner,type:event.type,...safe});
     }
     // Which tool a GPT Live delegation became and how it was decided; never the words.
-    if(event.type==='gpt-live.routed')return enqueue({...owner,type:event.type,name:typeof event.name==='string'?event.name.slice(0,80):null,via:['own','decision','model','fallback','none'].includes(event.via)?event.via:'none',...(Number.isSafeInteger(event.elapsedMs)&&event.elapsedMs>=0?{elapsedMs:event.elapsedMs}:{}),...(event.ahead===true?{ahead:true}:{})});
+    if(event.type==='gpt-live.routed')return enqueue({...owner,type:event.type,name:typeof event.name==='string'?event.name.slice(0,80):null,via:['own','decision','model','fallback','none'].includes(event.via)?event.via:'none',...(Number.isSafeInteger(event.elapsedMs)&&event.elapsedMs>=0?{elapsedMs:event.elapsedMs}:{}),...(event.ahead===true?{ahead:true}:{}),...(typeof event.kind==='string'?{kind:event.kind.slice(0,8)}:{}),...(typeof event.said==='string'?{said:event.said.slice(0,200)}:{})});
     if(event.type==='tool.search-metrics'){
       if(!['web_search','memory_search'].includes(event.name)||typeof event.callId!=='string')return false;
       const safe={name:event.name,callId:event.callId.slice(0,160)};

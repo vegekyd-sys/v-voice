@@ -171,9 +171,10 @@ export function createDelegationRouter({complete=null,choose=null,now=()=>new Da
   return async function route({text,userText,tools,notes='',history=[],running=false,speculative=false,signal}){
     const names=new Set(tools.map(tool=>tool.name)),startedAt=performance.now();
     // `ahead`: chosen from the caller's words before the model delegated; used only if it does.
-    const done=choice=>{audit({type:'gpt-live.routed',name:choice?.name??null,via:choice?.via??'none',elapsedMs:Math.round(performance.now()-startedAt),...(speculative?{ahead:true}:{})});return choice;};
     // The model named the kind: its choice stands, and only what its words cannot give is asked of the routing model.
+    // (What the model handed over goes to the call's private record with the choice; the caller's words already do.)
     const kind=namedKind(text,tools);
+    const done=choice=>{audit({type:'gpt-live.routed',name:choice?.name??null,via:choice?.via??'none',elapsedMs:Math.round(performance.now()-startedAt),...(speculative?{ahead:true}:{kind:kind?.label??null,said:String(text??'').slice(0,200)})});return choice;};
     if(kind?.fill&&kind.tools.length===1){
       const words=kind.words||String(userText??'').trim();
       if(words||!(kind.tools[0].parameters?.required??[]).length)return done({name:kind.tools[0].name,args:kind.fill(words,userText),via:'own'});
