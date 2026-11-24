@@ -100,3 +100,21 @@ test('what was just said is judged by a model: probabilities with a Decisions ke
   assert.equal(createReplyJudge({}),null);assert.equal(replyJudgeFromEnv({}),null);
   assert.equal(typeof replyJudgeFromEnv({VOICE_GPT_LIVE_DECISIONS_API_KEY:'k'}),'function');assert.equal(typeof replyJudgeFromEnv({},{complete:async()=>null}),'function');
 });
+
+test('the kind the model names is its choice of tool: its words are the arguments, and the routing model only fills in what they cannot give',async()=>{
+  const tools=[{name:'memory_search',parameters:{required:['query']}},{name:'web_search',parameters:{required:['query']}},{name:'web_fetch',parameters:{required:['url']}},{name:'end_call',parameters:{}},{name:'delegate_to_v',parameters:{required:['question']}}];
+  const events=[],asked=[];
+  const route=createDelegationRouter({complete:async request=>{asked.push(request.tools.map(tool=>tool.name));return {name:'web_fetch',args:{url:'https://example.com/a'}};},audit:e=>events.push(e)});
+  assert.deepEqual(await route({text:'记忆：heartbeat 多久跑一次 现状',userText:'那它多久跑一次',tools}),{name:'memory_search',args:{query:'heartbeat 多久跑一次 现状'},via:'own'});
+  assert.deepEqual(await route({text:'搜索: 人工智能 证明 数学难题',tools}),{name:'web_search',args:{query:'人工智能 证明 数学难题'},via:'own'});
+  assert.deepEqual(await route({text:'挂断：',tools}),{name:'end_call',args:{},via:'own'});
+  // Nothing after the label: the caller's own words are what is looked up.
+  assert.deepEqual((await route({text:'记忆：',userText:'是谁定的',tools})).args,{query:'是谁定的'});
+  assert.equal(asked.length,0,'the routing model is not asked');
+  // A kind whose tool needs more than words: the routing model fills it in among that kind's tools only.
+  assert.equal((await route({text:'网页：打开刚才那篇文章',tools})).name,'web_fetch');assert.deepEqual(asked.at(-1),['web_fetch']);
+  // A kind this call cannot do, or no kind at all: routed as before.
+  await route({text:'创作：画一张猫',tools});assert.equal(asked.at(-1).length,tools.length);
+  await route({text:'查一下 heartbeat',tools});assert.equal(asked.at(-1).length,tools.length);
+  assert.deepEqual(events.filter(e=>e.type==='gpt-live.routed').map(e=>e.via),['own','own','own','own','model','model','model']);
+});

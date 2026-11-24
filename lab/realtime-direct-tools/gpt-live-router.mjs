@@ -11,6 +11,33 @@ export const GPT_LIVE_SELF_TOOL=Object.freeze({type:'function',name:'answer_dire
 // Which tool is a model's judgement, given the conversation. There were fixed patterns in front of
 // it once (the time, a farewell, a lookup, an explanation, by their words): they decided seven of
 // forty-nine choices on real calls, saved about a second each, and could only be wrong by keyword.
+// GPT Live names the kind of thing it hands over, as the first word of its sentence ("记忆：heartbeat 多久跑一次").
+// Which tool, then, is its own choice: where its words are all the tool needs they are the arguments, and where a
+// tool needs more (a URL, a date range, a command) the routing model fills them in among that kind's tools only.
+// [label, tools, arguments from the words after the label (none: the routing model fills them)]
+export const GPT_LIVE_KINDS=Object.freeze([
+  ['搜索',['web_search'],words=>({query:words})],
+  ['网页',['web_fetch'],null],
+  ['时间',['current_time'],()=>({})],
+  ['记忆',['memory_search'],words=>({query:words})],
+  ['飞书',['feishu_calendar','lark_read'],null],
+  ['创作',['exec'],null],
+  ['上屏',['show_content'],null],
+  ['讲解',['explain_on_board'],words=>({topic:words})],
+  ['办事',['delegate_to_v'],(words,userText)=>({question:words,...(userText&&userText!==words?{context:`用户原话：${String(userText).slice(0,600)}`}:{})})],
+  ['取消',['cancel_task'],()=>({})],
+  ['进展发群',['send_task_updates'],()=>({})],
+  ['挂断',['end_call'],()=>({})],
+].map(Object.freeze));
+const KIND=new RegExp(`^\\s*(${GPT_LIVE_KINDS.map(([label])=>label).sort((a,b)=>b.length-a.length).join('|')})\\s*[:：]\\s*`,'u');
+/** The kind the model named for its sentence, among this call's tools: {label,tools,args,words} or null. */
+export function namedKind(text,tools){
+  const said=String(text??''),match=KIND.exec(said);if(!match)return null;
+  const kind=GPT_LIVE_KINDS.find(([label])=>label===match[1]),offered=kind[1].map(name=>tools.find(tool=>tool.name===name)).filter(Boolean);
+  if(!offered.length)return null;
+  return {label:kind[0],tools:offered,fill:kind[2],words:said.slice(match[0].length).trim()};
+}
+
 /** When the model gives no usable choice: the agent decides, or nothing does. Never a guess by keyword. */
 export function fallbackRoute(text,names,{userText}={}){
   const said=String(text??'').trim();
@@ -145,6 +172,13 @@ export function createDelegationRouter({complete=null,choose=null,now=()=>new Da
     const names=new Set(tools.map(tool=>tool.name)),startedAt=performance.now();
     // `ahead`: chosen from the caller's words before the model delegated; used only if it does.
     const done=choice=>{audit({type:'gpt-live.routed',name:choice?.name??null,via:choice?.via??'none',elapsedMs:Math.round(performance.now()-startedAt),...(speculative?{ahead:true}:{})});return choice;};
+    // The model named the kind: its choice stands, and only what its words cannot give is asked of the routing model.
+    const kind=namedKind(text,tools);
+    if(kind?.fill&&kind.tools.length===1){
+      const words=kind.words||String(userText??'').trim();
+      if(words||!(kind.tools[0].parameters?.required??[]).length)return done({name:kind.tools[0].name,args:kind.fill(words,userText),via:'own'});
+    }
+    const allowed=kind?new Set(kind.tools.map(tool=>tool.name)):names;if(kind)tools=kind.tools;
     if(complete){
       // The function-calling request can be given up once the quicker answer has settled the matter.
       const full=new AbortController(),stop=()=>full.abort();
@@ -158,7 +192,7 @@ export function createDelegationRouter({complete=null,choose=null,now=()=>new Da
           if(tool&&takesNothing(tool)&&picked.confidence>=SURE){stop();return done({name:tool.name,args:{},via:'decision'});}
         }
         const choice=await filled;
-        if(choice&&names.has(choice.name))return done({...choice,via:'model'});
+        if(choice&&allowed.has(choice.name))return done({...choice,via:'model'});
         audit({type:'gpt-live.route-rejected',name:choice?.name??null});
       }catch(error){
         const message=String(error?.message??error).slice(0,300);

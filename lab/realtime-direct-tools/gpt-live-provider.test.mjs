@@ -659,3 +659,18 @@ test('a page that does not report in time does not hold the answer',async()=>{
   await pause(5);userSays(f,'u1','讲讲候鸟为什么迁徙');say(f,idOf(1),'讲讲候鸟为什么迁徙');await pause(1500);assert.equal(appends(f).length,0);
   await pause(300);const told=appends(f).map(e=>e.content[0].text).join('');assert.match(told,/你自己现在就讲给用户听/u);assert.doesNotMatch(told,/屏幕上已经摆好了/u);
 });
+
+test('the policy asks the model to name the kind and to look up what the results it holds do not say',()=>{
+  const policy=gptLiveDelegationPolicy(new Set(['web_search','memory_search','end_call']),{display:false});
+  assert.match(policy,/类别名加冒号开头[^\n]*例如“记忆：[^\n]*“搜索：[^\n]*“挂断：”/u);
+  assert.match(policy,/每个具体事实[^\n]*必须出自这通电话里已经查回来的结果[^\n]*没有就再委派去查/u);
+  assert.match(policy,/拿不准要不要查，就查/u);
+  assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['web_search']),{display:false}),/记忆：|挂断：/u);
+});
+
+test('a delegation that names its kind goes straight to that tool with the model\'s words',async()=>{
+  const f=await fixture({tools:END});await ready(f);
+  userSays(f,'u1','那它多久跑一次');await pause(10);say(f,idOf(1),'记忆：heartbeat 多久跑一次 现状');await pause(1700);
+  assert.deepEqual([f.calls[0].name,f.calls[0].args],['memory_search',{query:'heartbeat 多久跑一次现状'}]);
+  assert(f.events.some(e=>e.type==='gpt-live.routed'&&e.via==='own'));
+});
