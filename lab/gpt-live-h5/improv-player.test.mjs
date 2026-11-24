@@ -104,3 +104,30 @@ test('a searched photograph is selected by the order on the visible lesson page'
  shelf.visible('call',[upload.id]);assert.equal(await shelf.openingImage('call','current'),'https://photos.example/upload');
  shelf.visible('call',['p1']);assert.equal(await shelf.openingImage('call','current'),'https://photos.example/louvre');
 });
+
+
+test('a stopped show remains available to its uploader after the capture timeout',async t=>{
+ const {createImprovPlayer}=await import('./improv-player.mjs');
+ t.mock.timers.enable({apis:['setTimeout']});
+ const origin='https://voice.example',win=new EventTarget();
+ let removed=false;
+ const frame={contentWindow:{postMessage(){}},remove(){removed=true;}};
+ for(const [name,value] of Object.entries({window:win,location:new URL(origin),document:{baseURI:origin+'/',createElement:()=>frame,body:{append(){}}}})){
+   const old=Object.getOwnPropertyDescriptor(globalThis,name);
+   Object.defineProperty(globalThis,name,{configurable:true,value});
+   t.after(()=>old?Object.defineProperty(globalThis,name,old):Reflect.deleteProperty(globalThis,name));
+ }
+ const clips=[];
+ const player=createImprovPlayer({update(){},notice(){},ended(){},archive:clip=>clips.push(clip)});
+ const send=(action,data={})=>win.dispatchEvent(Object.assign(new Event('message'),{origin,source:frame.contentWindow,data:{id:'s',source:'makaron-director',action,...data}}));
+ player.receive({action:'start',id:'s',playerPath:'/director/player.html'});
+ player.finish();
+ send('recorded',{blob:new Blob(['video'])});
+ t.after(()=>URL.revokeObjectURL(clips[0].recording));
+ assert.ok(clips[0].recording);
+ t.mock.timers.tick(100_000);
+ assert.equal(removed,false);
+ send('ended');
+ assert.equal(removed,true);
+ assert.equal(clips.at(-1).done,true);
+});

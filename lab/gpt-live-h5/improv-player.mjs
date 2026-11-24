@@ -51,13 +51,20 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
     window.removeEventListener('message',show.listener);
     clearTimeout(show.cleanup);show.frame.remove();detach(show);
   }
+  function scheduleCleanup(show){
+    clearTimeout(show.cleanup);
+    // The completed blob can still be in transit during the relay's 95s upload
+    // and one retry. Keep its owner alive until the player acknowledges completion.
+    const timeout=show.recording ? 240_000 : 45_000;
+    show.cleanup=setTimeout(()=>{show.done=true;keep(show);close(show);},timeout);
+  }
   function finish(){
     const show=current;
     if(!show)return;
     keep(show);detach(show);
     show.frame.contentWindow?.postMessage({id:show.id,action:'end'},location.origin);
     ended(show.id);
-    show.cleanup=setTimeout(()=>{show.done=true;keep(show);close(show);},45000);
+    scheduleCleanup(show);
   }
   function receive(event){
     if(event.action!=='start'){
@@ -75,7 +82,7 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
       if(e.source!==frame.contentWindow || e.origin!==location.origin || e.data?.source!=='makaron-director' || e.data.id!==event.id)return;
       if(e.data.action==='stopped'){const v=frame.contentDocument?.querySelector('video');show.shape=v?.videoWidth/v?.videoHeight;show.poster=e.data.poster;keep(show);disconnectSound(show);return;}
       if(e.data.action==='recorded' && e.data.blob instanceof Blob && e.data.blob.size && !show.recording){
-        show.recording=URL.createObjectURL(e.data.blob);keep(show);return;
+        show.recording=URL.createObjectURL(e.data.blob);keep(show);scheduleCleanup(show);return;
       }
       if(e.data.action==='ended'){
         show.done=true;keep(show);
