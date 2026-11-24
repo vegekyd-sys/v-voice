@@ -385,10 +385,21 @@ def upload(target, archive, remote_archive, relay):
     node is across a border); `upload: vrelay` sends it once through the relay, resumable and checked
     by sha256, and the target fetches it, as `vrelayUser` when named. Returns the command to remove it."""
     if target.get('upload', 'ssh') == 'ssh':
-        with archive.open('rb') as data:
-            result = subprocess.run(['ssh', target['ssh'], 'umask 077; cat > ' + shlex.quote(remote_archive)], stdin=data, capture_output=True)
-        require(result.returncode == 0, 'Artifact upload failed')
-        return ['rm', '--', remote_archive]
+        # A broken pipe resumes from what arrived (2026-11-24: the line to the device node broke 2.2 MB
+        # into 7.7 MB); what is on the node is checked by sha256 before it is staged.
+        data, path = archive.read_bytes(), shlex.quote(remote_archive)
+        for attempt in range(20):
+            size = subprocess.run(['ssh', target['ssh'], 'stat -c %s ' + path + ' 2>/dev/null || echo 0'], capture_output=True, timeout=60)
+            have = int(size.stdout.decode().strip() or 0) if size.returncode == 0 and size.stdout.decode().strip().isdigit() else None
+            if have is None or have > len(data):
+                continue
+            if have < len(data):
+                subprocess.run(['ssh', target['ssh'], 'umask 077; cat >> ' + path], input=data[have:], capture_output=True, timeout=1800)
+                continue
+            check = subprocess.run(['ssh', target['ssh'], 'sha256sum -- ' + path], capture_output=True, timeout=60)
+            require(check.returncode == 0 and check.stdout.decode().split()[:1] == [digest(data)], 'Artifact upload corrupted')
+            return ['rm', '--', remote_archive]
+        raise RuntimeError('Artifact upload failed')
     if 'id' not in relay:
         result = subprocess.run(['vrelay', 'put', str(archive)], capture_output=True, timeout=1800)
         lines = result.stdout.decode().split()

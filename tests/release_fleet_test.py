@@ -14,6 +14,39 @@ IDLE = dict(known=True, activeCalls=0, creatingSessions=0, backgroundTasks=0, de
 
 
 class FleetSafety(unittest.TestCase):
+    def test_ssh_upload_resumes_a_broken_pipe_and_checks_what_arrived(self):
+        remote = bytearray()
+        sent = []
+        def fake(args, input=None, **kwargs):
+            command = args[-1]
+            if command.startswith('stat'):
+                return Mock(returncode=0, stdout=str(len(remote)).encode())
+            if command.startswith('umask 077; cat >>'):
+                sent.append(len(input))
+                remote.extend(input[:3] if len(sent) == 1 else input)  # the first pipe breaks after 3 bytes
+                return Mock(returncode=255 if len(sent) == 1 else 0, stdout=b'')
+            if command.startswith('sha256sum'):
+                return Mock(returncode=0, stdout=(fleet.digest(bytes(remote)) + '  x\n').encode())
+            raise AssertionError(command)
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=fake):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'0123456789')
+            remove = fleet.upload(dict(id='devices', ssh='voice-devices'), archive, '/tmp/voice-release-a.tar.gz', {})
+        self.assertEqual(bytes(remote), b'0123456789')
+        self.assertEqual(sent, [10, 7])
+        self.assertEqual(remove, ['rm','--','/tmp/voice-release-a.tar.gz'])
+        # What arrived is not what was sent: nothing is staged.
+        def corrupt(args, input=None, **kwargs):
+            command = args[-1]
+            if command.startswith('stat'):
+                return Mock(returncode=0, stdout=b'10')
+            return Mock(returncode=0, stdout=b'0'*64 + b'  x\n')
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=corrupt):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'0123456789')
+            with self.assertRaises(RuntimeError):
+                fleet.upload(dict(id='devices', ssh='voice-devices'), archive, '/tmp/voice-release-b.tar.gz', {})
+
     def test_vrelay_upload_sends_once_and_each_target_fetches_it(self):
         calls = []
         def fake(args, **kwargs):
