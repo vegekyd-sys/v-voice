@@ -483,7 +483,7 @@ function ImprovStage({show, actions}) {
         {blocked ? <button type="button" className="board-report" onClick={() => video.current.play().catch(() => setBlocked(true))}>点一下开始播放</button>
           : <p>{show.stream ? '第一幕马上到' : '正在连线直播'}<span> · {waited} 秒</span></p>}
       </div>}
-      <video ref={video} className="board-work-print" data-loaded={playing || undefined} playsInline muted autoPlay />
+      <video ref={video} id="improvVideo" className="board-work-print" data-loaded={playing || undefined} playsInline muted autoPlay />
       {playing && <span className="improv-rec" role="timer" aria-label={'正在直播，已录制 ' + mmss(seconds)}><i />REC <time>{mmss(seconds)}</time></span>}
       {playing && <button type="button" className="board-work-sound" data-quiet={show.muted || undefined} aria-pressed={!show.muted}
         aria-label={show.muted ? '恢复直播声音' : '静音直播声音'} onClick={actions.toggleImprovSound}>
