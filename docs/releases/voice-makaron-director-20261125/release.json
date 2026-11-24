@@ -1,0 +1,55 @@
+{
+  "version": "voice-makaron-director.20261125.1",
+  "verifiedAt": "2026-11-25T00:58:00+08:00",
+  "sourceCommit": "017199ccc0a2bdc23f22dba9c0f2f3d3908e7e0e",
+  "mergePRs": [
+    272,
+    273
+  ],
+  "makaron": {
+    "mergePRs": [
+      86
+    ],
+    "devCommit": "a754a558c5d939b2798feb5985c41832f99c6efd",
+    "directorService": "makaron-director.service 切到 a754a558（分块上传录像）"
+  },
+  "previousRunningCommit": "53fe532cb76e1b25b48d93eb85e849a0e3d96f5e",
+  "intermediateReleases": [
+    {
+      "commit": "b4efb8f4920bd1f486f919bf7351b628afce5823",
+      "version": "voice-owner-media.20261125.1",
+      "note": "私人入口作图改用主账号（#272）。"
+    }
+  ],
+  "filesSha256": "65826367fc2e4957c52ffe8437e308bedfb14de1b36d55d4da9c1203500989d7",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45441764362",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "serviceConfiguration": [
+    "私有配置不变；只有发布工具自己的 95-unified-release.conf 不同。",
+    "V 上 Director 服务的 current 指向 Makaron dev a754a558，上一版 00dc42d4 保留作回滚。"
+  ],
+  "fixes": [
+    "Tianyi 私人入口打电话作图，和同一会话的后台任务一样扣主账号，不再用会话群自注册的小账号误报积分不足（#272）。",
+    "直播录像在直播进行中按 512 KB 分块上传，收播后约 30 秒存档完成；单次上传不会再被 Cloudflare 约 100 秒的 524 切断（#273、Makaron #86）。"
+  ],
+  "acceptance": [
+    "线上合成语音完整流程（私人入口、豆包）：作图 1376×768 成功（扣主账号）；用刚画的图开播，开播回执后 13.1 秒首帧；静默 16.7 秒后自动推进一幕，带短字幕；插话说完 3.6 秒发给生成端、6.0 秒后出画，画面下方是完整原话；随后接上重新规划的一幕；收播后继续聊天，课件接替画面；文字输入里有「添加图片」按钮。",
+    "服务器存档：录像在直播中就开始分块到达，收播后约 30 秒完成 7.58 MB，与浏览器录像 sha256 一致，无残留临时文件。",
+    "两个运行节点的提交、文件哈希已核对，均已恢复接入；Gateway 未重启。",
+    "npm test 1526/1526、test:speaker-native、check:ios-shell、release_fleet_test 和 main CI 均通过；Makaron director 测试 23/23。"
+  ],
+  "notVerified": [
+    "真手机、真人语音、iOS App 未验收。",
+    "豆包通话里在文字输入框打字提问没有得到回答：这是此前已知的「小何通话不支持打字提问」，不是本次改动。"
+  ]
+}
