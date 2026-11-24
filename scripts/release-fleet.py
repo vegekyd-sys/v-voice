@@ -376,6 +376,28 @@ def validate_target(target):
     require(re.fullmatch(r'[A-Za-z0-9_-]*', target.get('prefix','')), 'Invalid release prefix')
     if target.get('pointer'):
         require(target['pointer'] == str(Path(target['releaseRoot']).parent / 'current'), 'Invalid pointer')
+    require(target.get('upload', 'ssh') in ['ssh', 'vrelay'], 'Invalid upload method')
+    require(re.fullmatch(r'[a-z_][a-z0-9_-]*', target.get('vrelayUser', 'root')), 'Invalid vrelay user')
+
+
+def upload(target, archive, remote_archive, relay):
+    """Put the archive at remote_archive on the target. A pipe over ssh breaks on a lossy line (the web
+    node is across a border); `upload: vrelay` sends it once through the relay, resumable and checked
+    by sha256, and the target fetches it, as `vrelayUser` when named. Returns the command to remove it."""
+    if target.get('upload', 'ssh') == 'ssh':
+        with archive.open('rb') as data:
+            result = subprocess.run(['ssh', target['ssh'], 'umask 077; cat > ' + shlex.quote(remote_archive)], stdin=data, capture_output=True)
+        require(result.returncode == 0, 'Artifact upload failed')
+        return ['rm', '--', remote_archive]
+    if 'id' not in relay:
+        result = subprocess.run(['vrelay', 'put', str(archive)], capture_output=True, timeout=1800)
+        lines = result.stdout.decode().split()
+        require(result.returncode == 0 and lines and re.fullmatch(r'[A-Za-z0-9_-]{6,64}', lines[-1]), 'Artifact upload to the relay failed')
+        relay['id'] = lines[-1]
+    sudo = ['sudo', '-n', '-u', target['vrelayUser']] if target.get('vrelayUser') else []
+    result = subprocess.run(['ssh', target['ssh'], 'umask 077; ' + shlex.join([*sudo, 'vrelay', 'get', relay['id'], remote_archive])], capture_output=True, timeout=1800)
+    require(result.returncode == 0, 'Artifact download from the relay failed')
+    return ['sudo', '-n', 'rm', '--', remote_archive] if sudo else ['rm', '--', remote_archive]
 
 
 def remote_main(request):
@@ -450,16 +472,18 @@ def main():
         with tarfile.open(archive, 'w:gz') as tar:
             for name in ['manifest.json', *[f['path'] for f in manifest['files']]]:
                 tar.add(Path(args.artifact) / name, arcname=name)
-        staged = {}
-        for target in targets:
-            remote_archive = '/tmp/voice-release-' + uuid.uuid4().hex + '.tar.gz'
-            with archive.open('rb') as data:
-                result = subprocess.run(['ssh',target['ssh'],'umask 077; cat > ' + shlex.quote(remote_archive)], stdin=data, capture_output=True)
-                require(result.returncode == 0, 'Artifact upload failed')
-            try:
-                staged[target['id']] = remote(target,'stage',archive=remote_archive)
-            finally:
-                subprocess.run(['ssh',target['ssh'],'rm','--',remote_archive], capture_output=True)
+        staged, relay = {}, {}
+        try:
+            for target in targets:
+                remote_archive = '/tmp/voice-release-' + uuid.uuid4().hex + '.tar.gz'
+                remove = upload(target, archive, remote_archive, relay)
+                try:
+                    staged[target['id']] = remote(target,'stage',archive=remote_archive)
+                finally:
+                    subprocess.run(['ssh',target['ssh'],*remove], capture_output=True)
+        finally:
+            if relay.get('id'):
+                subprocess.run(['vrelay','rm',relay['id']], capture_output=True)
         save(receipt_dir / 'staged.json', staged)
     require(0 <= args.wait_seconds <= 86400, 'Invalid wait duration')
     results, pending = {}, list(targets)

@@ -14,6 +14,35 @@ IDLE = dict(known=True, activeCalls=0, creatingSessions=0, backgroundTasks=0, de
 
 
 class FleetSafety(unittest.TestCase):
+    def test_vrelay_upload_sends_once_and_each_target_fetches_it(self):
+        calls = []
+        def fake(args, **kwargs):
+            calls.append(args)
+            return Mock(returncode=0, stdout=b'id relay123\nrelay123\n' if args[:2] == ['vrelay','put'] else b'')
+        web = dict(id='web', ssh='v', upload='vrelay', vrelayUser='openclaw')
+        devices = dict(id='devices', ssh='voice-devices', upload='vrelay')
+        relay = {}
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=fake):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'x')
+            remove_web = fleet.upload(web, archive, '/tmp/voice-release-a.tar.gz', relay)
+            remove_dev = fleet.upload(devices, archive, '/tmp/voice-release-b.tar.gz', relay)
+        self.assertEqual([c for c in calls if c[:2] == ['vrelay','put']], [['vrelay','put',str(archive)]])
+        self.assertEqual(calls[1], ['ssh','v','umask 077; sudo -n -u openclaw vrelay get relay123 /tmp/voice-release-a.tar.gz'])
+        self.assertEqual(calls[2], ['ssh','voice-devices','umask 077; vrelay get relay123 /tmp/voice-release-b.tar.gz'])
+        self.assertEqual(remove_web, ['sudo','-n','rm','--','/tmp/voice-release-a.tar.gz'])
+        self.assertEqual(remove_dev, ['rm','--','/tmp/voice-release-b.tar.gz'])
+        # A relay that fails stops the release before any target is touched.
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', return_value=Mock(returncode=1, stdout=b'')):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'x')
+            with self.assertRaises(RuntimeError):
+                fleet.upload(web, archive, '/tmp/voice-release-c.tar.gz', {})
+        for bad in [dict(upload='scp'), dict(upload='vrelay', vrelayUser='root; rm')]:
+            target = dict(id='web', unit='openclaw-rtc-h5.service', releaseRoot='/opt/openclaw-voice-h5/releases', **bad)
+            with self.assertRaises(RuntimeError):
+                fleet.validate_target(target)
+
     def test_phone_management_artifact_is_verified_without_allowing_arbitrary_scripts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

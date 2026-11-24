@@ -6,7 +6,9 @@
       "unit": "openclaw-rtc-h5.service",
       "releaseRoot": "/opt/openclaw-voice-h5/releases",
       "prefix": "gpt-live-",
-      "pointer": "/opt/openclaw-voice-h5/current"
+      "pointer": "/opt/openclaw-voice-h5/current",
+      "upload": "vrelay",
+      "vrelayUser": "openclaw"
     },
     {
       "id": "devices",
