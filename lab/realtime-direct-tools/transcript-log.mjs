@@ -116,6 +116,8 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
       if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
       if(event.type==='tool.delivered')safe.status=event.result?.error||event.result?.isError?'error':event.result?.cancelled?'cancelled':'ok';
+      // The live tool's refusals are service-written reasons, kept so a failed start or direction can be explained.
+      if(event.type==='tool.delivered'&&event.name==='improv_live'&&typeof event.result?.error==='string')safe.error=event.result.error.slice(0,120);
       for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }

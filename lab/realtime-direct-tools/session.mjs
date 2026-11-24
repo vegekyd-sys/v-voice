@@ -1,4 +1,4 @@
-import {IMPROV_TOOL} from './improv-live.mjs';
+import {IMPROV_TOOL,improvArguments} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
@@ -726,6 +726,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       try {
         if(s.unidentified&&!(call.name==='explain_on_board'&&lessonTools(s).length)&&!(s.publicVoice?PUBLIC_CALL_TOOLS.has(call.name):['show_content','end_call'].includes(call.name)))throw Error('当前通话没有账号工具权限');
         if(s.sessionBound&&!s.actorReader&&['feishu_calendar','lark_read'].includes(call.name))throw Error('请使用当前会话的工具或委派给当前会话的 V');
+        if(call.name===IMPROV_TOOL.name)call={...call,args:improvArguments(call.args)};
         validateTool(call.name,call.args);
         if(call.name===IMPROV_TOOL.name){
           if(!s.improv)throw Error('当前通话没有即兴直播');

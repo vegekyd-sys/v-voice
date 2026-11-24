@@ -1952,6 +1952,20 @@ test('improv tool joins a display call and steers its existing show without a ga
  assert(!ordinary.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
 });
 
+test('empty optional live arguments from a realtime model mean not given',async t=>{
+ const calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'开个直播'})),false);
+ f.call('improv_live',{action:'start',shot:'橘猫推开便利店的门',caption:'',openingImage:'',imagePosition:0},'start');
+ await delay(0);
+ assert.equal(f.client.sent.find(v=>v.type==='improv.live')?.action,'start');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'一只小橘猫跳上柜台',item_id:'scene-2'});
+ f.call('improv_live',{action:'direct',shot:'小橘猫跳上柜台',caption:'小橘猫跳上柜台',openingImage:'',imagePosition:0},'steer');
+ await delay(0);
+ assert.deepEqual(calls.map(c=>c[0]),['start','direct']);
+});
+
 test('a transcript without a model tool call cannot start a show',async t=>{
  const calls=[],improv=fakeDirector(calls);
  const f=await fixture(undefined,'grok',{improv});

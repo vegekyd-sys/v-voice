@@ -52,6 +52,17 @@ export function directorCommand(environment=process.env) {
   return run;
 }
 
+// Realtime models often fill every optional field: an empty caption, an empty image or
+// position 0 on a direction. Those mean "not given", not a different request.
+export function improvArguments(args){
+  if(!args||typeof args!=='object'||Array.isArray(args))return args;
+  const out={...args};
+  for(const key of ['shot','caption','openingImage'])if(typeof out[key]==='string'&&!out[key].trim())delete out[key];
+  if(out.imagePosition===0||out.imagePosition===null||out.imagePosition==='')delete out.imagePosition;
+  if(out.action!=='start'){delete out.openingImage;delete out.imagePosition;}
+  if(out.action==='end')delete out.shot;
+  return out;
+}
 export const clip=(text,limit=24)=>{const chars=Array.from(String(text??'').replace(/\s+/gu,' ').trim());return chars.length>limit?chars.slice(0,limit-1).join('')+'…':chars.join('');};
 const ENDINGS={time:'本场已到时长上限',failed:'直播连接中断',caller:'用户在画面上结束了直播',call:'通话结束'};
 export function createImprovShow({run}) {
