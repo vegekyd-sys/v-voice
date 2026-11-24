@@ -780,9 +780,9 @@ async function startCall(options = {}) {
     const nativeDeviceActions=await browserDeviceActions();
     const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:selectedModel==='seeduplex'&&view.get().doubao.voice?{voice:view.get().doubao.voice}:{})};
     let reservation;
-    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
+    if(webDialVersion===2&&(phoneEntry||tvHost&&location.protocol==='https:')&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:selectedModel,dialVersion:'2',...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
       reservation=await withCapture(active.dialConnection.reservation);
     }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));

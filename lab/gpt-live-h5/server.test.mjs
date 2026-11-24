@@ -498,13 +498,15 @@ test('TV first HTML is transparent before modules run; regular Web and legacy TV
 test('TV entry uses bundled engine without changing identity snapshot or other terminals',async t=>{
  const f=await fixture(t,{preview:true});
  const tv=await (await fetch(`${f.url}/?tv=1&tvShell=1&tvSurface=1&tvOverlay=1`)).text();
- assert.match(tv,/src="\.\/tv-entry.bundle.mjs"/);assert.doesNotMatch(tv,/src="\.\/app.js"/);
+ assert.match(tv,/src="\.\/tv-entry.bundle.mjs\?v=[a-f0-9]{64}"/);assert.doesNotMatch(tv,/src="\.\/app.js"/);
  assert.doesNotMatch(tv,/modulepreload" href="\.\/app.js/);assert.doesNotMatch(tv,/modulepreload" href="\.\/ui-bundle/);
- assert.match(tv,/id="voiceEntryStatus"/);assert.match(tv,/src="\.\/tv-startup.bundle.mjs"/);
+ assert.match(tv,/id="voiceEntryStatus"/);assert.match(tv,/src="\.\/tv-startup.bundle.mjs\?v=[a-f0-9]{64}"/);
  assert.match(tv,/data-tv-presented="false"/);
  const normal=await (await fetch(f.url+'/')).text();assert.match(normal,/src="\.\/app-bundle.mjs\?v=/);
  assert.match(tv,/as="fetch" type="application\/wasm"/);
  const dsp=await fetch(f.url+'/assets/tv-aec/webrtcaec3-0.3.0.wasm');assert.match(dsp.headers.get('cache-control'),/immutable/);
+ const versioned=tv.match(/src="\.\/(tv-entry\.bundle\.mjs\?v=[a-f0-9]{64})"/)[1];
+ assert.match((await fetch(f.url+'/'+versioned)).headers.get('cache-control'),/immutable/);
  const bundle=await fetch(f.url+'/tv-entry.bundle.mjs');assert.equal(bundle.status,200);assert.match(bundle.headers.get('content-type'),/javascript/);
  assert.equal(f.calls.length,0);
 });

@@ -179,8 +179,10 @@ public final class CallService extends Service {
     private void acknowledgeLayout(){
         if(web==null)return;
         web.scrollTo(0,0);web.invalidateOutline();
-        float cssWidth=web.getWidth()/getResources().getDisplayMetrics().density;
-        web.evaluateJavascript("window.vVoiceTV?.commitLayout("+JSONObject.quote(mode)+",undefined,{width:"+cssWidth+"})",null);
+        float density=getResources().getDisplayMetrics().density;
+        float cssWidth=web.getWidth()/density;
+        int[] origin=new int[2];web.getLocationOnScreen(origin);
+        web.evaluateJavascript("window.vVoiceTV?.commitLayout("+JSONObject.quote(mode)+",undefined,{width:"+cssWidth+",x:"+origin[0]/density+",y:"+origin[1]/density+"})",null);
     }
     private void resize(String value){
         if(!java.util.Arrays.asList("compact","medium","full").contains(value))return;

@@ -238,3 +238,19 @@ test('Back closes enlarged media before collapsing the connected overlay to the 
   assert.equal(api.snapshot.generation, owner.generation);
   assert.deepEqual(calls, []);
 });
+
+test('full layout waits for the resized overlay and animates from the actual desktop portrait',()=>{
+ const {api,window}=fixture('?tv=1&tvShell=1&tvOverlay=1');
+ const compact={width:264,x:630,y:100}, full={width:920,x:0,y:0};
+ let rect={left:40,top:12,width:192}, animations=[];
+ const face={getBoundingClientRect:()=>rect,animate:frames=>{animations.push(frames);return {cancel(){}};}};
+ window.document.querySelector=selector=>selector==='.call-page .avatar'?face:null;
+ window.innerWidth=1200;window.requestAnimationFrame=fn=>fn();
+ api.commitLayout('medium',undefined,compact);api.setLayout('full');
+ assert.equal(window.document.documentElement.dataset.tvLayout,'medium');
+ assert.equal(api.commitLayout('full',undefined,compact),false);
+ rect={left:100,top:90,width:320};
+ api.commitLayout('full',undefined,full);api.commitLayout('full',undefined,full);
+ assert.equal(window.document.documentElement.dataset.tvLayout,'full');
+ assert.equal(animations.length,1);assert.match(animations[0][0].transform,/translate/);
+});

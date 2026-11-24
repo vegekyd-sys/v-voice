@@ -39,12 +39,22 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     view.set({tvLayout:layout});
     window.requestAnimationFrame?.(focusPrimary);
   };
+  let hostBounds, enteringAvatar, avatarAnimation;
+  const avatar = () => document.querySelector?.('.call-page .avatar');
   const setLayout = (value, expected) => {
     if (!validOwner(expected) || !['compact','medium','full'].includes(value)) return false;
     if(value===layout&&view.get().tvLayout===value)return true;
+    avatarAnimation?.cancel();
+    enteringAvatar = null;
+    if (overlay && shell && value === 'full' && hostBounds && layout !== 'full') {
+      const rect = avatar()?.getBoundingClientRect();
+      if (rect?.width) enteringAvatar = {
+        x:hostBounds.x + rect.left, y:hostBounds.y + rect.top, size:rect.width, windowWidth:hostBounds.width,
+      };
+    }
     layout = value;
     if(shell&&!overlay){document.activeElement?.blur?.();document.documentElement.dataset.tvTransition='true';}
-    else commitLayout();
+    else if (!enteringAvatar) commitLayout();
     update();
     return true;
   };
@@ -93,6 +103,8 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       // Android density otherwise gives a 1080p TV only ~912 CSS pixels.
       // Full pages use the original desktop layout at a wider CSS viewport;
       // compact/medium windows retain their established island scale.
+      if (enteringAvatar && bounds?.width === enteringAvatar.windowWidth) return false;
+      if (Number.isFinite(bounds?.x) && Number.isFinite(bounds?.y)) hostBounds = bounds;
       if(shell&&Number.isFinite(bounds?.width)&&bounds.width>=48&&bounds.width<=7680) {
         const width=value==='full'?Math.max(1200,bounds.width):bounds.width;
         const scale=value==='full'?bounds.width/width:1;
@@ -100,7 +112,25 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         const content=`width=${Math.round(width)},initial-scale=${scale},viewport-fit=cover`;
         if(viewport&&viewport.getAttribute('content')!==content)viewport.setAttribute('content',content);
       }
-      commitLayout();return true;
+      const from = enteringAvatar;
+      enteringAvatar = null;
+      commitLayout();
+      if (from && bounds && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        window.requestAnimationFrame?.(() => {
+          if (layout !== 'full') return;
+          const face = avatar(), rect = face?.getBoundingClientRect();
+          if (!rect?.width || !face.animate) return;
+          const scale = window.innerWidth / bounds.width;
+          const x = (from.x - bounds.x) * scale - rect.left;
+          const y = (from.y - bounds.y) * scale - rect.top;
+          avatarAnimation = face.animate([
+            {transformOrigin:'0 0',transform:`translate(${x}px,${y}px) scale(${from.size * scale / rect.width})`},
+            {transformOrigin:'0 0',transform:'none'},
+          ], {duration:320,easing:'cubic-bezier(.22,.75,.2,1)'});
+          document.querySelector?.('.chat-panel')?.animate?.([{opacity:0},{opacity:1}], {duration:270});
+        });
+      }
+      return true;
     },
     focusPrimary,
     passiveFocus(focused){if(overlay)document.documentElement.dataset.tvPassiveFocused=String(focused===true);},

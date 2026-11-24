@@ -83,10 +83,13 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   basePath = basePath.replace(/\/$/u, "");
   if (basePath && !/^\/[a-zA-Z0-9_-]+$/u.test(basePath)) throw new Error("Invalid voice base path");
   const hosted = Boolean(publicOrigin || accessToken);
-  let browserBundleWork;
-  const browserBundle = () => browserBundleWork ??= readFile(join(here,'app-bundle.mjs')).then(bytes=>({
-    bytes,revision:createHash('sha256').update(bytes).digest('hex'),
-  }));
+  const bundles = new Map();
+  function browserBundle(name = 'app-bundle.mjs') {
+    if (!bundles.has(name)) bundles.set(name, readFile(join(here,name)).then(bytes=>({
+      bytes,revision:createHash('sha256').update(bytes).digest('hex'),
+    })).catch(error=>{bundles.delete(name);throw error;}));
+    return bundles.get(name);
+  }
   let entryBootstrapWork;
   const entryBootstrap=()=>entryBootstrapWork??=readFile(join(here,'entry-bootstrap.js'),'utf8');
   const backendReady = () => !preview && gateway?.ready !== false;
@@ -766,7 +769,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (req.method === "GET" && staticFiles.has(pathname)) {
         if (pathname === "/" && !hosted) res.setHeader("set-cookie", `v_live_experiment=${cookie}; HttpOnly; SameSite=Strict; Path=/`);
         const [file, type] = staticFiles.get(pathname);
-        const bundled = pathname === '/app-bundle.mjs' ? await browserBundle() : null;
+        const bundled = ['/app-bundle.mjs','/tv-entry.bundle.mjs','/tv-startup.bundle.mjs'].includes(pathname) ? await browserBundle(pathname.slice(1)) : null;
         let contents = bundled?.bytes ?? await readFile(file);
         if (pathname === "/") {
           // The first frame needs this CSS, so return the exact release bytes
@@ -797,9 +800,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           // TV engine bundle removes the high-latency static-import waterfall.
           if(url.searchParams.get('tv')==='1'){
             html=html.replace(/<link rel="modulepreload" href="[^"]+" \/>/g,'');
-            html=html.replace('src="./entry-startup.mjs"','src="./tv-startup.bundle.mjs"');
-            html=html.replace('</head>','<link rel="modulepreload" href="./tv-startup.bundle.mjs"><link rel="modulepreload" href="./tv-entry.bundle.mjs"></head>');
-            html=html.replace('src="./app.js"','src="./tv-entry.bundle.mjs"');
+            const [startup, engine] = await Promise.all(['tv-startup.bundle.mjs','tv-entry.bundle.mjs'].map(name=>browserBundle(name)));
+            const startupUrl = './tv-startup.bundle.mjs?v=' + startup.revision;
+            const engineUrl = './tv-entry.bundle.mjs?v=' + engine.revision;
+            html=html.replace('src="./entry-startup.mjs"',`src="${startupUrl}"`);
+            html=html.replace('</head>',`<link rel="modulepreload" href="${startupUrl}"><link rel="modulepreload" href="${engineUrl}"></head>`);
+            html=html.replace('src="./app.js"',`src="${engineUrl}"`);
           } else {
           // Only public application code is cacheable. HTML, inline account
           // status, login/SDK exchanges and every API keep their existing gate
@@ -841,7 +847,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const params = await readBody();
         if(binding.cliManaged&&Object.keys(params).some(key=>key!=='access'))return json(res,400,{error:'临时授权只接受访问凭据。'});
         if (!access.accepts(params.access)) return json(res, 403, { error: "分享链接无效或已失效" });
-        const visitor = access.issue(res,binding.cliManaged?{id:binding.visitorId}:{}); return json(res, 200, { ok: true, expiresAt: visitor.expiresAt });
+        const visitor = access.issue(res,binding.cliManaged?{id:binding.visitorId}:{});
+        const includeStatus = binding.id === 'tianyi' && url.searchParams.get('snapshot') === '1' && contexts.size < 512;
+        return json(res, 200, { ok: true, expiresAt: visitor.expiresAt, ...(includeStatus ? {status:entrySnapshot(binding,req)} : {}) });
       }
       let context = local;
       if (!hosted) { context = contexts.get(entry) ?? {...local,listeners:new Set(),entry,sessionKey:binding.sessionKey}; contexts.set(entry,context); }
