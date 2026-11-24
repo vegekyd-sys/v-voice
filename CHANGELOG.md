@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-24 — Live broadcast review (Candidate)
+
+- The Director worker runs beside the Voice service, so signaling, directions and recording uploads no longer cross a long relay.
+- A broadcast survives brief relay errors, retries one failed WebRTC offer, and reports why it ended (time limit, lost connection, caller).
+- The model receives Makaron's own error text and the end reason, and writes a short audience caption for each shot instead of showing the Director prompt.
+- The live picture and its recording use the board's work frame, REC timer, lesson-hand caption and one end control.
+
 ## 2026-11-23 — Makaron Director on the lesson board (Candidate)
 
 The web call uses the private Makaron CLI Director session. Scene directions and requests to end the broadcast use the active session. The board shares its existing space with the live picture and keeps the call connected.

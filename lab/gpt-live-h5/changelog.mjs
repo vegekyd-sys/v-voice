@@ -197,9 +197,9 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
   ],
 };
 export const DIRECTOR_CANDIDATE_UPDATE = {
-  version:'voice-makaron-director.20261124.1',date:'2026-11-24',status:'candidate-validation',
+  version:'voice-makaron-director.20261124.2',date:'2026-11-24',status:'candidate-validation',
   title:'在讲解画布中主持即兴直播',
-  items:['可以添加自己的参考图，也可以用 V 的形象作图。','直播和图片在同一讲解画布里分开翻页。开播后直接说下一幕，开场时保留选定的图片，下一幕播到时才会显示镜头文字。','直播自带现场声，你或 V 说话时自动降低，也可以单独静音。','录制时显示 REC 和时间。收播后画布保留最后一帧，可回放、保存录像，也能继续聊。'],
+  items:['可以添加自己的参考图，也可以用 V 的形象作图。','直播像画布里的其他作品一样出现：连线时先显示开场图，出画后左上角 REC 计时，下方用一句短说明写出正在播的镜头。','开播后直接说下一幕；连接短暂抖动不再中断直播，没连上时 V 会说明原因并可以重试。','直播自带现场声，你或 V 说话时自动降低，也可以单独静音。收播后可回放、保存录像，也能继续聊。'],
 };
 export const VOICE_UPDATES = [
   {
