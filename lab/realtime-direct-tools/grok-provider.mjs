@@ -1,3 +1,4 @@
+import {TOOL_RESULT_MAX_BYTES} from './search-result.mjs';
 import {createHash} from 'node:crypto';
 // xAI's documented speech-to-speech API. Credentials never cross the H5 relay.
 export const GROK_VOICE_MODEL = 'grok-voice-3.0';
@@ -169,7 +170,7 @@ export class GrokVoiceBridge {
   submitToolResult(id,result){
     const call=this.calls.get(id);if(!call||this.closed)return;
     const batch=this.batches.get(call.batchKey);if(!batch||batch.results.has(id))return;
-    const output=JSON.stringify(result);if(Buffer.byteLength(output)>32000)throw Error('工具结果过大，请分页读取');
+    const output=JSON.stringify(result);if(Buffer.byteLength(output)>TOOL_RESULT_MAX_BYTES)throw Error('工具结果过大，请分页读取');
     batch.results.set(id,output);this.flush(call.batchKey);
   }
   flush(key){

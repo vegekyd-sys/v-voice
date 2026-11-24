@@ -1,6 +1,6 @@
 import {toolBriefs} from './capabilities.mjs';
 import {randomUUID} from 'node:crypto';
-import {compactSearchResult,plainText as plain,searchDigest,memoryDigest,shanghaiDate} from './search-result.mjs';
+import {compactSearchResult,plainText as plain,searchDigest,memoryDigest,shanghaiDate,TOOL_RESULT_MAX_BYTES} from './search-result.mjs';
 import {processExited} from './tools.mjs';
 import {GptLivePeer} from './gpt-live-peer.mjs';
 import {GPT_LIVE_SELF_TOOL} from './gpt-live-router.mjs';
@@ -20,7 +20,7 @@ export const GPT_LIVE_VOICE_CHOICES=Object.freeze([['sol','Sol · 从容松弛']
 const CALL_URL='https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas';
 const SIDEBAND_URL='wss://api.openai.com/v1/live/';
 const CALL_ID=/^rtc_[\w-]{1,128}$/u;
-const APPEND_MAX_BYTES=480,RESULT_MAX_CHARS=2400,SCRIPT_MAX_CHARS=3200,SEARCH_MAX_CHARS=6000;
+const APPEND_MAX_BYTES=480,RESULT_MAX_CHARS=2400,SCRIPT_MAX_CHARS=3200;
 // Digital silence still arrives as packets; only audible frames are V speaking.
 // (V's voice before its turn is known of, see `audio`: begun after this much quiet, kept this long at most, and passed on if V was still speaking this short a time ago.)
 const EARLY_PAUSE_MS=200,EARLY_MAX_MS=4000,EARLY_FRESH_MS=1000;
@@ -101,20 +101,26 @@ function chunks(text){
   return parts;
 }
 const bound=(text,limit=RESULT_MAX_CHARS)=>{const characters=Array.from(text);return characters.length<=limit?text:characters.slice(0,limit-8).join('')+' [已截断]';};
+// A result is given whole, up to the budget every model has (TOOL_RESULT_MAX_BYTES); only past it is it cut.
+const whole=text=>{
+  if(Buffer.byteLength(text)<=TOOL_RESULT_MAX_BYTES)return text;
+  let kept='',bytes=0;for(const character of text){bytes+=Buffer.byteLength(character);if(bytes>TOOL_RESULT_MAX_BYTES-16)break;kept+=character;}
+  return kept+' [已截断]';
+};
 /** A tool result as the plain text the model is given to answer from. */
 export function gptLiveResultText(name,result){
-  if(typeof result==='string')return bound(result);
+  if(typeof result==='string')return whole(result);
   if(typeof result?.error==='string')return `没有成功：${bound(result.error,400)}`;
   if(result?.cancelled===true)return '这件事已取消，不要再提旧结果。';
   const value=compactSearchResult(name,result);
   const details=value?.details&&typeof value.details==='object'?value.details:value;
-  const digest=name==='web_search'?searchDigest(details,{today:shanghaiDate()}):name==='memory_search'?memoryDigest(details):null;
-  // All of it: a search returns six passages of up to 500 characters, and the sixth is as likely to
-  // hold the answer as the first (cut at 2,400, two of five games of an evening were never seen).
-  if(digest)return bound(digest,SEARCH_MAX_CHARS);
-  for(const key of ['result','text','message'])if(typeof value?.[key]==='string'&&value[key].trim()&&Object.keys(value).length<=3)return bound([value[key],typeof value.instruction==='string'?value.instruction:''].filter(Boolean).join('\n'));
+  const digest=name==='web_search'?searchDigest(details,{today:shanghaiDate(),whole:true}):name==='memory_search'?memoryDigest(details,{whole:true}):null;
+  // All of it: the last passage is as likely to hold the answer as the first (cut at 2,400, two of five
+  // games of an evening were never seen; cut at 2,400 again, three of a day's six meetings).
+  if(digest)return whole(digest);
+  for(const key of ['result','text','message'])if(typeof value?.[key]==='string'&&value[key].trim()&&Object.keys(value).length<=3)return whole([value[key],typeof value.instruction==='string'?value.instruction:''].filter(Boolean).join('\n'));
   const text=value?.content?.length===1&&value.content[0]?.type==='text'&&typeof value.content[0].text==='string'?value.content[0].text:JSON.stringify(value);
-  return bound(plain(text??''));
+  return whole(plain(text??''));
 }
 
 // An execution the tool left running, and the session it must be followed on.
@@ -305,13 +311,13 @@ export class GptLiveBridge {
     if(!spoken)return;
     this.resultAt=this.now();
     const full=typeof result?.result==='string'&&result.result!==spoken?result.result:null;
-    if(full)this.append(`完整结果，供回答追问时参考，不要念出来：\n${bound(full)}`,{...target,channel:'commentary'});
+    if(full)this.append(`完整结果，供回答追问时参考，不要念出来：\n${whole(full)}`,{...target,channel:'commentary'});
     if(typeof options.speak==='function'){
-      if(!full)this.append(`后台结果已经由主机说给用户了，供回答追问时参考：\n${bound(spoken)}`,{...target,channel:'commentary'});
+      if(!full)this.append(`后台结果已经由主机说给用户了，供回答追问时参考：\n${whole(spoken)}`,{...target,channel:'commentary'});
       options.speak(spoken);
     }
     else if(entry?.name==='explain_on_board'||options.script===true)this.readScript(spoken,target);
-    else this.append(`${entry?.name==='delegate_to_v'?'后台任务有结果了。':''}请像聊天一样把下面的内容告诉用户：先用一两句话说最要紧的，停下来，对方想听再接着讲。\n${bound(spoken)}`,{...target,channel:'speakable',whole:true});
+    else this.append(`${entry?.name==='delegate_to_v'?'后台任务有结果了。':''}请像聊天一样把下面的内容告诉用户：先用一两句话说最要紧的，停下来，对方想听再接着讲。\n${whole(spoken)}`,{...target,channel:'speakable',whole:true});
     if(entry)entry.state='done';
   }
   receive(event){

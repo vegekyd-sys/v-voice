@@ -223,6 +223,14 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-gpt-live-11.20261124.5',date:'2026-11-24',
+    title:'GPT Live 1.1 查到的内容不再被截掉一半',
+    items:[
+      '查日程、读网页、后台任务办完的结果，GPT Live 1.1 现在能看到全部，和豆包一样；以前只给它前 2400 个字，一天开六个会它只看得到三个。',
+      '搜索和记忆也是：每一条都按查到的原样给它，不再截短。',
+    ],
+  },
+  {
     version:'voice-gpt-live-11.20261124.1',date:'2026-11-24',
     title:'GPT Live 1.1 正式上线，GPT Live One 退役',
     items:[

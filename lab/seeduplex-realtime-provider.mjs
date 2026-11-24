@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { TOOL_RESULT_MAX_BYTES } from "./realtime-direct-tools/search-result.mjs";
 
 export const SEEDUPLEX_MODEL = "1.2.6.1";
 export const SEEDUPLEX_UPSTREAM =
@@ -43,7 +44,7 @@ const PLAYBACK_ECHO_REPLY_MS = 4_000;
 // A fifth of a second of audio waiting to be sent is a backlog.
 const INPUT_BACKLOG_BYTES = 16_000 * 2 / 5;
 const MAX_TOOL_CALLS = 100;
-const MAX_TOOL_RESULT_BYTES = 32_000;
+const MAX_TOOL_RESULT_BYTES = TOOL_RESULT_MAX_BYTES;
 const MAX_CONSULT_RESULT_CHARS = 8_000;
 const MAX_UPSTREAM_MESSAGE_BYTES = 1_048_576;
 
