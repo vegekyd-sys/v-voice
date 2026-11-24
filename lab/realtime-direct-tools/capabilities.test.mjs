@@ -44,3 +44,25 @@ test('shared call code asks traits; a model name is compared only for transport,
   assert(named.length>0);
   for(const {line,at} of named)assert.match(line,/Bridge\(|Voice\(|voice:|preconnect|GPT_LIVE_IDENTITY|scriptedLessons|grokSpeed/u,`session.mjs:${at} compares a model name for shared behaviour; add a trait in capabilities.mjs instead`);
 });
+
+test('the tool-choice policy a function-tool model reads is the text a delegation model\'s router reads',async()=>{
+  const {toolChoicePolicy,routerNotes,directInstructions}=await import('./session.mjs');
+  const {LESSON_ROUTING}=await import('./tools.mjs');
+  for(const sessionBound of [false,true]){
+    const policy=toolChoicePolicy({sessionBound});
+    assert(directInstructions([],'','seeduplex',{sessionBound}).includes(policy));
+    assert(directInstructions([],'','grok',{sessionBound}).includes(policy));
+    assert(routerNotes({sessionBound}).startsWith(policy));
+  }
+  assert(routerNotes({lessons:true}).includes(LESSON_ROUTING));assert(!routerNotes({}).includes(LESSON_ROUTING));
+  assert(routerNotes({publicVoice:true}).startsWith(toolChoicePolicy({publicVoice:true})));
+});
+
+test('the router is given each tool\'s whole description, as a function-tool model is',async()=>{
+  const {createRouterCompletion}=await import('./gpt-live-router.mjs');
+  const {TOOLS}=await import('./tools.mjs');
+  let sent;
+  const complete=createRouterCompletion({apiKey:'k',endpoint:'https://router.example/v1',model:'m',fetchImpl:async(url,init)=>{sent=JSON.parse(init.body);return {ok:true,json:async()=>({choices:[{message:{tool_calls:[{function:{name:'web_search',arguments:'{"query":"q"}'}}]}}]})};}});
+  await complete({system:'s',user:'u',tools:TOOLS});
+  for(const tool of TOOLS)assert.equal(sent.tools.find(item=>item.function.name===tool.name).function.description,tool.description);
+});

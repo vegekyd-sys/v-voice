@@ -27,11 +27,13 @@ A phone call can be spoken by Doubao (`seeduplex`), Grok or GPT Live 1.1. They t
 - **A behaviour that depends on how a model takes part:** add or reuse a trait; do not test `s.model`.
 - **A model:** its bridge (transport, audio, persona), an entry in `DIRECT_MODELS`, and its traits. Everything above then applies to it.
 
+## What has been unified since
+
+- **Result wording (budget).** Every model is given a tool result whole up to `TOOL_RESULT_MAX_BYTES` (32 KB, `search-result.mjs`); GPT Live used to get 2,400 characters (#268, released 11-24). Doubao and Grok keep their JSON; GPT Live keeps plain text — the format follows the `tools` trait, the amount does not.
+- **Tool-choice policy.** `toolChoicePolicy` in `session.mjs` (task routing and hand-off, task control, consent, calendar service) is what a function-tool model reads in its instructions *and* what GPT Live's router reads as notes (`routerNotes`, with `LESSON_ROUTING` when the call has the lesson tool). The router prompt keeps only its own job — one tool, its arguments — and is given each tool's whole description (it used to be cut at 320 characters).
+- **Check.** `scripts/candidate/router-eval.mjs` runs the real routing model over invented cases (`router-cases.json`) for the production version and a candidate side by side; a router change ships only if it chooses at least as well.
+
 ## What still forks (next steps)
 
-These change what a model hears or says, so each needs a real-call check before release; they are not in the refactor that introduced the traits, which keeps every model's instructions and tools byte-identical.
-
-1. **Result wording.** One function should turn a tool result into what the model is given. Today Doubao gets compacted JSON, Grok raw JSON, and GPT Live digests (`gptLiveResultText`: the search and memory digests, the "say it like a chat" line).
-2. **Explaining in speech mode.** The "explain in your own words, the screen draws along" guidance exists twice: GPT Live's delegation policy and `PARALLEL_ROUTING` for function-tool models. `boardOpening` exists only on the GPT Live bridge. One shared text and one hook would let any model use speech mode.
-3. **Policies GPT Live is not given.** The consent, calendar-service and task-control policies reach function-tool models in their instructions; GPT Live's early return in `directInstructions` skips them (its router and delegation policy cover part). Decide which belong to the router, which to the model.
-4. **Tool guidance written three times.** A tool's "when to use" lives in its schema description, in the instruction catalog, and in the router prompt. Moving it into the capability entry and rendering it per `tools` trait makes one edit reach all models.
+1. **Explaining.** Doubao reads a lesson script (researched, with pictures, the board prepared per sentence); GPT Live explains in its own words and the board follows. Reading a script sounds recited on GPT Live, and its own explanations are thinner. The aim is one lesson pipeline whose material GPT Live tells in its own words; `boardOpening` exists only on the GPT Live bridge.
+2. **GPT Live's own front prompt.** Its delegation policy (when to hand a sentence over at all) is still its own text; the choice of tool after that is shared.
