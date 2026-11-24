@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-24 — GPT Live 1.1 released; GPT Live One retired (`voice-gpt-live-11.20261124.1`)
+
+- GPT Live 1.1 (below, from the Candidate of 2026-11-20 to 11-24) goes to production. It is offered on the phone where the service has `VOICE_ENABLE_GPT_LIVE_11=1` and a login; robot and speaker endpoints are not offered it.
+- GPT Live One leaves the phone catalog (it stays available only with `VOICE_ENABLE_GPT_LIVE_ONE=1`); a page or App that still asks for it is told to choose again.
+- The default model and Doubao are unchanged. The Gateway is not restarted by this release.
+
 ## 2026-11-20 — GPT Live 1.1 with this call's own tools (Candidate)
 
 - New relay model `gpt-live-11` (`gpt-live-1.1-codex`) on the ChatGPT (Codex) login. That login is admitted over WebRTC only, so the Voice service is the media peer (`gpt-live-peer.mjs`, werift + Opus) and the phone, app and page keep the existing relay; no Gateway change or restart.
@@ -37,7 +43,7 @@
 - The relay socket is pinged every five seconds: a call was cut after the service had sent nothing down for 20 s of quiet (no close frame at either end; the page reported it with its next dial). The line V says when a call comes back is in the caller's language.
 - Standby (`wake_policy`, `idle_timeout_s`, the lower standby rate) is a public-API WebRTC feature: a call created with either field on the ChatGPT login never starts (no media, sideband 404), so it is not used here. Idle calls are already ended by the 120 s silence hang-up.
 - Off unless `VOICE_ENABLE_GPT_LIVE_11=1` and `VOICE_GPT_LIVE_AUTH_FILE` are set. The service reads the access token from that private file and never refreshes it. Robot and speaker endpoints are not offered this model.
-- Candidate only; not released. Measurements and what is not verified: `docs/candidates/gpt-live-11-20261120.md`.
+- Released 2026-11-24 (above). Measurements and what is not verified: `docs/candidates/gpt-live-11-20261120.md`.
 
 ## 2026-11-22 — 语音创作使用当前飞书会话的 Makaron 账号
 

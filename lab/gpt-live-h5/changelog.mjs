@@ -196,7 +196,7 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
     '仅 Candidate；持续电视、人声干扰和真人设备验收仍在验证。',
   ],
 };
-// Candidate only: the model is off in production until its login is configured and the switch is set.
+// The Candidate's record (2026-11-20 to 11-24); released as voice-gpt-live-11.20261124.1 in VOICE_UPDATES.
 export const GPT_LIVE_11_CANDIDATE_UPDATE = {
   version:'voice-gpt-live-11.20261124.4',date:'2026-11-24',
   title:'GPT Live 1.1：是 V 本人，查东西当场答，讲解有画面（Candidate）',status:'candidate-validation',
@@ -222,6 +222,21 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-gpt-live-11.20261124.1',date:'2026-11-24',
+    title:'GPT Live 1.1 正式上线，GPT Live One 退役',
+    items:[
+      '在「设置」里选 GPT Live 1.1：它就是 V 本人，接通先打招呼，性格阳光、甜美、温柔，声音可以自己挑，选一次会记住。',
+      '查时间、上网搜索、查记忆和日程当场办完；要不要查由 V 自己判断，追问到刚才没查到的细节会再去查，说话还是聊天的样子。',
+      '讲解和讲故事由 V 自己讲，画面和真实照片跟着它说到的东西走，高亮跟着它讲到的那一样。',
+      '说话更顺：长回答不再断断续续，每句话开头不再少几个字，一两句就停下来听你说。',
+      '通话中连接被掐断会自动接回，V 记得刚才查到的内容，接着往下讲；网络卡顿后反应变慢会自动追平。',
+      '说了再见就真的挂断；你还在说话时会先听你说完。',
+      'GPT Live One 下线，不再出现在模型列表里；默认模型仍是豆包。',
+      '首页右上角新增「设置」：豆包和 GPT Live 1.1 的声音都在这里选；豆包新增 Vivi、桃子、邻家女孩、淑女和云舟五种声音，「iOS 绑定」也收在这里。',
+      '机器人和音箱暂不提供 GPT Live 1.1。',
+    ],
+  },
   {
     version:'voice-session-media.20261122.1',date:'2026-11-22',
     title:'电话里生成图片和视频，使用当前飞书会话的 Makaron 积分',
