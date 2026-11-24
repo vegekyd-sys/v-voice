@@ -39,21 +39,44 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     view.set({tvLayout:layout});
     window.requestAnimationFrame?.(focusPrimary);
   };
-  let hostBounds, companionBounds, enteringAvatar, avatarAnimation, landing;
+  let hostBounds, companionBounds, enteringAvatar, flight, avatarAnimation, landing;
   const avatar = () => document.querySelector?.('.call-page .avatar');
+  function finishFlight() {
+    avatarAnimation?.cancel();
+    avatarAnimation = null;
+    flight?.remove();
+    flight = null;
+    delete document.documentElement.dataset.tvEntering;
+  }
   const setLayout = (value, expected) => {
     if (!validOwner(expected) || !['compact','medium','full'].includes(value)) return false;
     // The call UI requests compact as soon as it sees idle. Keep the full native
     // surface until the on-screen portrait reaches the desktop, including on a slow TV.
     if(value==='compact'&&landing&&document.documentElement.dataset.tvLanding==='moving')return true;
     if(value===layout&&view.get().tvLayout===value)return true;
-    avatarAnimation?.cancel();
+    finishFlight();
     enteringAvatar = null;
     if (overlay && shell && value === 'full' && hostBounds && layout !== 'full') {
       const rect = avatar()?.getBoundingClientRect();
-      if (rect?.width) enteringAvatar = {
-        x:hostBounds.x + rect.left, y:hostBounds.y + rect.top, size:rect.width, windowWidth:hostBounds.width,
-      };
+      if (rect?.width && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        const toScreen = hostBounds.width / window.innerWidth;
+        enteringAvatar = {x:hostBounds.x+rect.left*toScreen, y:hostBounds.y+rect.top*toScreen,
+          size:rect.width*toScreen, windowWidth:hostBounds.width};
+        const image=document.getElementById?.('avatar');
+        if (image?.naturalWidth) {
+          const ghost=document.createElement('canvas');
+          ghost.width=ghost.height=Math.min(512,image.naturalWidth);
+          try {
+            ghost.getContext('2d').drawImage(image,0,0,ghost.width,ghost.height);
+            ghost.className='tv-landing-portrait';
+            ghost.setAttribute('aria-hidden','true');
+            Object.assign(ghost.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.width+'px'});
+            document.body.appendChild(ghost);
+            flight=ghost;
+            document.documentElement.dataset.tvEntering='true';
+          } catch { ghost.remove(); }
+        }
+      }
     }
     layout = value;
     if(shell&&!overlay){document.activeElement?.blur?.();document.documentElement.dataset.tvTransition='true';}
@@ -122,26 +145,46 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const from = enteringAvatar;
       enteringAvatar = null;
       commitLayout();
-      if (from && bounds && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-        window.requestAnimationFrame?.(() => {
-          if (layout !== 'full') return;
-          const face = avatar(), rect = face?.getBoundingClientRect();
-          if (!rect?.width || !face.animate) return;
-          const scale = window.innerWidth / bounds.width;
-          const x = (from.x - bounds.x) * scale - rect.left;
-          const y = (from.y - bounds.y) * scale - rect.top;
-          avatarAnimation = face.animate([
-            {transformOrigin:'0 0',transform:`translate(${x}px,${y}px) scale(${from.size * scale / rect.width})`},
+      if (from && bounds) {
+        const ghost=flight;
+        const expectedWidth=Math.max(1200,bounds.width);
+        function start(width) {
+          const scale=width/bounds.width;
+          return {x:(from.x-bounds.x)*scale,y:(from.y-bounds.y)*scale,size:from.size*scale};
+        }
+        if(ghost){
+          const origin=start(expectedWidth);
+          Object.assign(ghost.style,{left:origin.x+'px',top:origin.y+'px',width:origin.size+'px',height:origin.size+'px'});
+        }
+        let frames=0;
+        const animate=()=>{
+          if(layout!=='full'||flight!==ghost)return;
+          // The meta viewport and the React layout commit on different compositor frames.
+          if(++frames<3 || (Math.abs(window.innerWidth-expectedWidth)>2 && frames<12)){
+            window.requestAnimationFrame(animate);return;
+          }
+          const face=avatar(), rect=face?.getBoundingClientRect();
+          if(!rect?.width||!face.animate){finishFlight();return;}
+          const origin=start(window.innerWidth);
+          const translate=(x,y,scale)=>`translate3d(${x}px,${y}px,0) scale(${scale})`;
+          const frameset=ghost ? [
+            {transform:'none'},{transform:translate(rect.left-origin.x,rect.top-origin.y,rect.width/origin.size)},
+          ] : [
+            {transformOrigin:'0 0',transform:translate(origin.x-rect.left,origin.y-rect.top,origin.size/rect.width)},
             {transformOrigin:'0 0',transform:'none'},
-          ], {duration:320,easing:'cubic-bezier(.22,.75,.2,1)'});
-          document.querySelector?.('.chat-panel')?.animate?.([{opacity:0},{opacity:1}], {duration:270});
-        });
+          ];
+          avatarAnimation=(ghost??face).animate(frameset,{duration:380,easing:'cubic-bezier(.32,0,.2,1)',fill:'both'});
+          if(ghost)avatarAnimation.finished.then(()=>{if(flight===ghost)finishFlight();},()=>{});
+          document.querySelector?.('.chat-panel')?.animate?.([{opacity:0},{opacity:1}],{duration:270});
+        };
+        window.requestAnimationFrame?.(animate);
       }
       return true;
     },
     landPortrait() {
       if (!overlay || layout!=='full' || !companionBounds || !hostBounds || landing ||
           window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      finishFlight();
       const rect=avatar()?.getBoundingClientRect(),picture=document.getElementById('avatar');
       if(!rect?.width || !picture?.animate) return;
       // Keep only the current portrait while the call releases its media and the board unmounts.

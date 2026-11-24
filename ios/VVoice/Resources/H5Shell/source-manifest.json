@@ -1,7 +1,7 @@
 {
   "sources": {
     "index.html": "ec12729a0da0ef472fc977e37bb75c413eb66bbcde725b1aa47a5fdf7f450105",
-    "styles.css": "59d56cece4a6e74d87965c85a16362a7bf710fedf66392519c32bd7154d17e8f",
+    "styles.css": "6bb3f894d9f39ee9894498754c17bfe1c525697c9f4fb52f21a81f421439aede",
     "ui/call-ui.jsx": "e411054d9ab7bdd1f64a9d041d55aed413395ca280eafe9ce70dd863a13aa240",
     "ui-bundle.mjs": "b0a69fffaa1ee663c0d3325b6c297ed66039633fd9f0f76cfc700d9021ecb36d",
     "app-handoff.mjs": "31705d0424c9043e64844ac047ef090fe4582f475b74d78e4b5dec04ebca3465",
@@ -130,13 +130,13 @@
     "assets/v-voice-apple-touch.png": "643f67cd7d67bb2563f79ec2938d01e869cd2634bd9f78e7597f98afe525763c",
     "ios/H5/native-h5.mjs": "e7abf7ff85ccdeec83ddbc888cabf169117b2debec1a28c916dada9c3a883993"
   },
-  "build": "c7af9daa11f2",
+  "build": "34abe1d4a73b",
   "updated": "2026-11-25",
   "outputs": {
     "index.html": "4d285f4bfc68bc892dca9da55bd577371731895b0f22ef99fa9e8cd21b73dd5b",
     "native-h5.js": "22395e6bd80cbf976704540c10e7168e085a7d0e02055fd4cc74ea7eef0309e7",
     "comparison.html": "7beb6c5d3e5933b5c020ddf23e200679318faa98568904f927d0553ea3d33076",
-    "styles.css": "59d56cece4a6e74d87965c85a16362a7bf710fedf66392519c32bd7154d17e8f",
+    "styles.css": "6bb3f894d9f39ee9894498754c17bfe1c525697c9f4fb52f21a81f421439aede",
     "comparison.css": "ae9fbcffb322e32737e2ce0ed830c1b86f9f27406b4ce8b686dc8cac9f36ba16",
     "comparison.mjs": "8fc7a4bd3323e4ff2aaab383103b950015f4fb3c05ca327ba09790fbc6f7113b",
     "assets/v-operator-home-1024.webp": "5cf1ddc6b9b9abd06c1ac15be325f9b86cbaa4db8363daeec0da6040e128d319",

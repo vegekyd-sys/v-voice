@@ -18,8 +18,6 @@ import android.os.Handler;
 import android.view.*;
 import android.webkit.*;
 import org.json.*;
-import java.nio.file.Files;
-import java.io.File;
 
 /** Window, input and lifecycle adapter. Every visible call control lives in shared H5. */
 public final class CallService extends Service {
@@ -31,7 +29,8 @@ public final class CallService extends Service {
     private WindowManager.LayoutParams window;
     private boolean standby, configChanged;
     private final Runnable expireStandby=()->{if(standby)stopSelf();};
-    static void configChanging(){CallService s=current;if(s!=null)s.handler.post(()->{s.configChanged=true;if(s.standby)s.stopSelf();});}
+    static boolean running(){return current!=null;}
+    static void configChanging(){new Handler(android.os.Looper.getMainLooper()).post(DesktopPage::discard);CallService s=current;if(s!=null)s.handler.post(()->{s.configChanged=true;if(s.standby)s.stopSelf();});}
     private boolean attached,interactive=true,hadCall,closing,startupCueFinished;
     private String lastCall="idle";
     private long idleSince;
@@ -64,26 +63,20 @@ public final class CallService extends Service {
         };
         surface.setBackgroundColor(Color.TRANSPARENT);surface.setDefaultFocusHighlightEnabled(false);
         surface.setFocusableInTouchMode(true);
-        web=new WebView(this){
-            @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){super.onSizeChanged(w,h,oldw,oldh);post(()->acknowledgeLayout());}
-        };
+        personalUrl=DesktopPage.configured(this);
+        personal=personalUrl!=null;
+        DesktopPage.Page page=DesktopPage.take(personalUrl);
+        boolean preloaded=page!=null;
+        if(!preloaded)page=new DesktopPage.Page(this,personalUrl);
+        page.resized=this::acknowledgeLayout;
+        page.finishCue=this::finishStartupCue;
+        web=page;arrayCapture=page.capture;
         surface.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));
-        web.addJavascriptInterface(new Object(){
-            @JavascriptInterface public void finish(){handler.post(()->finishStartupCue());}
-        },"VTVStartupCue");
-        arrayCapture=new TvArrayCapture(this,web);
-        web.addJavascriptInterface(arrayCapture,"VTVArray");
         web.setAlpha(0);web.setBackgroundColor(Color.TRANSPARENT);web.setFocusable(false);web.setDefaultFocusHighlightEnabled(false);
         web.setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,android.graphics.Outline outline){outline.setRoundRect(0,0,v.getWidth(),v.getHeight(),dp(28));}});
         web.setClipToOutline(true);
         arrayCapture.foreground(true);
         web.setSystemUiVisibility(5894);
-        WebSettings s=web.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);
-        s.setSupportZoom(false);s.setTextZoom(100);s.setUseWideViewPort(true);
-        // The trusted native home entry supplies the explicit gesture across navigation.
-        s.setMediaPlaybackRequiresUserGesture(false);s.setAllowFileAccess(false);s.setAllowContentAccess(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean onRenderProcessGone(WebView view,RenderProcessGoneDetail detail){stopSelf();return true;}
             @Override public void onPageStarted(WebView w,String u,android.graphics.Bitmap icon){arrayCapture.invalidate();surfaceAnnounced=false;visualPending=false;hostPresented=false;nativeFocusPending=false;pageFocusReady=false;pageVersion++;audioPageProvisioned=false;nativeMicReady=false;web.setAlpha(0);web.setFocusable(false);surface.requestFocus();web.setBackgroundColor(Color.TRANSPARENT);}
@@ -123,13 +116,9 @@ public final class CallService extends Service {
                 else p.deny();
             });}
         });
-        try{
-            JSONObject c=new JSONObject(new String(Files.readAllBytes(new File(getFilesDir(),"entry.json").toPath()),java.nio.charset.StandardCharsets.UTF_8));
-            String p=c.optString("personalUrl");
-            if(EntryPolicy.trusted(p)&&p.startsWith("https://"))personalUrl=android.net.Uri.parse(p).buildUpon().appendQueryParameter("tv","1").appendQueryParameter("tvShell","1").appendQueryParameter("tvSurface","1").appendQueryParameter("tvOverlay","1").build().toString();
-        }catch(Exception ignored){}
         resize("medium");
-        web.loadUrl(local);
+        if(preloaded)prepareAudioPage(web.getUrl());
+        else web.loadUrl(personal?personalUrl:local);
         IntentFilter filter=new IntentFilter(Intent.ACTION_SCREEN_OFF);filter.addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
         registerReceiver(systemEvents,filter,Context.RECEIVER_NOT_EXPORTED);
         IntentFilter query=new IntentFilter("live.tianyi.vvoice.tv.QUERY_SURFACE");
@@ -337,10 +326,11 @@ public final class CallService extends Service {
         try{unregisterReceiver(systemEvents);unregisterReceiver(surfaceQuery);}catch(Exception ignored){}
         if(arrayCapture!=null)arrayCapture.foreground(false);
         finishStartupCue();announce(false);
-        if(web!=null){web.stopLoading();web.loadUrl("about:blank");if(attached)windows.removeView(surface);web.destroy();}
+        if(web!=null){if(attached)windows.removeView(surface);surface.removeView(web);web.destroy();web=null;}
         getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",false).putBoolean("interactive",false).putString("projected_call","idle")
           .putString("mic_driver","none").putInt("mic_channels",0).putString("meter_source","none").putInt("meter_peak",0).apply();
         stopForeground(STOP_FOREGROUND_REMOVE);super.onDestroy();
+        if(standby&&!configChanged)DesktopPage.warm(getApplicationContext());
     }
     private boolean handleKey(KeyEvent e){
         int key=e.getKeyCode();

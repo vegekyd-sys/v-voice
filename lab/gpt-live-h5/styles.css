@@ -2344,3 +2344,5 @@ html[data-tv-overlay="true"][data-tv-layout="medium"]:not([data-tv-revealed="tru
 .tv-landing-portrait{will-change:transform;position:fixed;z-index:100;object-fit:cover;border-radius:50%;transform-origin:0 0;pointer-events:none}
 html[data-tv-landing],html[data-tv-landing] body{background:transparent!important}
 html[data-tv-landing] #app{opacity:0;pointer-events:none}
+
+html[data-tv-entering="true"] .call-page .avatar{visibility:hidden!important}

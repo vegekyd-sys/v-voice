@@ -37,6 +37,10 @@ final class TvArrayCapture {
     private final CaptureCredits credits=new CaptureCredits();
     private long lastPullAt,maxPullGapMs;
     TvArrayCapture(Context context,WebView web){this.context=context;this.web=web;}
+    @JavascriptInterface public String formatHint(){
+        String layout=ArrayLayout.forCapture(android.os.Build.MODEL,4,16000);
+        return layout==null?"null":"{\"channels\":4,\"sampleRate\":16000,\"channelLayout\":"+layout+"}";
+    }
     void foreground(boolean value){foreground=value;if(!value)stopInternal();}
     String newPage(){stopInternal();pageToken=UUID.randomUUID().toString();return pageToken;}
     void invalidate(){pageToken="";stopInternal();}

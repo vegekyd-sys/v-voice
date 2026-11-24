@@ -25,7 +25,9 @@ function loadRuntime(format){
 export function warmTvAudio(){
   if(idleRuntime||typeof globalThis.VTVArray?.start!=='function')return;
   try{
-    const runtime=idleRuntime=loadRuntime(lastFormat);
+    let format=lastFormat;
+    if(!format&&globalThis.VTVArray.formatHint)format=JSON.parse(globalThis.VTVArray.formatHint());
+    const runtime=idleRuntime=loadRuntime(format);
     runtime.ready.catch(()=>{if(idleRuntime===runtime){runtime.worker.terminate();idleRuntime=null;}});
   }catch{/* The next dial can retry loading the worker. */}
 }

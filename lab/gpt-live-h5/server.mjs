@@ -226,7 +226,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
   const conversationPresentation=binding=>{const context=voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools});return {name:context.conversationLabel,kind:binding.kind,replySync:binding.replySync,accountLabel:context.accountLabel,entryKind:context.entryKind,scopeNote:context.scopeNote};};
   const improvAllowed = binding => Boolean(director) && binding.permissionProfile === 'personal-tianyi';
   const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
-    ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
+    ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2,dialGreeting:true}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
     models:phoneModels(),...entryPresentation(binding,req),...(improvAllowed(binding)?{improvLive:true,...(director.uploadReference && boardAssets && boardAllowed(binding) ? {referenceUpload:true} : {})}:{}),...(boardAllowed(binding)?{board:true}:{})});
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
@@ -926,7 +926,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return json(res,revoked?200:404,revoked?{ok:true}:{error:'没有这个 App 绑定。'});
       }
       if (req.method === "GET" && pathname === "/api/status") return json(res, 200, {
-        ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2}:{}), conversation:conversationPresentation(binding),iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
+        ready: backendReady(), preview, defaultModel, ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2,dialGreeting:true}:{}), conversation:conversationPresentation(binding),iosBindingAvailable:hosted, ...(speakerRouting&&binding.permissionProfile!=='unidentified'?{speakerRouting:true,phoneInputPolicy,speakerStats:speakerRouting.snapshot()}:{}),
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         models:phoneModels(),...entryPresentation(binding,req),
@@ -1275,10 +1275,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if(stopping||releaseGate.blocked()||!backendReady())return reject(503);
       if(typeof directVoice.attach!=='function')return reject(404);
       const dialVersion=url.searchParams.get('dialVersion');
-      const allowed=new Set(['phone','model','voice','nativeRuntimeVersion','nativeDeviceActions','dialVersion',...(dialVersion==='2'?['inputPolicy','improvLive']:[])]);
+      const allowed=new Set(['phone','model','voice','nativeRuntimeVersion','nativeDeviceActions','dialVersion',...(dialVersion==='2'?['inputPolicy','improvLive','greeting']:[])]);
       if([...url.searchParams.keys()].some(k=>!allowed.has(k)||url.searchParams.getAll(k).length!==1)
         ||!['1','2'].includes(dialVersion)
         ||(dialVersion==='1'?url.searchParams.get('nativeRuntimeVersion')!=='1':url.searchParams.has('nativeRuntimeVersion'))
+        ||url.searchParams.has('greeting')&&url.searchParams.get('greeting')!=='1'
         ||url.searchParams.has('inputPolicy')&&!['native','speaker'].includes(url.searchParams.get('inputPolicy'))
         ||!['seeduplex','grok','gpt-live-11'].includes(url.searchParams.get('model')))return reject(400);
       const dialModel=url.searchParams.get('model');
@@ -1314,7 +1315,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             // The caller learns its owned ID and policy before any provider frame.
             client.send(JSON.stringify({...reservation,type:'reservation',dialVersion:Number(dialVersion),relayTicket:undefined}));
             client.removeListener('message',earlyInput);
-            if(!directVoice.attach(reservation.voiceSessionId,reservation.relayTicket,client))throw Error('Dial attach failed');
+            if(!directVoice.attach(reservation.voiceSessionId,reservation.relayTicket,client,{greeting:url.searchParams.get('greeting')==='1'}))throw Error('Dial attach failed');
           }catch{
             if(reservation&&context.active?.reservation===reservation)await close(context).catch(()=>{});
             if(!cancelled()){client.send(JSON.stringify({type:'dial.error',status:503}));client.close(1011);}

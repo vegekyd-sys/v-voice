@@ -1169,8 +1169,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.ticket=null;websocketServer.handleUpgrade(req,socket,head,client=>attachClient(s,client));
     },
     /** Attach an already authenticated non-browser client, such as a speaker channel. */
-    attach(id,ticket,client){
+    attach(id,ticket,client,{greeting=false}={}){
       const s=sessions.get(id);if(!s||s.ticket!==ticket||s.client)return false;
+      s.greetingWanted=greeting;
       s.ticket=null;attachClient(s,client);return true;
     },
     /** Speak a fixed line in V's voice on a live call (a hardware client's own notice). */

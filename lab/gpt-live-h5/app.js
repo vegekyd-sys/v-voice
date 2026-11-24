@@ -93,7 +93,7 @@ let boardAvailable = false, improvAvailable = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
-let webDialVersion = null;
+let webDialVersion = null, dialGreeting = false;
 const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
 function speakerEvent(value){
   if(!speakerCandidate())return;
@@ -183,7 +183,7 @@ async function greetWhenReady(active) {
   if(active.fixture||active.speakerGate||active.callerContext?.pending)return;
   if (call !== active || active.greetingPending || active.greetingRequested || active.greetingSuppressed
     || active.greetingExpired || active.ending
-    || active.pc.connectionState !== "connected" || active.context?.state !== "running"
+    || active.pc?.connectionState !== "connected" || active.context?.state !== "running"
     || $("remoteAudio").paused || active.playbackNeedsGesture) return;
   // WebRTC may be connected before the backend's native sideband sees
   // session.started. Bound elapsed readiness time, not a handful of retries.
@@ -736,8 +736,8 @@ async function startCall(options = {}) {
   view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
   setCallState("dialing"); setStatus(options.resumed ? "连接断了一下，正在接回…" : "正在连接 V…");
   resetTranscript();view.set({failureCode:null});
-  const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
+  const active = { pc:tvHost&&tvArraySupportsModel(chosenModel)?null:new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   if (speakerCandidate()||['seeduplex','grok','gpt-live-11'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
     active.context = options.context ?? new AudioContext({latencyHint:"interactive"});
@@ -805,7 +805,7 @@ async function startCall(options = {}) {
     let reservation;
     if(webDialVersion===2&&(phoneEntry||tvHost&&location.protocol==='https:')&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:selectedModel,dialVersion:'2',...(improvLive?{improvLive:'1'}:{}),...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:selectedModel,dialVersion:'2',...(tvHost&&dialGreeting&&!fixtureId?{greeting:'1'}:{}),...(improvLive?{improvLive:'1'}:{}),...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
       reservation=await withCapture(active.dialConnection.reservation);
     }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));
@@ -969,6 +969,7 @@ async function startCall(options = {}) {
     }
     if(reservation.speakerRouting){active.speakerGate=await createSpeakerGate({context:active.context,stream:active.stream,reservation:reservation.speakerRouting,channel:()=>active.channel,isCurrent:()=>call===active,onEvent:speakerEvent});}
     const outgoing=active.speakerGate?.stream??active.stream;
+    active.pc??=new RTCPeerConnection();
     for (const track of outgoing.getAudioTracks()) active.pc.addTrack(track, outgoing);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.callerContext=createCallerContext({context:reservation.callerContext,voiceSessionId:active.voiceSessionId,channel:active.channel,tracks:outgoing.getAudioTracks(),isCurrent:()=>call===active,
@@ -1175,6 +1176,7 @@ function applyEntryStatus(status) {
     view.set({returnToAccountHref:status.returnToAccountHref??null});
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
+    dialGreeting = status.dialGreeting===true;
     liveReady = status.ready === true;
     improvAvailable = status.improvLive === true && !tvHost && typeof RTCPeerConnection === 'function';
     view.set({referenceUpload:status.referenceUpload === true && !tvHost});
