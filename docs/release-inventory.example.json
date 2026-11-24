@@ -15,7 +15,8 @@
       "ssh": "voice-devices",
       "unit": "v-voice-speaker.service",
       "releaseRoot": "/opt/v-voice-speaker/releases",
-      "prefix": ""
+      "prefix": "",
+      "upload": "vrelay-link"
     }
   ]
 }
