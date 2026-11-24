@@ -51,7 +51,15 @@ export function createMediaAccounts(storePath, companyKeyPath) {
     }
     return null;
   }
+  // The owner's own entries pay with the owner's account, the one the Gateway gives the
+  // same session's background tasks, never with a group's self-registered account.
+  async function owner() {
+    const key = companyKeyPath && (await readPrivateFile(companyKeyPath).catch(() => '')).trim();
+    if (!key) throw blocked('你的 Makaron 主账号暂时读不到，创作还没有提交。');
+    return {key, claimed:true, owner:true};
+  }
   return {async resolve(scope, register) {
+    if (scope?.owner) return owner();
     let account = await lookup(scope);
     if (account) return account;
     // Registration belongs to the existing Feishu workflow, which writes the
@@ -72,6 +80,7 @@ export function createMediaAccounts(storePath, companyKeyPath) {
 
 export function mediaAccountFailure(text, account, scope) {
   if (/insufficient[ _-](?:credits?|balance)|not enough credits|(?:积分|点数|余额)不足|(?:MCP error|Error|HTTP) 402\b/iu.test(text)) {
+    if (account?.owner) return {code:'insufficient_credits', message:'你的 Makaron 主账号积分不足，充值到账后再告诉我继续生成。'};
     const chat = scope && !scope.user ? '原飞书群' : '原飞书会话';
     const owner = scope && !scope.user ? '这个飞书群' : '这个会话';
     const claim = account.claimed === false ? '先认领这个账号，再' : '';
