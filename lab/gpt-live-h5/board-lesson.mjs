@@ -401,8 +401,11 @@ export function createLessonWriter({complete, fallback = null, director, now = D
   }
   return {
     available: Boolean(complete && director),
+    /** The things on the lesson's page, in order, once it is drawn (for a voice that tells the lesson in its own words). */
+    shown: owner => director.retold?.(owner) ?? Promise.resolve([]),
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
-    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false, assets = [], make = false} = {}) {
+    // `retell`: the voice tells the lesson in its own words (its page then waits for names, not the script's words).
+    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false, assets = [], make = false, retell = false} = {}) {
       const started = now();
       if (quiet) { hushed.add(owner); if (hushed.size > 500) hushed.delete(hushed.values().next().value); }
       // With the streaming illustrator the writer only writes the script and
@@ -428,7 +431,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
         const part = partialScript(text);
         if (!part || part.say.length < early) return;
         sent = {script: spokenScript(part.say), ms: now() - started};
-        director.note(owner, {title: part.title, ask, script: sent.script, lines: part.say.map((line, index) => ({say: line, show: part.show[index]})), partial: true});
+        director.note(owner, {title: part.title, ask, script: sent.script, lines: part.say.map((line, index) => ({say: line, show: part.show[index]})), partial: true, ...(retell ? {retell: true} : {})});
       } : null;
       let lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs, onText});
       // A single writer that came back with something unusable (a reply cut short, as in call 83315f5d) is asked once more.
@@ -440,7 +443,7 @@ export function createLessonWriter({complete, fallback = null, director, now = D
         if (!lesson) { director.expect?.(owner, 0); return null; }
         told.delete(owner); told.set(owner, {title: lesson.title, say});
         while (told.size > 200) told.delete(told.keys().next().value);
-        director.note(owner, {title: lesson.title, ask, script: say, lines: lesson.say.map((line, index) => ({say: line, show: lesson.show[index]}))});
+        director.note(owner, {title: lesson.title, ask, script: say, lines: lesson.say.map((line, index) => ({say: line, show: lesson.show[index]})), ...(retell ? {retell: true} : {})});
         return {say, sentences: lesson.say};
       }
       record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, durationMs: now() - started, say: lesson?.say ?? null, drawn: lesson?.ops ?? null});

@@ -58,6 +58,8 @@ export function gptLiveFromEnv(env=process.env,{fetchImpl,gatewayRequest}={}){
     // What was just said, judged (a goodbye with no hang-up, a promise with nothing running): see the router.
     judge:replyJudgeFromEnv(env,{fetchImpl,complete}),
     ...(env.VOICE_GPT_LIVE_SCRIPTED_LESSONS==='1'?{scriptedLessons:true}:{}),
+    // (experiment) Lessons researched and drawn as for any model, told by GPT Live in its own words.
+    ...(env.VOICE_GPT_LIVE_LESSON_NOTES==='1'?{lessonNotes:true}:{}),
     ...(env.VOICE_GPT_LIVE_MODEL?{model:env.VOICE_GPT_LIVE_MODEL}:{}),
     ...(env.VOICE_GPT_LIVE_VOICE?{voice:env.VOICE_GPT_LIVE_VOICE}:{}),
   };

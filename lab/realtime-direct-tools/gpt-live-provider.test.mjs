@@ -19,7 +19,7 @@ const judge=async({tools,user})=>{
   return null;
 };
 class Socket extends EventEmitter{constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
-async function fixture({tools,route,resolveAuth,model,now,replyJudge,resume}={}){
+async function fixture({tools,route,resolveAuth,model,now,replyJudge,resume,retell}={}){
   const events=[],calls=[],audio=[],text=[],closes=[],ws=new Socket();
   const request={instructions:'你是 V。',tools:tools??[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}},{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'},context:{type:'string'}},required:['question']}},{type:'function',name:'exec',parameters:{type:'object',properties:{command:{type:'string'}},required:['command']}},{type:'function',name:'explain_on_board',parameters:{type:'object',properties:{topic:{type:'string'}},required:['topic']}},{type:'function',name:'end_call',parameters:{type:'object',properties:{},required:[]}}],inputSampleRate:24000,
     onToolCall:c=>calls.push(c),onAudio:(b,m)=>audio.push([b.length,m?.responseId]),onTranscript:(...a)=>text.push(a),onEvent:e=>events.push(e),onReady:()=>events.push({ready:true}),
@@ -27,7 +27,7 @@ async function fixture({tools,route,resolveAuth,model,now,replyJudge,resume}={})
   const fetches=[];
   const fetchImpl=async(url,init)=>{fetches.push({url,init});return {ok:true,status:201,headers:new Headers({location:'/v1/realtime/calls/rtc_u23_Em7Mvp3oMOyinaFyEylD7nKHGz6ZmT38'}),text:async()=>'v=0\r\nanswer'};};
   const bridge=new GptLiveBridge(request,{createWebSocket:async(url,options)=>{ws.url=url;ws.options=options;return ws;},resolveAuth:resolveAuth??(async()=>({token:'tok',accountId:'acct'})),loadMedia:async()=>media(ws),fetchImpl,model,
-    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{}),...(replyJudge?{judge:replyJudge}:{}),...(resume?{resume}:{})});
+    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{}),...(replyJudge?{judge:replyJudge}:{}),...(resume?{resume}:{}),...(retell?{retell}:{})});
   return {bridge,ws,events,calls,audio,text,closes,fetches,request};
 }
 const item=(id,textValue)=>({type:'delegation.created',item:{id,type:'delegation',target:'client',content:[{type:'input_text',text:textValue}]},offset_ms:5000});
@@ -89,6 +89,19 @@ test('an explanation is prepared in the background and its script is given to be
   assert.match(said.at(-1).content[0].text,/蓝光/u); // the script is not a result the model should paraphrase
   f.bridge.completeBackgroundTool(idOf(3),{cancelled:true});
   assert.equal(appends(f).length,said.length);
+});
+test('with lesson notes, a lesson comes back as material GPT Live tells in its own words, naming what is on screen in order',async()=>{
+  const f=await fixture({retell:true,tools:[{type:'function',name:'explain_on_board',parameters:{type:'object',properties:{topic:{type:'string'}},required:['topic']}},{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'}},required:['question']}}]});
+  await ready(f);
+  assert.match(gptLiveDelegationPolicy(new Set(['explain_on_board']),{retell:true}),/用你自己的话讲/u);assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['explain_on_board']),{retell:true}),/原样念完/u);
+  say(f,idOf(3),'给我讲讲罗马怎么玩');await new Promise(r=>setTimeout(r,5));
+  f.bridge.beginBackgroundTool(idOf(3),'罗马');
+  const script='罗马景点散，先按三天排。第一天从斗兽场开始。第二天去万神殿。';
+  f.bridge.completeBackgroundTool(idOf(3),{result:script},{spokenText:script,displayedFullResult:true,retell:{names:['斗兽场','万神殿'],points:['罗马景点散，先按三天排。','第一天从斗兽场开始。','第二天去万神殿。']}});
+  const spoken=appends(f).filter(e=>e.channel==='speakable').map(e=>e.content[0].text).join('');
+  assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*用你自己的话讲给用户听/u);assert.match(spoken,/第二天去万神殿。$/u);
+  assert.doesNotMatch(spoken,/<say>|原样念/u);
+  assert(!f.bridge.script); // no script: the captions are V's own words
 });
 test('completions for tasks this bridge never began are ignored',async()=>{
   const f=await fixture();await ready(f);

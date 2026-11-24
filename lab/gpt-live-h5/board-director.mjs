@@ -2,7 +2,7 @@
 // it on the caller's screen. It runs beside the voice model, never in its
 // audio path, and has no tools, permissions or say in what V does. Its output
 // is validated line by line (board-scene.mjs) before anything reaches a page.
-import {BOARD_LIMITS, applyOp, createLineParser, emptyScene, heroPhoto, loose, normalizeOp, pictureSubjects, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
+import {BOARD_LIMITS, applyOp, createLineParser, emptyScene, hangOnNames, heroPhoto, loose, namedThings, normalizeOp, pictureSubjects, sceneDigest, scenePictures, zoneDigest, zoneId} from './board-scene.mjs';
 import {clauseOf, clauses} from './board-clause.mjs';
 import {appendFile, mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -384,7 +384,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     streams: Boolean(stream),
     /** The author's notes for a script V is about to speak: {title, script, lines: [{say, show}]}. */
     note(id, notes) {
-      const row = owner(id); row.notes = notes; row.expectUntil = 0; row.lessonTurn = row.turnNo ?? 0;
+      const row = owner(id); row.notes = notes; row.expectUntil = 0; row.lessonTurn = row.turnNo ?? 0; row.retell = notes?.retell === true;
       // The script is known before V has said a word of it: its page is started now,
       // not when the caller's screen comes back to ask (about a second and a half later).
       // Its first lines (`partial`) start the page while the rest is written; the whole
@@ -393,6 +393,17 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const draw = () => api.run({owner: id, trigger: notes.partial ? 'assistant_progress' : 'assistant_end', ahead: true, clientRev: row.scene.rev,
         turns: [...(notes.ask ? [{role: 'user', text: String(notes.ask)}] : []), {role: 'assistant', text: notes.script}]}).catch(() => {});
       const chain = row.aheadChain = (row.aheadChain ?? Promise.resolve()).then(draw).finally(() => { if (row.aheadChain === chain) row.aheadChain = null; });
+    },
+    /**
+     * The things on a lesson's page, in order, once its page is drawn; for a lesson V tells in its own
+     * words (`retell`), the page is first hung on those names (board-scene.mjs `hangOnNames`).
+     */
+    async retold(id) {
+      const row = owners.get(id);
+      if (!row) return [];
+      while (row.aheadChain) await row.aheadChain.catch(() => {});
+      if (row.retell && row.scene.blocks.length) row.scene = {...hangOnNames(row.scene), rev: row.scene.rev + 1};
+      return namedThings(row.scene);
     },
     /** A script is being written for the caller's question: what V says meanwhile is not the answer. */
     expect(id, ms = 20000) {
@@ -456,7 +467,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const reads = (heard, written) => { const said = letters(heard).slice(0, 24), script = letters(written); return said.length >= 6 ? script.includes(said) : said.length >= 2 && script.startsWith(said); };
       if (!ahead && trigger !== 'user' && (row.aheadChain || row.aheadFor)) {
         const latest = turns?.findLast?.(turn => turn?.role === 'assistant');
-        const same = row.notes?.script && reads(latest?.text ?? latest, row.notes.script);
+        // (A lesson V tells in its own words is that lesson's reply whatever its words: its page stays.)
+        const same = row.notes?.script && (row.retell && row.lessonTurn === (row.turnNo ?? 0) || reads(latest?.text ?? latest, row.notes.script));
         if (row.aheadChain) {
           if (clientRev !== row.scene.rev) out({op: 'sync', scene: row.scene, canvas: canvasOf(row)});
           (row.watchers ??= new Set()).add(out);
@@ -526,7 +538,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
       const said = stream && turns?.at(-1)?.role === 'assistant' ? words(turns.at(-1)) : '';
       // Whether what is being drawn is a lesson's script (its author's notes go with it; only a script may ask for a picture to be drawn).
       // (A voice that says the script in its own first words still reads it: `reads` finds what was said inside the script.)
-      const scripted = Boolean(stream && row.notes && said && reads(said, row.notes.script));
+      const scripted = Boolean(stream && row.notes && said && (row.retell && row.lessonTurn === (row.turnNo ?? 0) || reads(said, row.notes.script)));
       // The language V speaks is asked for once for each of V's replies, beside this run and not before it:
       // this run goes with the language of V's reply before (a caller and V seldom change it), the answer
       // is there for the next run two seconds on, which rewrites the page if V has changed.

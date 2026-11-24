@@ -340,7 +340,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // How a call's model takes part (capabilities.mjs). GPT Live explains and tells stories in its own voice
   // and words, and the page draws along with what it says: a script written by another model and read out
   // is what it sounded like, read out. (Its scripts can be brought back for comparison with `scriptedLessons`.)
-  const traitsOf=s=>s.model==='gpt-live-11'&&gptLive?.scriptedLessons===true?{...modelTraits(s.model),explains:'lesson'}:modelTraits(s.model);
+  // (`lessonNotes`, experiment: the lesson pipeline researches and draws as for any model, and GPT Live tells
+  // the lesson in its own words while the page waits for each thing's name.)
+  const traitsOf=s=>s.model==='gpt-live-11'&&(gptLive?.scriptedLessons===true||gptLive?.lessonNotes===true)?{...modelTraits(s.model),explains:'lesson',retells:gptLive?.lessonNotes===true}:modelTraits(s.model);
+  // The things a retold lesson's page shows, in order, once drawn; never waited for long.
+  const shownNames=async s=>{try{return await Promise.race([lesson?.shown?.(s.id)??[],new Promise(resolve=>{const timer=setTimeout(()=>resolve([]),8000);timer.unref?.();})]);}catch{return [];}};
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&traitsOf(s).explains==='lesson'&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
@@ -837,13 +841,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
             let script=null;
-            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)&&!asksOnlyToFind(s.latestUserTurn?.text)}:{})});
+            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(traitsOf(s).retells?{retell:true}:{}),...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)&&!asksOnlyToFind(s.latestUserTurn?.text)}:{})});
               // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
               if(script)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(current(s)&&s.epoch===epoch){
-              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});
+              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true,...(traitsOf(s).retells?{retell:{names:await shownNames(s),points:script.sentences??[]}}:{})});
               else{
                 // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
                 // and the caller had to ask again: call 83315f5d). The page is drawn from what it then says.
@@ -885,8 +889,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           // The result is in hand while its script is written: a voice that answers by itself is told so,
           // or it answers "still looking" in those seconds.
           target.backgroundResultReady?.(call.callId);
-          try{const script=await lesson.prepare({result:true,quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.question??'',ask:s.latestUserTurn?.text,reference:String(presentation.text),signal:AbortSignal.timeout(9000)});
-            if(script?.say){spokenText=script.say;told=true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
+          try{const script=await lesson.prepare({...(traitsOf(s).retells?{retell:true}:{}),result:true,quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.question??'',ask:s.latestUserTurn?.text,reference:String(presentation.text),signal:AbortSignal.timeout(9000)});
+            if(script?.say){spokenText=script.say;told=traitsOf(s).retells?{names:await shownNames(s),points:script.sentences??[]}:true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
           catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
           if(!current(s)||s.epoch!==epoch)return;
         }
@@ -902,7 +906,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(target!==ownerBridge)target.adoptBackgroundTool(call.callId,call.args.question??"");
           // The whole result stays on screen and in the model's context; what is
           // said aloud has no process opening, and a failure is said plainly.
-          const options=displayFullResult||told?{spokenText,displayedFullResult:true,...(told?{script:true}:{})}:typeof result?.error==='string'&&!controller.signal.aborted?{spokenText:TASK_FAILED_LINE}:presentation?{spokenText}:{};
+          const options=displayFullResult||told?{spokenText,displayedFullResult:true,...(told?told===true?{script:true}:{retell:told}:{})}:typeof result?.error==='string'&&!controller.signal.aborted?{spokenText:TASK_FAILED_LINE}:presentation?{spokenText}:{};
           // The host output gate belongs to whichever turn is in flight; a result
           // spoken outside a host turn is queued or dropped with that turn.
           if(s.speakerRouting&&speakerRouting?.hostSpeech)options.speak=text=>void speakerRouting.hostSpeech(s.id,text).then(spoken=>{if(!spoken)audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId});},()=>audit({type:'backend.result-unspoken',voiceSessionId:s.id,callId:call.callId}));
@@ -1000,6 +1004,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
       if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,judge:gptLive.judge??null,resume:s.resume??null,
         notes:routerNotes({sessionBound:s.sessionBound,publicVoice:s.publicVoice,lessons:voiceTools.some(tool=>tool.name===LESSON_TOOL.name),media:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):''}),
+        retell:traitsOf(s).retells===true,
         route:createDelegationRouter({complete:gptLive.complete??null,choose:gptLive.choose??null,audit:event=>audit({...event,voiceSessionId:s.id})})});
       return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
         :new GrokVoiceBridge(owned,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
