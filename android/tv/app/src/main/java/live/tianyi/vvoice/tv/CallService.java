@@ -70,10 +70,6 @@ public final class CallService extends Service {
         },"VTVStartupCue");
         arrayCapture=new TvArrayCapture(this,web);
         web.addJavascriptInterface(arrayCapture,"VTVArray");
-        // This TV's WebView hardware layer becomes transparent after protected
-        // Settings windows. Rasterize the small companion view in software; the
-        // shared page and its worker/audio session remain unchanged.
-        web.setLayerType(View.LAYER_TYPE_SOFTWARE,null);
         web.setAlpha(0);web.setBackgroundColor(Color.TRANSPARENT);web.setFocusable(false);web.setDefaultFocusHighlightEnabled(false);
         web.setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,android.graphics.Outline outline){outline.setRoundRect(0,0,v.getWidth(),v.getHeight(),dp(28));}});
         web.setClipToOutline(true);
@@ -191,6 +187,9 @@ public final class CallService extends Service {
         mode=value;
         getSharedPreferences("diagnostics",0).edit().putString("window_mode",value).apply();
         boolean full = value.equals("full");
+        // The small transparent companion needs software rasterization over protected apps.
+        // Let the GPU draw the full page so layout and painting cannot stall microphone delivery.
+        web.setLayerType(full ? View.LAYER_TYPE_NONE : View.LAYER_TYPE_SOFTWARE, null);
         web.setClipToOutline(!full);
         if(window==null)window=new WindowManager.LayoutParams();
         window.type=WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
