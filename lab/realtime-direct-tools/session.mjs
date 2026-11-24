@@ -1,3 +1,4 @@
+import {IMPROV_TOOL,improvArguments} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
 import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
@@ -331,7 +332,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&!(s.model==='gpt-live-11'&&gptLive?.scriptedLessons!==true)&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
-  const sessionTools=s=>[...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
+  const sessionTools=s=>[...(s.improv?[IMPROV_TOOL]:[]),...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
   const acceptEnding=(s,callId)=>{
@@ -417,7 +418,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }
     return e.type==='device.result'?s.deviceRequests?.receive(e)??false:false;
   }
-  async function reserve({model,sessionKey,nativeChatId,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity,prefetched=null,resumed=null}) {
+  async function reserve({model,sessionKey,improv=null,nativeChatId,voice,surface='phone',inputSampleRate=24000,speaker=null,inputPolicy,sessionBound=false,replyTarget=null,callReportFactory=null,nativeRuntimeVersion,nativeLocationVersion,nativeDeviceActions,terminalKind,terminalAdapter,backendDeviceURL,gateway:callGateway=gateway,actorScoped=false,agentId='makaron',unidentified=false,callerIdentity,toolIdentity,prefetched=null,resumed=null}) {
     if(nativeRuntimeVersion!==undefined&&(nativeRuntimeVersion!==1||surface!=='phone'))throw Error('Unsupported native runtime');
     const deviceActions=normalizeDeviceActions(terminalAdapter?{version:1,capabilities:terminalAdapter.capabilities()}:nativeDeviceActions??(nativeLocationVersion===1?{version:1,capabilities:{'location.current':{status:'prompt'}}}:undefined));
     if(nativeLocationVersion!==undefined&&(nativeLocationVersion!==1||surface!=='phone'||nativeRuntimeVersion!==1))throw Error('Unsupported native location');
@@ -434,7 +435,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       sessionBound=true;actorScoped=true;replyTarget=null;callReportFactory=null;inputPolicy='native';
       if(!publicVoice)callGateway={async request(){throw Error('当前通话没有账号工具权限');}};
     }
-    const s={mediaScope:mediaAccountScope(sessionKey,nativeChatId),unidentified,publicVoice,toolIdentity:!unidentified&&actorScoped&&sessionBound?toolIdentity:undefined,callerIdentity:unidentified?undefined:callerIdentity,id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
+    const s={improv:surface==='phone'&&!unidentified&&!actorScoped&&!nativeRuntimeVersion?improv:null,mediaScope:mediaAccountScope(sessionKey,nativeChatId),unidentified,publicVoice,toolIdentity:!unidentified&&actorScoped&&sessionBound?toolIdentity:undefined,callerIdentity:unidentified?undefined:callerIdentity,id:randomUUID(),ticket:randomBytes(32).toString('base64url'),model,voice:selectedVoice,sessionKey,sessionBound,gateway:callGateway,actorScoped,agentId,closed:false,epoch:0,pending:new Map(),localCleanups:new Set(),seen:new Map(),processes:new Set(),ending:null,assistantText:'',audioSequence:0,presentation:{revision:0,documents:new Map(),pending:new Map()},contentWaiters:new Map(),surface,display:surface!=='speaker',inputSampleRate,speaker:surface==='speaker'?speaker:null};
     Object.assign(s,{responseActive:false,playing:false,userSpeaking:false,lastUserAt:0,lastProgressAt:0,narrationBusyUntil:0,narrations:0,progress:null,toolOwners:new Map(),retiredBridges:new Set()});
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
@@ -611,7 +612,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // Ids of things on the caller's screen become their links, and a new thing takes its
         // place on the board before it exists (board-assets.mjs). A question about progress makes nothing.
         // (A photograph found for the board and named in the command is first given an address the generator can fetch.)
-        if(shelfFor(s))await assets.lend(s.id,args.command);
+        if(shelfFor(s)){
+          await assets.lend(s.id,args.command);
+        }
         if(signal.aborted||!current(s))throw Error('本次任务已取消');
         // What the caller named and V does not have is not made from words: it goes to the backend
         // (material-check.mjs; most requests name nothing and are not looked at).
@@ -741,6 +744,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // question to the backend or even hangs up instead (calls 4132718f, 649709d0).
       // A lookup it wanted is still made, as the lesson's own research.
       // (Off unless asked for: the model's own choice of tool stands, as it did before there was a board.)
+      if(lessonTools(s).length && lesson.wantsPhotos?.(s.latestUserTurn?.text) && ['web_search','delegate_to_v'].includes(call.name) && !s.backend.snapshot())
+        call={...call,name:'explain_on_board',args:{topic:s.latestUserTurn.text}};
       if(lesson?.reroute===true&&['delegate_to_v','web_search','memory_search','end_call'].includes(call.name)&&!(call.name==='delegate_to_v'&&s.backend.snapshot())&&lessonTools(s).length&&s.lessonFor!==s.latestUserTurn&&asksForLesson(s.latestUserTurn?.text)){
         audit({type:'lesson.rerouted',voiceSessionId:s.id,callId:call.callId,from:call.name});
         const research=['web_search','memory_search'].includes(call.name)?{name:call.name,args:call.args}:null;
@@ -765,7 +770,20 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       try {
         if(s.unidentified&&!(call.name==='explain_on_board'&&lessonTools(s).length)&&!(s.publicVoice?PUBLIC_CALL_TOOLS.has(call.name):['show_content','end_call'].includes(call.name)))throw Error('当前通话没有账号工具权限');
         if(s.sessionBound&&!s.actorReader&&['feishu_calendar','lark_read'].includes(call.name))throw Error('请使用当前会话的工具或委派给当前会话的 V');
+        if(call.name===IMPROV_TOOL.name)call={...call,args:improvArguments(call.args)};
         validateTool(call.name,call.args);
+        if(call.name===IMPROV_TOOL.name){
+          if(!s.improv)throw Error('当前通话没有即兴直播');
+          const turn=s.latestUserTurn;
+          const {openingImage,imagePosition}=call.args;
+          const hasImage=openingImage!==undefined || imagePosition!==undefined;
+          if(hasImage && (call.args.action!=='start' || openingImage!==undefined && imagePosition!==undefined))throw Error('开播时请选择一个素材编号或画面序号');
+          const imageUrl=hasImage && shelfFor(s) ? await assets.openingImage(s.id,openingImage,imagePosition) : '';
+          if(hasImage && !imageUrl)throw Error('找不到指定的开场图，请从当前画布中选择已显示的图片。');
+          if(turn!==s.latestUserTurn || !current(s) || s.epoch!==epoch)throw Error('直播请求已过期');
+          result=await s.improv.command(call.args,turn,event=>emit(s,event),imageUrl,imageUrl && assets.openingAspect?.(s.id,imageUrl),imageUrl && assets.openingName?.(s.id,imageUrl));
+          s.mediaRecovery?.started();
+        }
         if(call.name==='get_current_location'){if(!s.location)throw Error('当前终端不支持定位');result=await s.location.request(controller.signal);}
         if(call.name==='delegate_to_v'&&s.cancelCleanupFailed)throw Error('上一任务退出尚未确认，先重试取消');
         if(call.name==='send_task_updates'){result=await s.delivery.subscribe();}
@@ -843,7 +861,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             }
           }
         }
-        if(!['send_task_updates','openclaw_agent_control','get_current_location','explain_on_board'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
+        if(![IMPROV_TOOL.name,'send_task_updates','openclaw_agent_control','get_current_location','explain_on_board'].includes(call.name))result=await execute(call.name,call.args,call.callId,controller.signal);
         if(call.name==='delegate_to_v'&&current(s)&&s.epoch===epoch){
           s.progress=null;await new Promise(resolve=>{s.backendResult={resolve};deferred(s);});
         }
@@ -926,7 +944,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:s.model==='seeduplex'?s.voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(s.model==='gpt-live-11'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播意图由你结合对话判断。实际开播、调整下一幕、收播都调用 improv_live，先取得回执再回应。收播后继续这通电话。你能看到提交状态，无法观察直播帧。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(s.model==='gpt-live-11'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
@@ -943,7 +961,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const deliver=()=>{
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
-        if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim())s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim()){s.latestUserTurn=Object.freeze({text,id:metadata.turnId,receivedAt:new Date().toISOString()});}s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         // Speech from the caller while the call is being hung up is a change of mind, unless the voice path
         // can tell that it is only their own goodbye (a judgement it makes, never a list of words).
         if(role==='user'&&final&&s.ending){

@@ -939,8 +939,30 @@ class BoardGuard extends React.Component {
 export function Board(props) {
   return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
 }
-function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
+// A broadcast that has ended stays on the board as its recording, framed like any made video.
+function Recorded({clip, save}) {
+  const [saved, setSaved] = useState('');
+  return <div className="board-scroll"><div className="board-body board-live-media"><figure className="board-work improv-stage" data-kind="live" data-state="ready">
+    <div className="board-work-frame" style={{'--shape': clip.shape || 16 / 9}}>
+      {clip.recording ? <video className="board-work-print" data-loaded="true" src={clip.recording} poster={clip.poster} playsInline controls preload="metadata" aria-label="直播录像" />
+        : clip.poster ? <img className="board-work-print" data-loaded="true" src={clip.poster} alt="直播停下时的画面" />
+        : <div className="board-work-failed"><p>本场没有画面</p></div>}
+    </div>
+    <figcaption>
+      {clip.name && <span className="board-work-name">{clip.name}</span>}
+      <small>{clip.recording ? '直播录像' : clip.done ? '本场没有可保存的录像' : '正在整理录像…'}</small>
+      {clip.recording && <button type="button" className="improv-end" onClick={async () => setSaved(await save({src: clip.recording, kind: 'video', name: clip.name ? clip.name + ' 直播' : '直播录像'}))}>{saved || '保存录像'}</button>}
+    </figcaption>
+    {clip.caption && <p className="improv-cue">{clip.caption}</p>}
+  </figure></div></div>;
+}
+function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
+  if (liveId || recordings.length) {
+    if (pages.length === 1 && !scene.title && !scene.blocks.length) pages.pop();
+    for(const clip of recordings)if(clip.id!==liveId)pages.push({serial:clip.id,title:"直播录像",blocks:[],clip});
+    if(liveId)pages.push({serial: liveId, title: "直播中", blocks: []});
+  }
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);
   const [inView, setInView] = useState(active);
@@ -950,16 +972,49 @@ function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onRepo
     const pictures = pagePictures(element?.closest?.('.board-page')), start = pictures.findIndex(item => item.element === element);
     if (start >= 0) setViewing({items: pictures.map(({element: from, ...item}) => item), start});
   };
-  // V drawing anything, anywhere, brings the view to V's page.
-  useLayoutEffect(() => {
+  const go = index => {
     const strip = track.current;
-    if (!strip) return;
-    const left = strip.clientWidth * active;
-    if (Math.abs(strip.scrollLeft - left) > 2) strip.scrollTo?.({left, behavior: 'smooth'});
-    setInView(active);
-  }, [active, pages.length, scene.rev]);
+    if (strip) strip.scrollTo?.({left: strip.clientWidth * index, behavior: 'instant'});
+    setInView(index);
+  };
+  const lastLive = useRef(null);
+  const lastScene = useRef(`${scene.serial}:${scene.rev}`);
+  useLayoutEffect(() => {
+    if (liveId) {
+      if (lastLive.current !== liveId || liveFocus) go(pages.length - 1);
+    } else if(lastLive.current && pages.some(p=>p.serial===lastLive.current))go(pages.findIndex(p=>p.serial===lastLive.current));
+    else go(active);
+    lastLive.current = liveId;
+  }, [liveId, liveFocus]);
+  // V drawing anything on its page brings the view there, from a recording too.
+  // During a broadcast the live page keeps the view; V's page waits one swipe away.
+  useLayoutEffect(() => {
+    const key = `${scene.serial}:${scene.rev}`, changed = lastScene.current !== key;
+    lastScene.current = key;
+    if (liveId) { if (track.current && inView >= pages.length - 1) go(pages.length - 1); }
+    else if (changed) go(active);
+  }, [active, pages.length, scene.serial, scene.rev]);
   const onScroll = () => { const strip = track.current; if (strip?.clientWidth) setInView(Math.max(0, Math.min(pages.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)))); };
   const page = pages[Math.min(inView, pages.length - 1)];
+  useEffect(() => {
+    const current=track.current?.querySelector('.board-page[data-current]');
+    if(!current || page.clip || page.serial===liveId || !works?.visible)return;
+    const report=()=>{
+      const ids=[];
+      for(const pic of pagePictures(current)){
+        const id=pic.asset || works.photos?.get(pic.query)?.id;
+        const img=pic.element.querySelector('img.board-work-print,img');
+        if(pic.kind==='image' && id && img?.naturalWidth && !ids.includes(id)){
+          ids.push(id);works.shown?.(id,img.naturalWidth/img.naturalHeight);
+        }
+      }
+      works.visible(ids);
+    };
+    report();const observer=new MutationObserver(report);
+    observer.observe(current,{subtree:true,childList:true,attributes:true,attributeFilter:['src','data-asset','data-ink']});
+    current.addEventListener('load',report,true);
+    return ()=>{observer.disconnect();current.removeEventListener('load',report,true);};
+  },[page.serial,scene.rev,works?.photos,works?.assets,liveId]);
   // A page that goes further into something on an earlier page is titled with where it came from.
   const parent = page.from ? pages.find(item => `z${item.serial}` === page.from) : null;
   return (
@@ -967,7 +1022,7 @@ function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onRepo
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
         {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
-        {onReport && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
+        {onReport && !page.clip && page.serial !== liveId && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
@@ -976,12 +1031,12 @@ function Canvas({scene, canvas, spoken, caption = '', loadPhoto, onClose, onRepo
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
             <BoardGuard retry={`${item.serial}:${item.rev}`}>
-              <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />
+              {item.serial === liveId ? <div className="board-scroll"><div className="board-body board-live-media">{liveMedia}</div></div> : item.clip ? <Recorded clip={item.clip} save={works?.save}/> : <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />}
             </BoardGuard>
           </div>
         ))}
       </div>
-      {pages.length > 1 && <i className="board-dots" aria-hidden="true">{pages.map((item, index) => <b key={item.serial} data-current={index === inView || undefined} />)}</i>}
+      {pages.length > 1 && <nav className="board-dots" aria-label="画面分页">{pages.map((item, index) => <button key={item.serial} type="button" aria-label={item.serial === liveId ? "查看直播画面" : item.clip ? "查看直播回放" : "查看第" + (index + 1) + "页"} aria-current={index === inView ? "page" : undefined} onClick={() => go(index)}><b data-current={index === inView || undefined}/></button>)}</nav>}
       {viewing && <Viewer items={viewing.items} start={viewing.start} works={works} onClose={() => setViewing(null)} />}
     </section>
   );

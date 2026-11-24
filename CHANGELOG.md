@@ -1,5 +1,31 @@
 # Changelog
 
+
+## 2026-11-24 — Live broadcast on the lesson board released (`voice-makaron-director.20261124.4`)
+
+- The Candidate work below (2026-11-23 to 11-24) goes to production: the voice model opens, steers and ends a Makaron Director broadcast with `improv_live`, the show advances its own story, and the recording is archived on the board.
+- It is offered only to the personal entry (`permissionProfile` `personal-tianyi`) on a service with `VOICE_IMPROV_LIVE=1`, a Director CLI path and a Director address; other callers, the App's native runtime, robots and speakers do not get the tool.
+- The Director runs beside the Voice service on the same host (Makaron `services/director/start-host.mjs`), accepting only that service's Makaron key. Provider costs are that deployment's own; Makaron credits are not charged.
+- The Gateway is not restarted by this release.
+
+## 2026-11-24 — The live broadcast advances its own story (Candidate)
+
+- Makaron Director runs a showrunner on DeepSeek flash for shows opened with `--story`: it plans a 6–10 beat arc when the show starts and releases one beat once the current direction has held on screen (8 s after the opening, 7 s after its own beat, 12 s after the caller's).
+- The opening goes to the provider unchanged and the first plan runs beside connection setup, so the start is not held by planning.
+- A shot the voice model wrote is sent with `--ready`: it skips Makaron's spoken-draft cleanup and its 650 ms pacing. The live player keeps one poll open, so a new direction leaves for the provider as soon as it exists. The showrunner then drops its queued beats and replans around the caller's direction.
+- Each showrunner beat carries a short audience caption, shown under the picture like the host's captions.
+- When the voice model gives no caption, the caller's whole request is shown under the picture with spoken fillers (「好」「然后呢」) dropped, instead of only its first phrase.
+
+## 2026-11-24 — Live broadcast review (Candidate)
+
+- The Director worker runs beside the Voice service, so signaling, directions and recording uploads no longer cross a long relay.
+- A broadcast survives brief relay errors, retries one failed WebRTC offer, and reports why it ended (time limit, lost connection, caller).
+- The model receives Makaron's own error text and the end reason, and writes a short audience caption for each shot instead of showing the Director prompt.
+- The live picture and its recording use the board's work frame, REC timer, lesson-hand caption and one end control.
+
+## 2026-11-23 — Makaron Director on the lesson board (Candidate)
+
+The web call uses the private Makaron CLI Director session. Scene directions and requests to end the broadcast use the active session. The board shares its existing space with the live picture and keeps the call connected.
 ## 2026-11-24 — GPT Live 1.1 is given whole results, as Doubao is
 
 - GPT Live 1.1 was given every tool result except a search cut at 2,400 characters: a day of six meetings showed it three, and a page or a background task's result stopped mid-way, so it said what it had and seemed cut off. Doubao is given the same results whole up to 32 KB.

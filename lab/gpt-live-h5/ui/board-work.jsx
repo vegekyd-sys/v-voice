@@ -155,7 +155,7 @@ export function Work({block, view}) {
         )}
         {ready && shown.kind === 'image' && (
           <img key={shown.id} className="board-work-print" data-loaded={loaded || undefined} src={shown.url} alt={name} decoding="async"
-            onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id); }} />
+            onLoad={event => { settle(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); setFetched(shown.id); view.shown?.(shown.id,event.currentTarget.naturalWidth/event.currentTarget.naturalHeight); }} />
         )}
         {ready && shown.kind === 'video' && !still && (
           <video key={shown.id} ref={film} className="board-work-print" data-loaded={loaded && !waiting || undefined} src={shown.url} muted loop autoPlay playsInline preload="auto"
@@ -173,7 +173,7 @@ export function Work({block, view}) {
       <figcaption>
         {/* (The page already carries the name as its title when the page is this thing's own.) */}
         {name && name !== view.title && <span className="board-work-name">{name}</span>}
-        {shown.state === 'ready' && <small>{shown.source === 'backend' ? '后台生成' : shown.source === 'lesson' ? '讲解时现画' : 'V 生成'}{shown.kind === 'video' ? ' · 视频' : ''}</small>}
+        {shown.state === 'ready' && <small>{shown.source === 'upload' ? '你上传的图片' : shown.source === 'backend' ? '后台生成' : shown.source === 'lesson' ? '讲解时现画' : 'V 生成'}{shown.kind === 'video' ? ' · 视频' : ''}</small>}
         {/* What it was (or is being) made from, by name: a wrong picture is seen at once. */}
         {references.length > 0 && <small className="board-work-refs">照着：{references.join('、')}</small>}
       </figcaption>
