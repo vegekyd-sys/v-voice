@@ -196,6 +196,12 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
     '仅 Candidate；持续电视、人声干扰和真人设备验收仍在验证。',
   ],
 };
+// The Candidate's record (2026-11-23 to 11-24); released as voice-makaron-director.20261124.4 in VOICE_UPDATES.
+export const DIRECTOR_CANDIDATE_UPDATE = {
+  version:'voice-makaron-director.20261124.3',date:'2026-11-24',status:'candidate-validation',
+  title:'在讲解画布中主持即兴直播',
+  items:['开播后剧情会自己往下演：Makaron 先排好一段有目标、有转折的故事，你不说话时一幕接一幕推进，画面下方写出每一幕。你插话时，这句话直接送进画面并完整写在下方，故事随后围绕它接着演。','在文字输入里可以添加自己的图片，也可以用 V 的形象作图。','直播像画布里的其他作品一样出现：连线时先显示开场图，出画后左上角 REC 计时，下方用一句短说明写出正在播的镜头。','开播后直接说下一幕；连接短暂抖动不再中断直播，没连上时 V 会说明原因并可以重试。','直播自带现场声，你或 V 说话时自动降低，也可以单独静音。收播后可回放、保存录像，也能继续聊。'],
+};
 // The Candidate's record (2026-11-20 to 11-24); released as voice-gpt-live-11.20261124.1 in VOICE_UPDATES.
 export const GPT_LIVE_11_CANDIDATE_UPDATE = {
   version:'voice-gpt-live-11.20261124.4',date:'2026-11-24',
@@ -222,6 +228,31 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-makaron-director.20261124.5',date:'2026-11-24',
+    title:'直播录像在网速慢时也能存到服务器',
+    items:[
+      '收播后录像会在后台继续上传，网速慢时最多等 15 分钟，不再传到一半被切断；录像体积也缩小了约一半。上传期间可以继续聊天，也可以先在画布上保存本地副本。',
+    ],
+  },
+  {
+    version:'voice-makaron-director.20261124.4',date:'2026-11-24',
+    title:'讲解画布里可以开一场即兴直播',
+    items:[
+      '让 V 用一张图开播：可以是刚画的图、你在文字输入里加的图，或 V 自己的形象。画面出现在画布里，左上角 REC 计时，下方一句话写出正在播的这一幕。',
+      '开播后剧情会自己往下演；你随时插一句，这句话直接送进画面并完整写在下方，故事接着围绕它演。',
+      '说「收播」结束，录像自动保存，可回放、下载，也能接着聊；之后的讲解内容会照常接替画面。',
+      '目前只在 Tianyi 的私人入口开放，其他来电者看不到这个功能。',
+    ],
+  },
+  {
+    version:'voice-gpt-live-11.20261124.5',date:'2026-11-24',
+    title:'GPT Live 1.1 查到的内容不再被截掉一半',
+    items:[
+      '查日程、读网页、后台任务办完的结果，GPT Live 1.1 现在能看到全部，和豆包一样；以前只给它前 2400 个字，一天开六个会它只看得到三个。',
+      '搜索和记忆也是：每一条都按查到的原样给它，不再截短。',
+    ],
+  },
   {
     version:'voice-gpt-live-11.20261124.1',date:'2026-11-24',
     title:'GPT Live 1.1 正式上线，GPT Live One 退役',

@@ -1,3 +1,4 @@
+import {IMPROV_TOOL} from './improv-live.mjs';
 import {LOCATION_TOOL} from './device-location.mjs';
 import {buildLarkReadArgv,calendarReadArgs} from './lark-readonly.mjs';
 import {VOICE_TASK_CONTROL_TOOL,validateVoiceTaskControl} from '../../lib/voice-task-control.mjs';
@@ -52,7 +53,7 @@ export function withExecutionLines(tool) {
   }}};
 }
 export function validateTool(name,args){
- const tool=name==='exec'&&(Object.hasOwn(args??{},'completionLine')||Object.hasOwn(args??{},'failureLine'))?withExecutionLines(TOOLS.find(t=>t.name==='exec')):Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_TOOL,LESSON_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
+ const tool=name==='exec'&&(Object.hasOwn(args??{},'completionLine')||Object.hasOwn(args??{},'failureLine'))?withExecutionLines(TOOLS.find(t=>t.name==='exec')):Object.hasOwn(args??{},'use_current_location')&&['delegate_to_v','openclaw_agent_control'].includes(name)?(name==='delegate_to_v'?LOCATION_DELEGATE_TOOL:LOCATION_CONTROL_TOOL):[...TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_TOOL,LESSON_TOOL,IMPROV_TOOL].find(t=>t.name===name);if(!tool)throw Error('不支持这个工具');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('工具参数必须是对象');
  for(const key of Object.keys(args))if(!(key in tool.parameters.properties))throw Error('未知工具参数');
  for(const key of tool.parameters.required)if(!(key in args))throw Error('缺少工具参数');

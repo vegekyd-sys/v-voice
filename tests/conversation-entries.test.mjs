@@ -28,3 +28,11 @@ test('native DM binding is private operator configuration and cannot be overridd
  for(const nativeChatId of ['ou_alice','',123])assert.throws(()=>createConversationEntries([{...dm,nativeChatId}]),/native chat binding/);
  assert.throws(()=>createConversationEntries([{...entry,nativeChatId:'oc_other'}]),/native chat binding/);
 });
+
+test('the operator can bind the personal entry to an existing Feishu group',()=>{
+ const groupChatId='oc_'+'b'.repeat(32);
+ const registry=createConversationEntries([entry],'',{groupChatId});
+ assert.equal(registry.resolve(new URL('https://v/voice/?sessionKey=other')).sessionKey,'agent:makaron:feishu:group:'+groupChatId);
+ assert.equal(registry.resolve(new URL('https://v/voice/?phone=phone-room-a')).sessionKey,entry.sessionKey);
+ assert.throws(()=>createConversationEntries([],'',{groupChatId:'invalid'}),/Invalid personal Feishu group ID/);
+});

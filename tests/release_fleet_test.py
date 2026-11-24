@@ -14,6 +14,143 @@ IDLE = dict(known=True, activeCalls=0, creatingSessions=0, backgroundTasks=0, de
 
 
 class FleetSafety(unittest.TestCase):
+    def test_ssh_upload_resumes_a_broken_pipe_and_checks_what_arrived(self):
+        remote = bytearray()
+        sent = []
+        def fake(args, input=None, **kwargs):
+            command = args[-1]
+            if command.startswith('stat'):
+                return Mock(returncode=0, stdout=str(len(remote)).encode())
+            if command.startswith('umask 077; cat >>'):
+                sent.append(len(input))
+                remote.extend(input[:3] if len(sent) == 1 else input)  # the first pipe breaks after 3 bytes
+                return Mock(returncode=255 if len(sent) == 1 else 0, stdout=b'')
+            if command.startswith('sha256sum'):
+                return Mock(returncode=0, stdout=(fleet.digest(bytes(remote)) + '  x\n').encode())
+            raise AssertionError(command)
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=fake):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'0123456789')
+            remove = fleet.upload(dict(id='devices', ssh='voice-devices'), archive, '/tmp/voice-release-a.tar.gz', {})
+        self.assertEqual(bytes(remote), b'0123456789')
+        self.assertEqual(sent, [10, 7])
+        self.assertEqual(remove, ['rm','--','/tmp/voice-release-a.tar.gz'])
+        # What arrived is not what was sent: nothing is staged.
+        def corrupt(args, input=None, **kwargs):
+            command = args[-1]
+            if command.startswith('stat'):
+                return Mock(returncode=0, stdout=b'10')
+            return Mock(returncode=0, stdout=b'0'*64 + b'  x\n')
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=corrupt):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'0123456789')
+            with self.assertRaises(RuntimeError):
+                fleet.upload(dict(id='devices', ssh='voice-devices'), archive, '/tmp/voice-release-b.tar.gz', {})
+
+    def test_ssh_upload_sends_again_what_a_stale_writer_spoiled(self):
+        # A full-size file with the wrong sha256, then a check that itself drops: removed, sent again, checked again.
+        remote = bytearray(b'0123401234')
+        calls = []
+        def fake(args, input=None, **kwargs):
+            command = args[-1]
+            calls.append(command.split()[0] if not command.startswith('umask') else 'cat')
+            if command.startswith('stat'):
+                return Mock(returncode=0, stdout=str(len(remote)).encode())
+            if command.startswith('rm -f'):
+                remote.clear(); return Mock(returncode=0, stdout=b'')
+            if command.startswith('umask 077; cat >>'):
+                remote.extend(input); return Mock(returncode=0, stdout=b'')
+            if command.startswith('sha256sum'):
+                if calls.count('sha256sum') == 2:
+                    return Mock(returncode=255, stdout=b'')
+                return Mock(returncode=0, stdout=(fleet.digest(bytes(remote)) + '  x\n').encode())
+            raise AssertionError(command)
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=fake):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'0123456789')
+            remove = fleet.upload(dict(id='devices', ssh='voice-devices'), archive, '/tmp/voice-release-c.tar.gz', {})
+        self.assertEqual(bytes(remote), b'0123456789')
+        self.assertEqual(calls.count('rm'), 1)
+        self.assertEqual(calls.count('sha256sum'), 3)
+        self.assertEqual(remove, ['rm','--','/tmp/voice-release-c.tar.gz'])
+        # Larger than what was sent is the same fault.
+        remote[:] = b'0123456789xx'; calls.clear()
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=fake):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'0123456789')
+            fleet.upload(dict(id='devices', ssh='voice-devices'), archive, '/tmp/voice-release-d.tar.gz', {})
+        self.assertEqual(bytes(remote), b'0123456789')
+
+    def test_vrelay_upload_sends_once_and_each_target_fetches_it(self):
+        calls = []
+        def fake(args, **kwargs):
+            calls.append(args)
+            return Mock(returncode=0, stdout=b'id relay123\nrelay123\n' if args[:2] == ['vrelay','put'] else b'')
+        web = dict(id='web', ssh='v', upload='vrelay', vrelayUser='openclaw')
+        devices = dict(id='devices', ssh='voice-devices', upload='vrelay')
+        relay = {}
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=fake):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'x')
+            remove_web = fleet.upload(web, archive, '/tmp/voice-release-a.tar.gz', relay)
+            remove_dev = fleet.upload(devices, archive, '/tmp/voice-release-b.tar.gz', relay)
+        self.assertEqual([c for c in calls if c[:2] == ['vrelay','put']], [['vrelay','put',str(archive)]])
+        self.assertEqual(calls[1], ['ssh','v','umask 077; sudo -n -u openclaw vrelay get relay123 /tmp/voice-release-a.tar.gz'])
+        self.assertEqual(calls[2], ['ssh','voice-devices','umask 077; vrelay get relay123 /tmp/voice-release-b.tar.gz'])
+        self.assertEqual(remove_web, ['sudo','-n','rm','--','/tmp/voice-release-a.tar.gz'])
+        self.assertEqual(remove_dev, ['rm','--','/tmp/voice-release-b.tar.gz'])
+        # A relay that fails stops the release before any target is touched.
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', return_value=Mock(returncode=1, stdout=b'')):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'x')
+            with self.assertRaises(RuntimeError):
+                fleet.upload(web, archive, '/tmp/voice-release-c.tar.gz', {})
+        for bad in [dict(upload='scp'), dict(upload='vrelay', vrelayUser='root; rm')]:
+            target = dict(id='web', unit='openclaw-rtc-h5.service', releaseRoot='/opt/openclaw-voice-h5/releases', **bad)
+            with self.assertRaises(RuntimeError):
+                fleet.validate_target(target)
+
+    def test_a_node_without_vrelay_fetches_a_signed_link_and_checks_it(self):
+        calls, fetched = [], []
+        link = 'https://relay.example/o/relay123?sig=abc'
+        def fake(args, input=None, **kwargs):
+            calls.append((args, input))
+            if args[:2] == ['vrelay','put']:
+                return Mock(returncode=0, stdout=b'relay123\n')
+            if args[:2] == ['vrelay','link']:
+                return Mock(returncode=0, stdout=(link + '\n').encode())
+            command = args[-1]
+            if 'curl' in command:
+                fetched.append(b'spoiled' if not fetched else b'x'); return Mock(returncode=0, stdout=b'')
+            if command.startswith('sha256sum'):
+                return Mock(returncode=0, stdout=(fleet.digest(fetched[-1]) + '  x\n').encode())
+            return Mock(returncode=0, stdout=b'')
+        web = dict(id='web', ssh='v', upload='vrelay', vrelayUser='openclaw')
+        devices = dict(id='devices', ssh='voice-devices', upload='vrelay-link')
+        relay = {}
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=fake):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'x')
+            fleet.upload(web, archive, '/tmp/voice-release-a.tar.gz', relay)
+            remove = fleet.upload(devices, archive, '/tmp/voice-release-b.tar.gz', relay)
+        self.assertEqual(len([a for a, _ in calls if a[:2] == ['vrelay','put']]), 1, 'one put serves both nodes')
+        self.assertEqual([a for a, _ in calls if a[:2] == ['vrelay','link']], [['vrelay','link','relay123','--hours','1']])
+        curls = [(a, i) for a, i in calls if 'curl' in a[-1]]
+        self.assertEqual(len(curls), 2, 'a spoiled fetch is fetched again')
+        for args, stdin in curls:
+            self.assertNotIn('sig=', ' '.join(args), 'the signed link never goes on a command line')
+            self.assertEqual(stdin, ('url = "' + link + '"\n').encode())
+        self.assertEqual(remove, ['rm','--','/tmp/voice-release-b.tar.gz'])
+        # Never right: the release stops before anything is staged.
+        def never(args, input=None, **kwargs):
+            if args[:2] == ['vrelay','link']: return Mock(returncode=0, stdout=(link + '\n').encode())
+            return Mock(returncode=0, stdout=b'0'*64 + b'  x\n')
+        with tempfile.TemporaryDirectory() as temp, patch.object(fleet.subprocess, 'run', side_effect=never):
+            archive = Path(temp)/'artifact.tar.gz'
+            archive.write_bytes(b'x')
+            with self.assertRaises(RuntimeError):
+                fleet.upload(devices, archive, '/tmp/voice-release-c.tar.gz', {'id': 'relay123'})
+
     def test_phone_management_artifact_is_verified_without_allowing_arbitrary_scripts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

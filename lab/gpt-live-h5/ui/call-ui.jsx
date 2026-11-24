@@ -7,6 +7,8 @@ import {createPortal, flushSync} from 'react-dom';
 import {clock, resolveStatus, splitTurns, voiceChoice} from '../call-view.mjs';
 import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
 import {Board} from './board.jsx';
+import {emptyScene} from '../board-scene.mjs';
+const liveOnlyScene = emptyScene();
 import {boardNowLine} from '../board-client.mjs';
 
 const Icon = ({d, children}) => <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">{d ? <path d={d} /> : children}</svg>;
@@ -68,9 +70,9 @@ const Portrait = memo(function Portrait() {
   );
 });
 
-function Avatar({onTap, tone, label}) {
+function Avatar({onTap, tone, label, hidden}) {
   return (
-    <div className="avatar" data-tone={tone ?? undefined} onClick={onTap} role={onTap ? 'button' : undefined}
+    <div className="avatar" hidden={hidden} data-tone={tone ?? undefined} onClick={onTap} role={onTap ? 'button' : undefined}
       aria-label={label} tabIndex={onTap ? 0 : undefined}
       onKeyDown={onTap ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onTap(); } } : undefined}>
       <span className="avatar-aura" aria-hidden="true" />
@@ -188,6 +190,11 @@ function Controls({state, actions, onHeight}) {
     <div className="controls" ref={box}>
       <form id="steerForm" className="composer" data-open={String(open && active)} onSubmit={submit}
         onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); actions.compose(false); } }}>
+        {/* A picture to make things from goes with what is typed: it lands on the board as the caller's own. */}
+        {state.referenceUpload && state.model !== 'gpt-live' && <label className="reference-picker" title="添加图片">
+          <input aria-label="添加图片" type="file" accept="image/jpeg,image/png,image/webp" disabled={!enabled} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void actions.uploadReference(file);}}/>
+          <Icon><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="m4 18 5-5 3 3 4-6 4 6"/></Icon>
+        </label>}
         <label className="sr-only" htmlFor="steerText">补充内容</label>
         <input id="steerText" ref={input} placeholder="补充给 V 的文字…" maxLength={2000} autoComplete="off" disabled={!enabled} />
         <button id="steer" type="submit" aria-label="发送补充内容" disabled={!enabled}><Icon d="m3 3 19 8-9 3-3 9-7-20Zm9 10L22 3" /></button>
@@ -475,6 +482,80 @@ function TvIsland({state,actions,status}) {
   </section>;
 }
 
+const mmss = seconds => String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+// A live broadcast is one more work on the board: the same frame, sketch and caption as a
+// picture or a video being made, with REC on the picture and the shot that is playing under it.
+function ImprovStage({show, actions}) {
+  const video = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [waited, setWaited] = useState(0);
+  const [blocked, setBlocked] = useState(false);
+  const [caption, setCaption] = useState(null);
+  const [shape, setShape] = useState(16 / 9);
+  const nextCue = useRef(null);
+  useLayoutEffect(() => { nextCue.current = show.cue; }, [show.cue]);
+  // A cue's words can arrive after its frame (a host caption follows the receipt).
+  useEffect(() => { if (caption && show.cue?.version === caption.version && show.cue.text !== caption.text) setCaption(show.cue); }, [show.cue]);
+  useEffect(() => {
+    if (playing) return;
+    const since = Date.now(), timer = setInterval(() => setWaited(Math.floor((Date.now() - since) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [playing]);
+  useEffect(() => {
+    const element = video.current;
+    let active = true, frame, version = 0;
+    setPlaying(false); setBlocked(false);
+    element.srcObject = show.stream ?? null;
+    if (!show.stream) return;
+    // The embedded peer and this visible video share the RTP clock. A cue
+    // arriving between two paints stays hidden until its frame reaches here.
+    const present = (_now, metadata) => {
+      if (!active || !element.videoWidth) return;
+      setPlaying(true); setSeconds(Math.floor(metadata?.mediaTime ?? element.currentTime)); setBlocked(false); setShape(element.videoWidth / element.videoHeight);
+      const cue = nextCue.current;
+      if (cue && cue.version > version && (cue.rtp == null || metadata?.rtpTimestamp == null ||
+          ((metadata.rtpTimestamp - cue.rtp) >>> 0) < 0x80000000)) {
+        version = cue.version; setCaption(cue);
+      }
+    };
+    const tick = (time, metadata) => { present(time, metadata); if (active) frame = element.requestVideoFrameCallback(tick); };
+    const fallback = () => { if (element.readyState >= 2 && !element.paused) present(); };
+    if (element.requestVideoFrameCallback) frame = element.requestVideoFrameCallback(tick);
+    else element.addEventListener('timeupdate', fallback);
+    element.play().catch(() => { if (active) setBlocked(true); });
+    return () => {
+      active = false;
+      if (frame != null) element.cancelVideoFrameCallback(frame);
+      element.removeEventListener('timeupdate', fallback);
+      element.srcObject = null;
+    };
+  }, [show.stream]);
+  return <figure className="board-work improv-stage" data-kind="live" data-state={playing ? 'live' : 'making'} aria-label="即兴直播">
+    <div className="board-work-frame" style={{'--shape': shape}}>
+      {show.imageUrl && !playing && <img className="board-work-under" src={show.imageUrl} alt="" decoding="async"
+        onLoad={e => { if (!video.current?.videoWidth) setShape(e.target.naturalWidth / e.target.naturalHeight); }} />}
+      {!playing && <div className="board-work-sketch" data-over={show.imageUrl ? 'true' : undefined}>
+        <i /><i /><i />
+        {blocked ? <button type="button" className="board-report" onClick={() => video.current.play().catch(() => setBlocked(true))}>点一下开始播放</button>
+          : <p>{show.stream ? '第一幕马上到' : '正在连线直播'}<span> · {waited} 秒</span></p>}
+      </div>}
+      <video ref={video} id="improvVideo" className="board-work-print" data-loaded={playing || undefined} playsInline muted autoPlay />
+      {playing && <span className="improv-rec" role="timer" aria-label={'正在直播，已录制 ' + mmss(seconds)}><i />REC <time>{mmss(seconds)}</time></span>}
+      {playing && <button type="button" className="board-work-sound" data-quiet={show.muted || undefined} aria-pressed={!show.muted}
+        aria-label={show.muted ? '恢复直播声音' : '静音直播声音'} onClick={actions.toggleImprovSound}>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />{show.muted ? <path d="m16 9.5 5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" />}</svg>
+      </button>}
+    </div>
+    <figcaption>
+      {show.name && <span className="board-work-name">{show.name}</span>}
+      <small>{playing ? 'V 主持的直播 · 说下一幕就能改' : '用这张开场'}</small>
+      <button type="button" className="improv-end" onClick={actions.endImprov}>收播</button>
+    </figcaption>
+    <p className="improv-cue" aria-live="polite" key={caption?.version ?? 0}>{playing && caption?.text ? caption.text : show.note || ''}</p>
+  </figure>;
+}
+
 function CallPage({view, actions, options}) {
   const state = useView(view);
   const active = state.call !== 'idle';
@@ -504,7 +585,9 @@ function CallPage({view, actions, options}) {
   const width = Math.min(viewport.width, 560), {height} = viewport;
   const compact = inCall && !wide && (overflow || height < 560 || state.composer.open && height < 700);
   const scene = inCall && (!state.tvHost || state.tvLayout === 'full') && (state.board?.blocks.length || state.board?.title) ? state.board : null;
-  const board = scene && !boardHidden && !(history && !wide) ? scene : null;
+  const currentScene = scene || (inCall && (state.improv || state.recordings?.length) ? liveOnlyScene : null);
+  const board = !boardHidden && !(history && !wide) ? currentScene : null;
+  useEffect(() => { if (state.improv?.id) setBoardHidden(null); }, [state.improv?.id, state.improv?.focus]);
   // What V is saying in answer to the caller's latest words: shown on a page that has nothing on it yet.
   const replyRows = [...state.transcript.history, ...state.transcript.current].filter(row => !row.document && row.text?.trim()).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const lastUser = replyRows.findLastIndex(row => row.role === 'user');
@@ -553,10 +636,10 @@ function CallPage({view, actions, options}) {
         style={{'--avatar-size': Math.round(size) + 'px', '--controls-height': Math.ceil(controlsHeight) + 'px'}}>
         <header className="topbar" aria-live="off">
           {state.call === 'connected' || state.call === 'ending' ? <time className="call-clock">{state.callStartedAt ? clock(now - state.callStartedAt) : ''}</time> : null}
-          {scene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
+          {currentScene && !board && !history && <button type="button" className="board-open" onClick={() => setBoardHidden(null)}>看画面</button>}
         </header>
         <section className="stage" aria-label="V">
-          <Avatar onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
+          <Avatar key="portrait" onTap={openTasks} tone={voice === 'hearing' ? status.who.tone : null} label={working ? state.tasks.every(task=>task.execution==='foreground')?'查看当前任务':'查看后台任务' : 'V'} />
           {!inCall && (
             <div className="home">
               <a className="avatar-name" href={`./${window.location.search}`} aria-label="V 通话首页">V</a>
@@ -585,8 +668,8 @@ function CallPage({view, actions, options}) {
           )}
           {inCall && !state.reading && <StatusLine status={status} onTask={openTasks} actions={actions} />}
         </section>
-        {board && <Board tv={state.tvHost} scene={board} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
-          works={state.boardAssets ? {...state.boardAssets, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
+        {board && <Board tv={state.tvHost} scene={board} recordings={state.recordings} liveId={state.improv?.id} liveFocus={state.improv?.focus} liveMedia={state.improv && <ImprovStage key={state.improv.id} show={state.improv} actions={actions}/>} canvas={state.boardCanvas} spoken={state.boardSpoken} caption={caption} loadPhoto={options.loadBoardPhoto} onClose={() => setBoardHidden(true)}
+          works={state.boardAssets ? {...state.boardAssets, visible:options.boardWorks?.visible, pick: options.boardWorks?.pick, shown: options.boardWorks?.shown, save: options.boardWorks?.save, viewing: options.boardWorks?.viewing, autoSound: options.boardWorks?.autoSound, film: options.boardWorks?.film, inline: options.boardWorks?.inline, act: state.composer.enabled ? text => void actions.steer(text) : null}
             : options.boardWorks?.save ? {save: options.boardWorks.save, viewing: options.boardWorks.viewing, autoSound: options.boardWorks.autoSound, film: options.boardWorks.film} : null}
           onReport={[...state.transcript.history, ...state.transcript.current].some(row => row.document) ? openReport : null} />}
         {inCall && (

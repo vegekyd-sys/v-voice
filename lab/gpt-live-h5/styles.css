@@ -38,7 +38,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [role="button"]:focu
   outline: 3px solid #a28eb7;
   outline-offset: 4px;
 }
-button svg, .status svg, .entry-notice-icon svg, .task-icon svg {
+button svg, .reference-picker svg, .status svg, .entry-notice-icon svg, .task-icon svg {
   width: 22px;
   height: 22px;
   stroke: currentColor;
@@ -99,6 +99,7 @@ p, h1, h2, h3 { margin: 0; }
 }
 
 /* ---------- avatar: one circle, state in the light behind it ---------- */
+.avatar[hidden] { display: none; }
 .avatar {
   position: relative;
   flex: 0 0 auto;
@@ -2315,3 +2316,25 @@ html[data-tv-layout="full"] .board-block{transform:none;animation:none}
 html[data-tv-layout="full"] .board-item .board-key{font-size:25px}
 html[data-tv-layout="full"] .board-item > span{font-size:20px}
 html[data-tv-layout="full"] .board{mask-image:none;-webkit-mask-image:none}
+/* The live picture sits where a made picture sits: the page's own body, centred. */
+.board-live-media { justify-items: center; }
+.improv-stage { gap: 10px; }
+.improv-stage .board-work-frame > video { background: #1d1722; }
+.improv-stage .board-work-frame > video:not([data-loaded]) { opacity: 0; }
+.improv-stage figcaption { align-items: center; }
+.improv-end { min-height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: #fffdfb; color: #4a3a56; font: 600 13px/1 var(--hand); box-shadow: 0 0 0 1px #4d35601f, 0 6px 12px -8px #4d356066; cursor: pointer; }
+.improv-end:hover { box-shadow: 0 0 0 1px var(--pen), 0 6px 12px -8px #4d356066; }
+/* The shot that is on screen now, written on the board in the lesson's hand. */
+.improv-cue { min-height: 1.6em; max-width: 30em; margin: 0; font-family: var(--hand); font-size: 20px; font-weight: 600; line-height: 1.5; color: #4a3a56; text-align: center; animation: board-in .5s ease-out both; }
+.improv-cue:empty { animation: none; }
+.composer .reference-picker { position: relative; flex: 0 0 auto; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--ink); cursor: pointer; }
+.composer .reference-picker:hover { background: #4d35600f; }
+.composer .reference-picker input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.composer .reference-picker:focus-within { outline: 2px solid var(--pen); }
+.board-dots { pointer-events: auto; gap: 0; bottom: 0; }
+.board-dots button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.improv-rec { position: absolute; z-index: 3; top: 18px; left: 18px; display: inline-flex; align-items: center; gap: .4em; padding: .24em .55em; border-radius: 4px; background: #181219b0; color: #fff; font: 600 12px/1.4 system-ui; letter-spacing: .04em; pointer-events: none; }
+.improv-rec i { width: .6em; height: .6em; border-radius: 50%; background: #ff515b; animation: improv-rec 1.6s ease-in-out infinite; }
+.improv-rec time { font-variant-numeric: tabular-nums; }
+@keyframes improv-rec { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .improv-rec i { animation: none; } }

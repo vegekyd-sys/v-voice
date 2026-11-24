@@ -4,6 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
+import {createImprovShow} from './improv-live.mjs';
 import {createDirectVoiceService,directInstructions} from './session.mjs';
 import {GPT_LIVE_VOICE_CHOICES} from './gpt-live-provider.mjs';
 import {SEEDUPLEX_VOICES,SEEDUPLEX_VOICE_CHOICES} from '../seeduplex-realtime-provider.mjs';
@@ -25,7 +26,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   return invoke(args,method);
  }};
  const service=createDirectVoiceService({gateway,...(options.relayPingMs?{relayPingMs:options.relayPingMs}:{}),...(options.backendDeviceURL?{backendDeviceBundle:{root:'/fixture/backend-device-bundle',sha256:'a'.repeat(64)},backendDeviceBundleProbe:async()=>true}:{}),wsModule:{WebSocket:WS,WebSocketServer:Server},apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:v=>audit.push(v),contentAckTimeoutMs:20,backendPollMs:1,narration:{firstMs:0,factGapMs:0},...options});
- const reservation=await service.reserve({model,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
+ const reservation=await service.reserve({model,improv:options.improv,gateway:options.publicGateway??options.gateway??gateway,sessionKey:options.sessionKey??'agent:makaron:explicit:personal-fixture',voice:options.voice,inputPolicy:options.inputPolicy??(options.surface==='speaker'?'native':undefined),sessionBound:options.sessionBound,toolIdentity:options.toolIdentity,callerIdentity:options.callerIdentity,unidentified:options.unidentified,actorScoped:options.actorScoped,replyTarget:options.replyTarget,surface:options.surface??'phone',nativeRuntimeVersion:options.nativeRuntimeVersion,nativeLocationVersion:options.nativeLocationVersion,nativeDeviceActions:options.nativeDeviceActions,backendDeviceURL:options.backendDeviceURL,terminalAdapter:options.terminalAdapter});
  const client=new EventEmitter();client.readyState=1;client.sent=[];if(options.pings)client.ping=()=>{client.pings=(client.pings??0)+1;};client.send=raw=>{const value=JSON.parse(raw);client.sent.push(value);if(value.type==='backend.result'&&options.autoContentAck!==false)queueMicrotask(()=>service.contentShown(value.voiceSessionId,value.callId));};client.close=()=>{client.readyState=3;client.emit('close');};
  if(options.beforeAttach)await options.beforeAttach({service,reservation,client,peers});
  service.upgrade({},client,Buffer.alloc(0),reservation.voiceSessionId,reservation.relayTicket);
@@ -1729,6 +1730,12 @@ test('a quiet call still sends something down to the caller every few seconds, a
  const lines=f.client.sent.filter(value=>value.type==='keepalive');assert(lines.length>=3);assert.deepEqual(lines[0],{type:'keepalive'});
  f.client.readyState=3;f.client.emit('close',1006);await delay(10);const after=f.client.pings;await delay(80);assert.equal(f.client.pings,after);
 });
+test('the keepalive line goes only to a web page; the iOS App gets the protocol ping alone',async t=>{
+ // The released App hangs up on any line of a native-runtime call it cannot read as a runtime frame.
+ const f=await fixture(undefined,'seeduplex',{pings:true,relayPingMs:20,nativeRuntimeVersion:1});t.after(()=>f.service.dispose());
+ await delay(110);assert(f.client.pings>=3,'the App is still pinged');
+ assert(!f.client.sent.some(value=>value.type==='keepalive'),'no line the App cannot read');
+});
 test('a running tool is not silence',async t=>{
  const f=await fixture(()=>new Promise(()=>{}),'seeduplex',idleTiming);t.after(()=>f.service.dispose());
  f.event({type:'response.function_call_arguments.done',items:[{call_id:'slow',name:'current_time',arguments:'{}'}]});
@@ -1985,6 +1992,84 @@ test('what a call was making when its connection was lost is finished where the 
  }
 });
 
+function fakeDirector(calls=[]){
+ return createImprovShow({run:async args=>{
+   calls.push(args);
+   if(args[0]==='start')return {id:'a123',phase:'waiting',playerPath:'/director/player.html#a123.'+'x'.repeat(43)};
+   if(args[0]==='direct')return {action:'send'};
+   return {phase:'ended'};
+ }});
+}
+
+test('improv tool joins a display call and steers its existing show without a gateway task',async t=>{
+ const calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ assert(f.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'给我们来场直播'})),false);
+ f.call('improv_live',{action:'start',shot:'橘猫推开便利店的门'},'start');
+ await delay(0);
+ const show=f.client.sent.find(v=>v.type==='improv.live');
+ assert.equal(show.action,'start');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'街角跑来一只猫',item_id:'scene-2'});
+ f.call('improv_live',{action:'direct',shot:'转向街角'},'steer');
+ await delay(0);
+ assert.deepEqual(calls.filter(c=>c[0]==='direct').map(c=>c.at(-1)),['转向街角']);
+ assert.equal(f.invocations.some(v=>v?.tool==='improv_live'),false);
+ const ordinary=await fixture();
+ t.after(()=>ordinary.service.dispose());
+ assert(!ordinary.client.sent.find(v=>v.type==='ready').tools.includes('improv_live'));
+});
+
+test('empty optional live arguments from a realtime model mean not given',async t=>{
+ const calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'text',text:'开个直播'})),false);
+ f.call('improv_live',{action:'start',shot:'橘猫推开便利店的门',caption:'',openingImage:'',imagePosition:0},'start');
+ await delay(0);
+ assert.equal(f.client.sent.find(v=>v.type==='improv.live')?.action,'start');
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'一只小橘猫跳上柜台',item_id:'scene-2'});
+ f.call('improv_live',{action:'direct',shot:'小橘猫跳上柜台',caption:'小橘猫跳上柜台',openingImage:'',imagePosition:0},'steer');
+ await delay(0);
+ assert.deepEqual(calls.map(c=>c[0]),['start','direct']);
+});
+
+test('a transcript without a model tool call cannot start a show',async t=>{
+ const calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'帮我开个直播吧。',item_id:'first'});
+ await delay(3300);
+ assert.equal(calls.length,0);
+});
+
+test('a spoken invitation can open on the picture selected in this call',async t=>{
+ const {createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
+ const assets=createAssetShelf({}), calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{assets,improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ const owner=f.reservation.voiceSessionId, image='https://cdn.example/lighthouse.png';
+ assets.add('different-call',{url:'https://cdn.example/other.png'});
+ const say=text=>f.event({type:'conversation.item.input_audio_transcription.completed',transcript:text,item_id:'fixture-input'});
+ const start=id=>f.call('improv_live',{action:'start',shot:'灯塔的光扫过港湾',openingImage:'current'},id);
+ say('请用这张海报，然后开始一场直播好吗？');
+ start('missing');
+ await delay(0);
+ assert(!f.client.sent.some(e=>e.type==='improv.live'));
+ const first=assets.add(owner,{url:image});
+ assets.add(owner,{url:'https://cdn.example/harbor.png'});
+ assets.pick(owner,first.id);
+ say('你可以用这张图开始一场直播吗？');
+ start('with-image');
+ await delay(0);
+ assert.equal(calls.find(c=>c[0]==='start')?.at(-1),image);
+ assert.equal(await assets.openingImage(owner,'a999'),'');
+ assert.equal(await assets.openingImage(owner,'https://cdn.example/unlisted.png'),'');
+ assets.pick(owner,'');
+ assert.equal(await assets.openingImage(owner,'current'),'https://cdn.example/harbor.png');
+});
+
 for(const model of ['grok','seeduplex'])test(model+' dispatches creation using the admitted Feishu scope and explains insufficient credits without opening checkout',async t=>{
   const scopes=[];
   const mediaCli={sessionAccounts:true,async forCall({scope,authorize}){
@@ -2042,6 +2127,20 @@ test('a partial actor catalog cannot fall through to native Makaron exec',async 
   assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/未开放前台创作/);
 });
 
+test('a confirmation can open the exact picture the model selects from the call',async t=>{
+ const {createAssetShelf,SELF_IMAGE}=await import('../gpt-live-h5/board-assets.mjs');
+ const assets=createAssetShelf({standing:[SELF_IMAGE]}), calls=[],improv=fakeDirector(calls);
+ const f=await fixture(undefined,'grok',{assets,improv});
+ t.after(()=>{improv.close();return f.service.dispose();});
+ const owner=f.reservation.voiceSessionId;
+ const portrait=assets.add(owner,{url:'https://cdn.example/portrait.jpg',name:'巴黎巧克力店的小老板',from:'v'});
+ const street=assets.add(owner,{url:'https://cdn.example/street.jpg',name:'巴黎巧克力店门口'});
+ assets.visible(owner,[portrait.id,street.id]);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'是的。',item_id:'confirmed'});
+ f.call('improv_live',{action:'start',shot:'开门营业',openingImage:portrait.id},'start');
+ await delay(0);
+ assert.deepEqual(calls.filter(c=>c[0]==='start').map(c=>c.at(-1)),['https://cdn.example/portrait.jpg']);
+});
 test('Doubao speaks in the voice the caller chose on the page; a dial without one, and a speaker, keep the default',async t=>{
  const output=f=>f.upstream.sent.find(e=>e.type==='session.create').session.audio.output.voice;
  const plain=await fixture(undefined,'seeduplex');t.after(()=>plain.service.dispose());

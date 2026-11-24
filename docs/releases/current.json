@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-session-media-20261122",
-  "version": "voice-session-media.20261122.1",
-  "entryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
-  "deviceEntryCommit": "2961768c348f872e270e9e67f5df9949e1a477bc",
-  "filesSha256": "92bc285e6a6923a508faa42f7dd8d6833974105e7c20c546b304b608151d8c2c",
-  "registration": "voice-session-media-20261122/release.json",
-  "previousEntryCommit": "6f7babc44377ff1b1758a1844e7ea5ffe1f92d52",
+  "release": "voice-makaron-director-20261124",
+  "version": "voice-makaron-director.20261124.5",
+  "entryCommit": "53fe532cb76e1b25b48d93eb85e849a0e3d96f5e",
+  "deviceEntryCommit": "53fe532cb76e1b25b48d93eb85e849a0e3d96f5e",
+  "filesSha256": "d5938dcce074869b3b49905cf8906c58267fca51fe18001c3ae78cb999eadac2",
+  "registration": "voice-makaron-director-20261124/release.json",
+  "previousEntryCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-22T21:06:39+08:00",
-  "runtimeDifference": "飞书群和私聊通话使用当前会话绑定的 Makaron 账号创作，新会话按需注册，积分不足时提示回原飞书会话充值。本次也发布了 #253 的服务端及网页更新。"
+  "validatedAt": "2026-11-24T23:45:00+08:00",
+  "runtimeDifference": "讲解画布里的即兴直播（仅私人入口）、完整原话字幕、录像上传放宽到 15 分钟；其余与上一版相同。"
 }
