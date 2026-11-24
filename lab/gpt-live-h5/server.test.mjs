@@ -17,7 +17,7 @@ async function fixture(t, overrides = {}) {
   } };
   if (overrides.gatewayReady !== undefined) gateway.ready = overrides.gatewayReady;
   const offers = [];
-  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, enableGptLive11: overrides.enableGptLive11 ?? false, enableGptLiveOne: overrides.enableGptLiveOne ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate });
+  const bridge = createLiveH5Server({ gateway, offer: async (session, sdp) => { offers.push({ session, sdp }); return "v=0\r\nanswer"; }, enableGrok: overrides.enableGrok ?? true, enableGptLive11: overrides.enableGptLive11 ?? false, enableGptLiveOne: overrides.enableGptLiveOne ?? true, preview: overrides.preview, defaultModel: overrides.defaultModel, avatarLog: overrides.avatarLog, avatarEvaluate: overrides.avatarEvaluate, directVoice: overrides.directVoice, gptProvider:overrides.gptProvider, speakerRouting:overrides.speakerRouting, phoneInputPolicy:overrides.phoneInputPolicy,callControlEvaluate:overrides.callControlEvaluate,...(overrides.director?{director:overrides.director,directorOrigin:overrides.directorOrigin}:{}) });
   await new Promise((resolve) => bridge.server.listen(0, "127.0.0.1", resolve));
   t.after(() => bridge.dispose());
   const url = `http://127.0.0.1:${bridge.server.address().port}`;
@@ -558,4 +558,20 @@ test('a Doubao voice sent by the page is one the page offers, or the call is not
  assert.equal((await f.request('session',{model:'seeduplex',voice:'taozi'})).status,200);assert.equal(reserved[0].voice,'taozi');
  assert.equal((await f.request('close',{voiceSessionId:'test-doubao-1'})).status,200);
  assert.equal((await f.request('session',{model:'seeduplex'})).status,200);assert.equal(reserved[1].voice,undefined);
+});
+
+test('the Director relay passes a recording part offset and total, and nothing else from the page',async t=>{
+  const {createServer}=await import('node:http');
+  const seen=[];
+  const upstream=createServer((req,res)=>{let body='';req.on('data',d=>body+=d);req.on('end',()=>{seen.push({path:req.url,headers:req.headers,body});res.writeHead(200,{'content-type':'application/json'});res.end('{"size":3}');});});
+  await new Promise(resolve=>upstream.listen(0,'127.0.0.1',resolve));t.after(()=>upstream.close());
+  const f=await fixture(t,{director:async()=>({}),directorOrigin:'http://127.0.0.1:'+upstream.address().port});
+  const id='0b5a9f3e-1c2d-4e5f-8a9b-0c1d2e3f4a5b',ticket='t'.repeat(43);
+  const send=headers=>fetch(f.url+'/api/director/player/recording?id='+id,{method:'POST',headers:{'x-director-player':ticket,'content-type':'video/mp4',...headers},body:'abc'});
+  assert.equal((await send({'x-recording-offset':'0','x-recording-final':'3','x-other':'1'})).status,200);
+  assert.equal((await send({'x-recording-offset':'-1','x-recording-final':'3e9'})).status,200);
+  assert.equal(seen[0].headers['x-recording-offset'],'0');assert.equal(seen[0].headers['x-recording-final'],'3');
+  assert.equal(seen[0].headers['x-other'],undefined);assert.equal(seen[0].body,'abc');
+  assert.equal(seen[1].headers['x-recording-offset'],undefined,'malformed offsets are not passed on');
+  assert.equal(seen[1].headers['x-recording-final'],undefined);
 });

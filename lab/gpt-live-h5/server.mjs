@@ -534,6 +534,8 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           if(!/^[a-zA-Z0-9_-]{43}$/.test(ticket??'') || !/^[a-f0-9-]{36}$/.test(id??''))return json(res,403,{error:'播放票据无效'});
           target.searchParams.set('id',id);
           for(const key of ['x-director-player','x-fal-target-url','content-type'])if(req.headers[key])headers[key]=req.headers[key];
+          // A recording arrives in parts; each names its byte offset, the last also the total.
+          if(pathname.endsWith('/recording'))for(const key of ['x-recording-offset','x-recording-final'])if(/^\d{1,12}$/.test(req.headers[key]??''))headers[key]=req.headers[key];
         }
         const closed = new AbortController();
         // A recording leaves the caller's browser after the show over whatever uplink it has;
