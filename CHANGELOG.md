@@ -3,6 +3,12 @@
 
 
 
+
+## 2026-11-25 — Live broadcast recordings upload in parts (`voice-makaron-director.20261125.1`)
+
+- A full-flow production check found the 15-minute relay limit was not enough: Cloudflare ends a request whose origin has not answered in about 100 s (HTTP 524), so a single recording upload over the slow tunnel never finished.
+- The Makaron player now uploads 512 KB parts while the show runs (Makaron dev, `x-recording-offset`, with `x-recording-final` on the part that closes the file). The Voice relay passes those two headers on, numeric only, for the recording upload.
+
 ## 2026-11-25 — The owner's entries pay for media with the owner's account (`voice-owner-media.20261125.1`)
 
 - A call from Tianyi's own entry (`permissionProfile` `personal-tianyi`) mapped to a group whose self-registered Makaron account had 2 credits. Since 2026-11-22 the call paid for media with that group binding, while the same session's background tasks pay with the account the Gateway injects (the owner's, 34k credits). An image request on the call reported insufficient credits.
