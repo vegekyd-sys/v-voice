@@ -332,6 +332,8 @@ export function normalizeOp(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   switch (raw.op) {
     case 'none': case 'clear': return {op: raw.op};
+    // The page's title written again (it was written before V spoke, in another language than V then spoke).
+    case 'title': { const title = text(raw.title, 40); return title ? {op: 'title', title} : null; }
     case 'scene': { const from = typeof raw.from === 'string' && /^z\d{1,6}$/u.test(raw.from) ? {from: raw.from} : {}; return raw.lesson === true ? {op: 'scene', title: text(raw.title, 40), lesson: true, ...(raw.late === true ? {late: true} : {}), ...from} : {op: 'scene', title: text(raw.title, 40), ...from}; }
     case 'del': { const id = ident(raw.id, ''); return id ? {op: 'del', id} : null; }
     // Back to an earlier page of the canvas (its id is "z" and its number).
@@ -361,6 +363,19 @@ export function normalizeOp(raw) {
 }
 
 const focusTargets = block => block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? [];
+/**
+ * The things named on a page, in the order they are laid out (the items of its lists, steps and
+ * comparisons that have a name; six at most). For a voice that explains in its own words: told what
+ * the page already shows, it can name those things in that order, and the mark follows it by name.
+ */
+export function namedThings(scene, limit = 6) {
+  const names = [];
+  for (const block of scene?.blocks ?? []) for (const item of focusTargets(block)) {
+    const name = String(item?.h ?? item?.label ?? '').trim();
+    if (name && Array.from(name).length <= 24 && !names.includes(name)) names.push(name);
+  }
+  return names.slice(0, limit);
+}
 /** Whether a focus id ("block" or "block/item") points at something on screen. */
 export function focusExists(scene, id) {
   const [blockId, itemId] = id.split('/'), block = scene.blocks.find(b => b.id === blockId);
@@ -378,7 +393,9 @@ function anchorOf(item, all) {
   const quote = item.q ? loose(item.q) : '';
   if (quote && all.includes(quote)) return quote;
   const name = loose(String(item.h ?? item.label ?? ''));
-  for (let length = name.length; length >= 3; length--) if (all.includes(name.slice(0, length))) return name.slice(0, length);
+  // (A name of two characters counts when V says the whole of it: 虾饺, 故宫. A page put up before V speaks has
+  // only names to go by, and without this such an item waited for a quote from a later drawing, seconds behind.)
+  for (let length = name.length; length >= Math.min(3, Math.max(2, name.length)); length--) if (all.includes(name.slice(0, length))) return name.slice(0, length);
   const figure = item.value === undefined ? '' : loose(String(item.value));
   if (figure.length >= 2) for (const text of [figure + loose(String(item.unit ?? '')), figure]) if (all.includes(text)) return text;
   return '';
@@ -443,6 +460,12 @@ export function spokenProgress(scene, spoken, index) {
 const quotesOf = scene => scene.blocks.flatMap(block => [block.q, ...focusTargets(block).map(item => item.q), ...(block.t === 'flow' || block.t === 'stage' ? block.edges.map(edge => edge[3]) : [])]).filter(Boolean);
 /** Whether `text` is (part of) the script this scene's pieces hang on. */
 export const speaksOf = (scene, text) => { const all = loose(String(text ?? '')); return quotesOf(scene).some(quote => all.includes(loose(quote))); };
+/**
+ * A script captioned as far as the voice has got (a model that reads it itself): the cues it has
+ * not reached are not in the caption yet. They are put after it, so those pieces wait for the
+ * voice like the rest instead of counting as tied to nothing V says.
+ */
+export const withCuesToCome = (scene, text) => `${text ?? ''}\n${quotesOf(scene).join('。')}`;
 /** A lesson before its first word: every piece that hangs on the script is still to come. */
 export const unspoken = scene => spokenProgress(scene, quotesOf(scene).join('。'), 0);
 export const edgeId = (block, from, to) => `${block.id}/${from}>${to}`;
@@ -452,6 +475,7 @@ export const spokenFocus = (scene, spoken, index) => spokenProgress(scene, spoke
 export function applyOp(scene, op) {
   const next = change => ({...scene, ...change, rev: scene.rev + 1});
   switch (op?.op) {
+    case 'title': return op.title && op.title !== scene.title && scene.blocks.length && scene.pending === null ? next({title: op.title}) : scene;
     case 'scene':
       // Announcing the picture already on screen is not a new picture.
       if (scene.blocks.length && scene.pending === null && op.title === scene.title) return scene;

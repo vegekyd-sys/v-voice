@@ -10,11 +10,11 @@ import { createAvatarReactions } from "./avatar-reactions.mjs";
 import { createAvatarTelemetry } from "./avatar-telemetry.mjs";
 import { createBoardClient, createLessonGate, createSpokenCursor, readEventStream, spokenRate } from "./board-client.mjs";
 import { createAssetsClient } from "./board-assets-client.mjs";
-import { speaksOf, spokenProgress, unspoken } from "./board-scene.mjs";
+import { speaksOf, spokenProgress, unspoken, withCuesToCome } from "./board-scene.mjs";
 import { mountAvatar } from "./avatar.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { createContentView } from "./content-view.mjs";
-import { createCallView } from "./call-view.mjs";
+import { createCallView, VOICE_SLOTS } from "./call-view.mjs";
 import { mountCallUi } from "./ui-bundle.mjs";
 import { createTranscriptPresentation } from "./transcript-presentation.mjs";
 import { createPageMicrophoneSession } from "./microphone-session.mjs";
@@ -51,7 +51,7 @@ if (document.querySelector) mountCallUi(document, view, {
     copyBinding: () => void copyIosBinding(),
     revokeBinding: id => void revokeIosBinding(id),
     closeSessionSheet: () => { view.set({ sessionSheet:null }); const url=new URL(window.location.href);url.searchParams.delete('call');window.history.replaceState(null,'',url); },
-    dial: () => void startCall(), hangup: () => void stopCall(),
+    dial: () => { redials = 0; void startCall(); }, hangup: () => void stopCall(),
     redial: () => void stopCall().then(() => startCall()),
     resume: () => void recoverPlaybackGesture(),
     steer: text => sendSteer(text), cancelTasks: () => cancelTasks(),
@@ -62,6 +62,8 @@ if (document.querySelector) mountCallUi(document, view, {
     composerOpen: () => view.get().composer.open,
     chooseModel: id => { if (view.get().models.some(model => model.id === id && model.available)) view.set({ model: id }); },
     chooseGrokVoice: id => view.set(state => ({ grok: { ...state.grok, voice: id } })),
+    // The caller's voice for a model (Settings): kept in this browser, sent with the next dial.
+    chooseVoice: (model, id) => { const slot = VOICE_SLOTS[model]; if (!slot || !view.get()[slot.state].voices.some(voice => voice.id === id)) return; try { localStorage.setItem(slot.storage, id); } catch {} view.set(state => ({ [slot.state]: { ...state[slot.state], voice: id } })); },
   },
 });
 if (document.querySelector) mountChangelog(document, window);
@@ -667,7 +669,7 @@ async function stopCall({failure}={}) {
   view.set(state => ({ dial: { ...state.dial, disabled: false }, stopLabel: "结束通话", badge: liveReady ? "可以拨号" : "暂未连接",
     composer: { enabled: false, open: false }, modelDisabled: false }));
   view.set({failureCode:failure?.code??null});
-  setStatus(failure?.message??"拨号后，直接说话。",{tone:failure?"error":"info"});
+  setStatus(failure?.message??"拨号后，直接说话。",{tone:failure&&failure.code!=='RELAY_REDIALING'?"error":"info"});
   if (active) {
     await active.context?.close().catch(() => {});
     if (active.voiceSessionId) await api("close", { voiceSessionId: active.voiceSessionId }).catch(() => {});
@@ -681,7 +683,27 @@ async function microphoneGranted() {
     return (await Promise.race([query,new Promise(resolve=>setTimeout(resolve,150))]))?.state==="granted";
   } catch { return false; }
 }
-async function startCall() {
+// A call whose connection is cut (neither side hung up) is dialled again by itself: the service keeps
+// its board for the next call, and V is told to take up where it stopped. Twice in a row at most;
+// a call that held for half a minute starts the count again. What the page saw goes with the dial.
+let redials = 0;
+async function redialLostCall(active, failure, closed = {}) {
+  const heldMs = active.readyAt == null ? 0 : Math.round(performance.now() - active.readyAt);
+  if (active.provider !== 'gpt-live-11' || heldMs < 3000 || view.get().confirmation) return stopCall({failure});
+  if (heldMs > 30000) redials = 0;
+  if (redials >= 2) return stopCall({failure});
+  redials++;
+  const lost = {code: closed.code ?? null, clean: closed.clean === true, quietMs: closed.quietMs ?? null, silentMs: closed.silentMs ?? null, heldMs, online: navigator.onLine !== false, hidden: document.hidden === true, net: String(navigator.connection?.effectiveType ?? '').slice(0, 12)};
+  // The audio context is kept: one made without a tap may never start on a phone.
+  const context = active.context; active.context = null;
+  // The lost call is not closed from here: the service saw its socket go, and an explicit close is a hang-up
+  // there (it lets the call's board go, which the call that follows is to carry on).
+  active.voiceSessionId = null;
+  await stopCall({failure: Object.assign(Error('连接断了一下，正在接回…'), {code: 'RELAY_REDIALING'})});
+  if (call || starting) { await context?.close().catch(() => {}); return; }
+  await startCall({context, resumed: lost});
+}
+async function startCall(options = {}) {
   if (starting || call || view.get().confirmation) return;
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
   if(tvHost&&hasTvArrayCapture()&&!tvArraySupportsModel(view.get().model)){setStatus("当前电视阵列输入支持豆包和 Grok，请选择豆包。",{tone:"error"});return;}
@@ -690,13 +712,13 @@ async function startCall() {
     performance.clearMarks?.(name);
   markVoiceTiming("voice.dial.requested");
   view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
-  setCallState("dialing"); setStatus("正在连接 V…");
+  setCallState("dialing"); setStatus(options.resumed ? "连接断了一下，正在接回…" : "正在连接 V…");
   resetTranscript();view.set({failureCode:null});
   const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
-  if (speakerCandidate()||['seeduplex','grok'].includes(chosenModel)) {
+  if (speakerCandidate()||['seeduplex','grok','gpt-live-11'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
-    active.context = new AudioContext({latencyHint:"interactive"});
+    active.context = options.context ?? new AudioContext({latencyHint:"interactive"});
     active.contextResume = active.context.resume();
   }
   // Each call owns its sound element; a late play() from an older call cannot
@@ -707,7 +729,7 @@ async function startCall() {
   // before this shared call starts its normal ring; no native call policy.
   try { window.VTVStartupCue?.finish?.(); } catch {}
   active.sounds = createCallSounds({ audioElement: active.soundElement, sharedContext: active.context });
-  void active.sounds.dial();
+  if (!options.resumed) void active.sounds.dial();
   // Activity metadata stays in this page's memory only. It contains no audio,
   // transcript, session identifiers or claim that the model was interrupted.
   active.duplexDiagnostics = { kind: "duplex-playback", schemaVersion: 2, closed: false,
@@ -753,17 +775,18 @@ async function startCall() {
     }
     if(call!==active)return;
     const withCapture=async pending=>captureReady?(await Promise.all([pending,captureReady]))[0]:pending;
-    const selectedModel = ['seeduplex','grok'].includes(chosenModel)?chosenModel:'gpt-live';
+    const selectedModel = ['seeduplex','grok','gpt-live-11'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
-    const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:{})};
+    const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:selectedModel==='seeduplex'&&view.get().doubao.voice?{voice:view.get().doubao.voice}:{})};
     let reservation;
-    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok'].includes(selectedModel)){
+    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
       reservation=await withCapture(active.dialConnection.reservation);
-    }else reservation=await withCapture(api('session',params));
+    }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));
+    active.provider=reservation.provider;
     active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if(captureError)throw captureError;
@@ -822,7 +845,7 @@ async function startCall() {
             const stats = active.relay?.stats, textLength = Array.from(row.text).length;
             const index = stats ? cursor.index({ key: row.key, textLength, outputBytes: stats.outputBytes, queuedBytes: stats.queuedOutputBytes, charsPerSecond: spokenRate(row.text) }) : textLength;
             // (`said`: how far into this reply the voice is, for the line under a phone's page.)
-            return { ...spokenProgress(scene, row.text, index), said: index, reply: row.key };
+            return { ...spokenProgress(scene, scene.lesson && !row.complete ? withCuesToCome(scene, row.text) : row.text, index), said: index, reply: row.key };
           } });
         return spoken;
       };
@@ -860,7 +883,7 @@ async function startCall() {
         subscribePcm:active.capture?.subscribePcm,bufferedOutput:Boolean(tvHost&&hasTvArrayCapture()),
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall({failure:error});},
-        onClosed:()=>{if(call===active)void stopCall({failure:active.remoteEnding?undefined:Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"})});},
+        onClosed:closed=>{if(call!==active)return;if(active.remoteEnding)void stopCall();else void redialLostCall(active,Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"}),closed);},
         onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
@@ -900,7 +923,7 @@ async function startCall() {
         }});
       await active.relay.start();if(call!==active)return;
       startPresentationRecovery(active);
-      setCallState('connected');view.set({badge:'通话中',stopLabel:'结束通话',composer:{enabled:true,open:false}});
+      active.readyAt=performance.now();setCallState('connected');view.set({badge:'通话中',stopLabel:'结束通话',composer:{enabled:true,open:false}});
       setStatus('V 正在听，直接说话就好');
       void active.sounds.connected();
       active.heartbeat=setInterval(()=>void api('heartbeat',{voiceSessionId:active.voiceSessionId}).catch(()=>{}),15000);
@@ -1122,11 +1145,22 @@ function applyEntryStatus(status) {
     if(tvHost&&!tvDefaultModel(models).available){liveReady=false;entryError='豆包暂不可用，请稍后重试。';}
     const grok = status.models?.find(item => item.id === "grok");
     const grokVoices = grok?.voices ?? [];
+    const live11 = status.models?.find(item => item.id === "gpt-live-11"), liveVoices = live11?.voices ?? [];
+    let liveVoice = null; try { liveVoice = localStorage.getItem('v.gptLive11.voice'); } catch {}
+    const doubao = status.models?.find(item => item.id === "seeduplex"), doubaoVoices = doubao?.voices ?? [];
+    let doubaoVoice = null; try { doubaoVoice = localStorage.getItem(VOICE_SLOTS.seeduplex.storage); } catch {}
     view.set({ models, model, confirmOnDial:status.confirmationAvailable===true&&status.unidentified===true&&!guestDialAllowed, confirmationAvailable:status.confirmationAvailable===true, accessContext:status.accessContext??null, publicHref:status.publicHref??null, accountLoginHref: status.accountLoginHref??null, accountLabel: status.accountLabel??null, conversation: status.conversation ?? null, iosBindingAvailable: status.iosBindingAvailable === true, unidentified:status.unidentified===true, grok: {
       voices: grokVoices.map(voice => ({ id: voice.id, label: voice.label })),
       voice: grokVoices.some(voice => voice.id === "iris") ? "iris" : grokVoices[0]?.id ?? null,
       hint: [grok?.speed && grok.speed !== 1 ? `${grok.speed}× 语速` : "", grok?.expressiveTags ? "自主表达试用" : ""].filter(Boolean).join(" · "),
       listenHref: `./compare${window.location.search}`, listenAvailable: status.comparisonAvailable === true,
+    }, live11: {
+      voices: liveVoices.map(voice => ({ id: voice.id, label: voice.label })),
+      voice: liveVoices.some(voice => voice.id === liveVoice) ? liveVoice : liveVoices.some(voice => voice.id === live11?.voice) ? live11.voice : liveVoices[0]?.id ?? null,
+    }, doubao: {
+      // (A service that lists no voices for Doubao gets none sent: the dial is the one it always was.)
+      voices: doubaoVoices.map(voice => ({ id: voice.id, label: voice.label })),
+      voice: doubaoVoices.some(voice => voice.id === doubaoVoice) ? doubaoVoice : doubaoVoices.some(voice => voice.id === doubao?.voice) ? doubao.voice : doubaoVoices[0]?.id ?? null,
     } });
     view.set(state => ({ badge: liveReady ? "可以拨号" : status.preview === false ? "后端重连中" : "页面预览", dial: { ...state.dial, disabled: !liveReady || Boolean(state.confirmation) } }));
     if (liveReady) {

@@ -5,10 +5,33 @@
 import {UPLOAD_BACKPRESSURE} from './upload-backpressure.mjs';
 
 export class PcmPlaybackQueue {
-  constructor(rate, prefillMs=120, maxFrames=8*1024*1024) {
-    this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.maxFrames=maxFrames;this.clear();
+  // `growMs` / `maxMs`: a voice that arrives no faster than it plays (GPT Live) never gets ahead of
+  // the network, so the window it starts with is all it has. Each time the queue runs dry in the
+  // middle of a reply the window grows, up to `maxMs`, and stays grown for the call.
+  constructor(rate, prefillMs=120, maxFrames=8*1024*1024, {growMs=0,maxMs=prefillMs}={}) {
+    this.rate=rate;this.prefill=Math.ceil(rate*prefillMs/1000);this.grow=Math.ceil(rate*growMs/1000);this.maxPrefill=Math.ceil(rate*Math.max(prefillMs,maxMs)/1000);this.maxFrames=maxFrames;
+    // A pause held for a voice that is behind (see `quietAhead`): what counts as quiet (about -42 dBFS), how
+    // much quiet must already have played before it counts as a pause, and how long one pause may be held.
+    // Kept on the instance: this class is also the source of the audio thread's copy.
+    this.quietSample=260;this.pauseMin=Math.ceil(rate*.12);this.holdMax=Math.ceil(rate*.5);this.reserveMax=Math.ceil(rate*.2);this.stretched=0;this.clear();
   }
-  clear(){this.chunks=[];this.head=0;this.offset=0;this.frames=0;this.phase=0;this.wait=0;this.playing=false;this.consumed=0;this.underflows=0;this.lastPlayedAt=null;this.complete=false;this.holdUntilComplete=false;this.paused=false;}
+  starved(){this.underflows++;if(this.grow)this.prefill=Math.min(this.maxPrefill,this.prefill+this.grow);}
+  // GPT Live's voice is sent a little slower than it plays (measured: 91 to 98 packets for every 100 due,
+  // none lost, nothing left out of its timestamps), so a queue played at full speed is eaten until it runs
+  // dry in the middle of a word and waits to fill again: one to three breaks in every long answer. A
+  // player made for this stretches the sound a little. Here the pauses V makes anyway are held a little
+  // longer instead: while less than the window is waiting, 120 ms of quiet have just played and what comes
+  // next is quiet too, nothing is taken from the queue (half a second at most for one pause). The 120 ms
+  // keep it out of words: the closure of a stop consonant is quiet as well, but shorter.
+  // The window a reply starts with (a third of a second) lasts six seconds of speech at the slowest speed
+  // measured, and a story can go longer than that without a pause. So a pause is also used to put a
+  // little by: with the window full, up to 200 ms more of one pause, until the largest window is waiting.
+  quietAhead(){
+    const span=Math.min(this.frames,240); // 10 ms of the 24 kHz stream
+    for(let i=0;i<span;i+=6)if(Math.abs(this.peek(i))>=this.quietSample)return false;
+    return span>0;
+  }
+  clear(){this.chunks=[];this.head=0;this.offset=0;this.frames=0;this.phase=0;this.wait=0;this.playing=false;this.consumed=0;this.underflows=0;this.lastPlayedAt=null;this.complete=false;this.holdUntilComplete=false;this.paused=false;this.held=0;this.quietRun=0;}
   hold(){this.holdUntilComplete=true;}
   end(){this.complete=true;this.holdUntilComplete=false;}
   push(pcm){this.complete=false;if(!(pcm instanceof Int16Array)||!pcm.length)throw Error('Invalid PCM');if(this.frames+pcm.length>this.maxFrames)throw Error('PCM queue overflow');this.chunks.push(pcm);this.frames+=pcm.length;}
@@ -18,15 +41,18 @@ export class PcmPlaybackQueue {
     out.fill(0);
     if(this.paused)return;
     if(this.holdUntilComplete&&!this.complete)return;
-    if(!this.frames){if(this.playing){if(!this.complete)this.underflows++;this.playing=false;this.wait=0;}return;}
+    if(!this.frames){if(this.playing){if(!this.complete)this.starved();this.playing=false;this.wait=0;}return;}
     // Even a large first packet needs a real jitter window. Previously a
     // 244ms packet bypassed prefill and a next packet at 300ms caused a hole.
     // A complete response can start immediately: no more network frames await.
     if(!this.playing){this.wait+=out.length;if(!this.complete&&this.wait<this.prefill)return;this.playing=true;this.wait=0;}
     const step=24000/this.rate;
+    const waiting=this.frames*this.rate/24000;
+    if(this.grow&&!this.complete&&this.quietRun>=this.pauseMin&&this.held<(waiting<this.prefill?this.holdMax:waiting<this.maxPrefill?this.reserveMax:0)&&this.quietAhead()){this.held+=out.length;this.stretched+=out.length;return;}
+    if(this.held&&!this.quietAhead())this.held=0;
     for(let i=0;i<out.length;i++){
-      if(!this.frames){if(!this.complete)this.underflows++;this.playing=false;this.wait=0;break;}
-      const a=this.peek(0),b=this.peek(1);out[i]=(a+(b-a)*this.phase)/32768;this.lastPlayedAt=at+(i+1)/this.rate;
+      if(!this.frames){if(!this.complete)this.starved();this.playing=false;this.wait=0;break;}
+      const a=this.peek(0),b=this.peek(1);out[i]=(a+(b-a)*this.phase)/32768;this.quietRun=Math.abs(a)<this.quietSample?this.quietRun+1:0;this.lastPlayedAt=at+(i+1)/this.rate;
       this.phase+=step;while(this.phase>=1&&this.frames){this.phase-=1;this.advance();}
       if(!this.frames)this.phase=0;
     }
@@ -36,9 +62,9 @@ export class PcmPlaybackQueue {
 // Give the worklet its own stable binding instead of relying on the outer name.
 export function relayWorkletSource(){return `const PcmPlaybackQueue = ${PcmPlaybackQueue.toString()};
 class Speaker extends AudioWorkletProcessor {
- constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
- if(!Number.isFinite(prefill)||prefill<0||prefill>1000)throw Error('Invalid playback buffer');
- this.outputMuted=false;this.queue=new PcmPlaybackQueue(sampleRate,prefill);this.epoch=0;this.tick=0;this.firstNonzeroAt=null;
+ constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120,growMs=options?.processorOptions?.prefillGrowMs??0,maxMs=options?.processorOptions?.prefillMaxMs??prefill;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
+ if(!Number.isFinite(prefill)||prefill<0||prefill>1000||!Number.isFinite(growMs)||growMs<0||!Number.isFinite(maxMs)||maxMs>1000)throw Error('Invalid playback buffer');
+ this.outputMuted=false;this.queue=new PcmPlaybackQueue(sampleRate,prefill,undefined,{growMs,maxMs});this.epoch=0;this.tick=0;this.firstNonzeroAt=null;
  this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
  else if(e.type==='output-mute')this.outputMuted=e.muted===true;
  else if(e.type==='hold'&&e.epoch===this.epoch)this.queue.hold();
@@ -49,7 +75,7 @@ class Speaker extends AudioWorkletProcessor {
  const before=this.queue.frames;this.queue.render(out,currentTime);if(this.outputMuted)out.fill(0);
  if(this.firstNonzeroAt===null){const index=out.findIndex(value=>value!==0);if(index>=0){this.firstNonzeroAt=currentTime+index/sampleRate;this.port.postMessage({type:'first-render',epoch:this.epoch,contextTime:this.firstNonzeroAt});}}
  if(this.reference)for(const value of out){this.ref[this.refPos++]=value;if(this.refPos===this.ref.length){this.port.postMessage({type:'render-reference',epoch:this.epoch,sampleRate,buffer:this.ref.buffer},[this.ref.buffer]);this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;}}
- if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused&&!this.outputMuted});return true;}
+ if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,stretchedMs:Math.round(this.queue.stretched*1000/sampleRate),lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused&&!this.outputMuted});return true;}
 }
 class Mic extends AudioWorkletProcessor {
  constructor(){super();this.sum=0;this.count=0;this.phase=0;this.frame=new Int16Array(480);this.index=0;}
@@ -62,7 +88,7 @@ registerProcessor('v-direct-speaker',Speaker);registerProcessor('v-direct-mic',M
 // wall time. AudioBufferSource uses the browser's native renderer instead.
 // Schedule only a short horizon; reclaim precisely the unplayed samples on
 // pause/hold. Policy (turns, interruption, mute) remains in the shared relay.
-export function createBufferedPcmSpeaker(context,{prefillMs=120}={}){
+export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=prefillMs}={}){
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
   let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
   let paused=false,held=false,complete=false,muted=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
@@ -97,7 +123,7 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120}={}){
     for(const b of scheduled){const left=futureFrames(b,now);pending+=left;if(now>=b.at&&left>0)playing=true;if(now>=b.at)lastPlayedAt=Math.min(now,b.at+b.pcm.length/rate);}
     trim(now);
     if(playing)starved=false;
-    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;}
+    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;if(growMs)prefillMs=Math.min(Math.max(prefillMs,maxMs),prefillMs+growMs);}
     if(!paused&&!held&&context.state==='running'&&frames){
       if(nextAt===null||nextAt<now){nextAt=Math.max(now+.02,(firstAt??now)+(complete?0:prefillMs/1000));}
       while(frames&&nextAt<now+lead){
@@ -195,7 +221,11 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   const timing=name=>{try{onTiming(name);}catch{}};
   // Recorded Grok packets: 245ms of speech, then a 595ms arrival gap.
   // 400ms protects that real startup cadence; Xiaohe retains its smaller lead.
-  const startBufferMs=reservation.provider==='grok'?400:120;
+  // GPT Live's voice arrives at the speed it plays (20 ms at a time, over the relay): with 120 ms in
+  // hand the queue ran dry about every three seconds on a real call (61 times in 167 s of speech, packets
+  // up to 0.6 s apart). It starts with more and widens when the network asks for it.
+  const realtimeVoice=reservation.provider==='gpt-live-11';
+  const startBufferMs=reservation.provider==='grok'?400:realtimeVoice?320:120,bufferGrowMs=realtimeVoice?120:0,bufferMaxMs=realtimeVoice?680:startBufferMs;
   // Grok's short greeting can arrive as two sentences with a multi-second
   // network gap. Hold only that first response to its native completion;
   // later answers keep streaming with their normal lead, and the mic stays on.
@@ -207,6 +237,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   const phone=new URLSearchParams(location.search).get('phone');if(phone)endpoint.searchParams.set('phone',phone);
   const socket=connection?.socket??new WebSocket(endpoint);socket.binaryType='arraybuffer';
   let recoveryAttempted=false;
+  let lastMessageAt=null;
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer,uploadFailed=false;
   const pendingOutput=[];
   const inputBatch=[];let inputBatchBytes=0;
@@ -272,7 +303,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     if(context.state!=='running')stateChanged();
   };
   const promise=new Promise((resolve,reject)=>{
-    socket.onmessage=e=>{if(closed)return;try{
+    socket.onmessage=e=>{if(closed)return;lastMessageAt=performance.now();try{
       const value=JSON.parse(e.data);if(value.voiceSessionId!==reservation.voiceSessionId)return;
       if(value.type==='ready'&&!ready){ready=true;stats.dialToReadyMs=Math.round(performance.now()-dialStartedAt);resolve();if(greeting)send({type:'greeting'});reportBusy();statsTimer=setInterval(reportStats,2000);}
       if(value.type==='audio')play(value);
@@ -290,7 +321,10 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       onEvent(value);
     }catch(error){reject(error);onError(error);}};
     socket.onerror=()=>{const error=Error('实时语音连接失败');reject(error);onError(error);};
-    socket.onclose=()=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed();};
+    // (How it closed goes with the report: a call cut off is dialled again, and the next call's record says what the page saw.)
+    socket.onclose=event=>{reject(Error('实时语音连接已关闭'));if(!closed)onClosed({code:Number.isInteger(event?.code)?event.code:null,clean:event?.wasClean===true,quietMs:lastReceiveAt==null?null:Math.round(performance.now()-lastReceiveAt),
+      // (`quietMs` counts from V's last sound; this from the last line of anything, the service's keepalive included.)
+      silentMs:lastMessageAt==null?null:Math.round(performance.now()-lastMessageAt)});};
   });void promise.catch(()=>{});
   connection?.adopt();
   // Received PCM is retained until the speaker node exists, so a dial that
@@ -311,12 +345,12 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     if(context.state!=='running')throw Error('麦克风和声音已暂停，请轻点页面后重新拨号。');
     const buffered=bufferedOutput&&typeof subscribePcm==='function'&&typeof renderReference!=='function';
     stats.bufferedOutput=buffered?1:0;
-    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs});
+    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs,growMs:bufferGrowMs,maxMs:bufferMaxMs});
     else {
       const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
       try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
       if(closed)return;
-      speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,renderReference:typeof renderReference==='function'}});
+      speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,prefillGrowMs:bufferGrowMs,prefillMaxMs:bufferMaxMs,renderReference:typeof renderReference==='function'}});
     }
     speaker.port.postMessage({type:'output-mute',muted:outputMuted});speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
@@ -328,7 +362,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       if(e.type==='render-reference'){renderReference?.(e.buffer,e.sampleRate);return;}
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
       if(e.type!=='playback')return;
-      stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;lastPlayedAt=e.lastPlayedAt;
+      stats.queuedOutputBytes=Math.max(0,written-e.consumed)*2;stats.underflows=e.underflows;if(Number.isFinite(e.stretchedMs))stats.stretchedMs=e.stretchedMs;lastPlayedAt=e.lastPlayedAt;
       if(stats.queuedOutputBytes===0&&!e.playing)backendPlayback=false;
       activity(e.playing&&context.state==='running');reportBusy();
     };

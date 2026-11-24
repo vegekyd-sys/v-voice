@@ -7,7 +7,10 @@ import {
   SeeduplexRealtimeVoiceBridge,
   SEEDUPLEX_MODEL,
   SEEDUPLEX_RESOURCE_ID,
+  SEEDUPLEX_VOICE,
+  SEEDUPLEX_VOICE_CHOICES,
   SEEDUPLEX_VOICES,
+  seeduplexVoice,
   buildSeeduplexAgentConsultPrompt,
   buildSeeduplexRealtimeVoiceProvider,
   buildSeeduplexSession,
@@ -50,13 +53,13 @@ function floatAudio(samples) {
   return value.toString("base64");
 }
 
-test("provider exposes one model and the two named voice profiles", () => {
+test("provider exposes one model and its named voice profiles", () => {
   const provider = buildSeeduplexRealtimeVoiceProvider({
     env: { VOLCENGINE_REALTIME_API_KEY: "configured" },
   });
   assert.equal(provider.id, "seeduplex");
   assert.deepEqual(provider.models, [SEEDUPLEX_MODEL]);
-  assert.deepEqual(provider.voices, ["xiaohe", "companion"]);
+  assert.deepEqual(provider.voices, ["xiaohe", "companion", "vv", "taozi", "linjia", "shunv", "yunzhou"]);
   assert.deepEqual(provider.capabilities.transports, ["gateway-relay"]);
   assert.equal(provider.capabilities.supportsToolCalls, true);
   assert.equal(provider.isConfigured({ providerConfig: {} }), true);
@@ -1034,4 +1037,19 @@ test('without native duplex a lesson still stops at the first sound, as before',
  const f=await lessonFixture(false);t.after(()=>f.bridge.close());
  f.e({type:'conversation.item.input_audio_transcription.started'});
  assert.equal(f.cancels(),1);
+});
+
+test("the page's voice choices are speakers this provider maps, the default first, and nothing else is a caller's choice", () => {
+  assert.equal(SEEDUPLEX_VOICE_CHOICES[0].id, SEEDUPLEX_VOICE);
+  assert.equal(seeduplexVoice(), "xiaohe");
+  for (const { id, label } of SEEDUPLEX_VOICE_CHOICES) {
+    assert.match(SEEDUPLEX_VOICES[id], /^zh_(?:female|male)_[a-z0-9]+_uranus_bigtts$/);
+    // "name · trait": Settings shows the two parts apart.
+    assert.match(label, /^\S+ · \S+$/u);
+    assert.equal(seeduplexVoice(id), id);
+    assert.equal(buildSeeduplexSession({ model: SEEDUPLEX_MODEL, voice: id }, { tools: [] }).session.audio.output.voice, SEEDUPLEX_VOICES[id]);
+  }
+  assert.equal(new Set(SEEDUPLEX_VOICE_CHOICES.map(choice => SEEDUPLEX_VOICES[choice.id])).size, SEEDUPLEX_VOICE_CHOICES.length);
+  // Mapped for the provider but not offered, another model's voice, a raw speaker id, nothing at all.
+  for (const voice of ["companion", "sol", "zh_female_vv_uranus_bigtts", "", null]) assert.throws(() => seeduplexVoice(voice), /豆包音色/u);
 });

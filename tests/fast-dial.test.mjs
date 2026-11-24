@@ -46,12 +46,20 @@ test('web one-socket dial preserves HTTP input policy and raw events without opt
  const reservation=await connection.reservation;
  assert.equal(reservation.dialVersion,2);assert.equal(reservation.relayTicket,undefined);
  const received=[];connection.socket.onmessage=e=>received.push(JSON.parse(e.data));
- connection.adopt();await new Promise(r=>setImmediate(r));
+ // (The frame crosses a real socket: under a loaded test run it is not always there one turn of the loop later.)
+ connection.adopt();for(let i=0;i<200&&!received.length;i++)await new Promise(r=>setTimeout(r,5));
  assert.equal(received[0].type,'ready');assert.equal(received[0].voiceSessionId,reservation.voiceSessionId);
  const args=f.calls.find(c=>c[0]==='reserve')[1];
  assert.equal(args.nativeRuntimeVersion,undefined);assert.equal(args.inputPolicy,'speaker');
  assert.equal(f.calls.filter(c=>c[0]==='sessions.describe').length,1);
  assert.equal(f.calls.filter(c=>c[0]==='reserve').length,1);
+});
+test('web one-socket dial carries the page\'s Doubao voice to the reservation, and one it does not offer makes no call',async t=>{
+ const f=await fixture(t,{web:true}),cookie=await f.login(entries[0]);
+ const refused=await f.connect(entries[0],cookie,'&voice=sol').done;
+ assert.deepEqual(refused.messages,[{type:'dial.error',status:400}]);assert.equal(f.calls.some(c=>c[0]==='reserve'),false);
+ const {messages}=await f.connect(entries[0],cookie,'&voice=taozi').done;
+ assert.deepEqual(messages.map(m=>m.type),['reservation','ready']);assert.equal(f.calls.find(c=>c[0]==='reserve')[1].voice,'taozi');
 });
 test('web dial rejects native runtime, unknown policy and forged identity before reservation',async t=>{
  const f=await fixture(t,{web:true}),cookie=await f.login(entries[0]);

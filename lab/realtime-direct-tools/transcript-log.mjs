@@ -34,7 +34,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     if(closed||!event||typeof event.voiceSessionId!=='string')return false;
     const id=event.voiceSessionId;
     if(event.type==='call.created'){
-      if(!['seeduplex','grok','openai'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
+      if(!['seeduplex','grok','openai','gpt-live-11'].includes(event.provider)||typeof event.sessionKey!=='string'||typeof event.model!=='string')return false;
       owners.set(id,{voiceSessionId:id,sessionKey:event.sessionKey,provider:event.provider,model:event.model,modelSource:'voice_reservation'});
       return enqueue({...owners.get(id),type:'call.created'});
     }
@@ -79,7 +79,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     // A conversation record left out because Seeduplex refused it on an earlier call (no content).
     if(event.type==='call.record-skipped')return enqueue({...owner,type:event.type,reason:event.reason==='refused-earlier'?'refused-earlier':'unknown'});
     if(event.type==='call.provider-status'){
-      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','input-burst','input-backlog-dropped','context-dropped','upstream-closed'].includes(event.stage))return false;
+      if(!['upstream-error','reconnecting','recovered','input-paused','input-resumed','input-burst','input-backlog-dropped','context-dropped','upstream-closed','greeting-requested','lesson-unprompted','promise-unkept','promise-kept','farewell-unprompted','ending-held'].includes(event.stage)&&!/^media-(?:ice-)?[a-z]{1,20}$/u.test(String(event.stage)))return false;
       const safe={stage:event.stage};
       // What the voice service said when it ended the session itself: a few short fields
       // (reason, code, message), by plain keys, never audio or text of the call.
@@ -87,9 +87,11 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         if(['string','number','boolean'].includes(typeof value))safe['closed.'+key]=String(value).replace(/[\u0000-\u001f\u007f]/gu,' ').slice(0,120);
       if(['configuration','input-timeout','upstream-transient','upstream-rejected','network','setup-timeout'].includes(event.category))safe.category=event.category;
       if(typeof event.upstreamCode==='string'&&/^\d{3,8}$/.test(event.upstreamCode))safe.upstreamCode=event.upstreamCode;
-      for(const key of ['sessionAgeMs','attempt','stalledMs','arrivedMs','droppedMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['sessionAgeMs','attempt','stalledMs','arrivedMs','droppedMs','elapsedMs','rtpIn','rtpOut','pcmOut','peak','sources','lost','skippedMs','backlogMs','gapMs','filledMs','earlyMs','lateMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
+    // Which tool a GPT Live delegation became and how it was decided; never the words.
+    if(event.type==='gpt-live.routed')return enqueue({...owner,type:event.type,name:typeof event.name==='string'?event.name.slice(0,80):null,via:['decision','model','fallback','none'].includes(event.via)?event.via:'none',...(Number.isSafeInteger(event.elapsedMs)&&event.elapsedMs>=0?{elapsedMs:event.elapsedMs}:{}),...(event.ahead===true?{ahead:true}:{}),...(typeof event.said==='string'?{said:event.said.slice(0,200)}:{})});
     if(event.type==='tool.search-metrics'){
       if(!['web_search','memory_search'].includes(event.name)||typeof event.callId!=='string')return false;
       const safe={name:event.name,callId:event.callId.slice(0,160)};
@@ -134,7 +136,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='client.playback-stats'){
       const stats={};
-      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','droppedInputFrames','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','stretchedMs','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','droppedInputFrames','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
       for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
       if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;
       return enqueue({...owner,type:event.type,stats});
@@ -175,6 +177,14 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       for(const key of ['deviceId','reason'])if(typeof event[key]==='string'&&/^[a-z0-9_-]{1,64}$/u.test(event[key]))safe[key]=event[key];
       for(const key of ['latencyMs','durationMs','inputBytes','outputBytes','userTurns','gatedInputBytes','maxInputGapMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
+    }
+    // A call the page dialled by itself after its connection was cut: what the page saw of the lost one, as numbers and flags.
+    if(event.type==='call.resumed'){
+      const safe={};
+      for(const key of ['code','quietMs','silentMs','heldMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['clean','online','hidden'])if(typeof event[key]==='boolean')safe[key]=event[key];
+      if(typeof event.net==='string'&&/^[a-z0-9-]{1,12}$/u.test(event.net))safe.net=event.net;
+      return enqueue({...owner,type:'call.resumed',...safe});
     }
     if(event.type==='call.closed'){
       closedOwners.set(id,owner);if(closedOwners.size>256)closedOwners.delete(closedOwners.keys().next().value);

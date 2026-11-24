@@ -3,6 +3,7 @@ const {getRealtimeVoiceProvider,resolveConfiguredRealtimeVoiceProvider,consultRe
 import {createVoiceTasks} from './tasks.mjs';
 import {createVoiceGptProvider} from './provider.mjs';
 import {readVoiceTaskResult} from './delivery.mjs';
+import {createVoiceGptAuth} from './auth.mjs';
 export default {
  id:'v-voice-gpt-live',name:'V Voice GPT Live adapter',
  register(api){
@@ -37,6 +38,17 @@ export default {
   if(!row||row.ownerConnId!==client?.connId||params?.mode!=='end'){respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice control requires its authenticated reservation owner'});return;}
   try{respond(true,row.delivery.end());}catch{respond(false,undefined,{code:'INVALID_REQUEST',message:'Voice reservation is closed'});}
  },{scope:'operator.write'});
+ // The Gateway's ChatGPT login for the voice service's own calls (GPT Live 1.1): see auth.mjs. The host's
+ // calls are loaded when first asked for, so a host without them still loads this plugin and its provider;
+ // only a connection with the admin scope (the voice service's) is answered.
+ let voiceAuth=null;
+ const loadVoiceAuth=()=>voiceAuth??=Promise.all([import('openclaw/plugin-sdk/provider-auth'),import('openclaw/plugin-sdk/agent-scope-runtime')])
+  .then(([auth,scope])=>createVoiceGptAuth({resolveToken:auth.resolveProviderAuthProfileApiKey,resolveIdentity:auth.resolveOpenAICodexAuthIdentity,resolveAgentDir:scope.resolveAgentDir,resolveDefaultAgentId:scope.resolveDefaultAgentId}))
+  .catch(error=>{voiceAuth=null;throw error;});
+ api.registerGatewayMethod('voice.product.gpt-live-auth',async({params,respond})=>{
+  try{respond(true,await (await loadVoiceAuth())({cfg:api.config,agentId:params?.agentId}));}
+  catch{respond(false,undefined,{code:'UNAVAILABLE',message:'ChatGPT login unavailable'});}
+ },{scope:'operator.admin'});
  api.registerRealtimeVoiceProvider(createVoiceGptProvider({reservations,deviceContexts,
   getBase:cfg=>getRealtimeVoiceProvider('openai',cfg),
   isConfigured:ctx=>{try{return Boolean(resolveConfiguredRealtimeVoiceProvider({configuredProviderId:'openai',cfg:ctx.cfg,agentId:ctx.agentId,surface:'browser-session',providerConfigOverrides:ctx.providerConfig}).provider);}catch{return false;}},

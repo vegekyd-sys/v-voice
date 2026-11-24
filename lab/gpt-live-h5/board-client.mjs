@@ -8,14 +8,15 @@ import {orderedTranscriptRows} from './transcript-presentation.mjs';
 export const BOARD_REQUEST_TIMEOUT_MS = 25000;
 export const BOARD_PROGRESS_INTERVAL_MS = 1500;
 const SETTLE_MS = 350;
-// What V has said so far that is worth drawing from: whole sentences, or, when
-// the first sentence is a long one, its clauses up to the last comma (a first
-// sentence can take seven seconds to say, and the page stood empty for all of them).
+// What V has said so far that is worth drawing from: whole sentences, and, of a long
+// sentence V is still in, its clauses up to the last comma (a sentence can take seven
+// seconds to say, and the page stood still for all of them). This was first done for a
+// reply's first sentence only: after a short one ("好呀！") a long second sentence was not
+// reported until its end, and on calls of 11/23 the page asked for nothing for 12 to 18 s.
 const sentences = text => {
   const whole = text.match(/[^。！？.!?\n]+[。！？.!?\n]+/gu)?.join('').trim() ?? '';
-  if (whole) return whole;
-  const clauses = text.match(/^[\s\S]*[，、：；,:;]/u)?.[0].trim() ?? '';
-  return Array.from(clauses).length >= 14 ? clauses : '';
+  const clauses = text.match(/[^。！？.!?\n]*$/u)[0].match(/^[\s\S]*[，、：；,:;]/u)?.[0] ?? '';
+  return Array.from(clauses.trim()).length >= 14 ? (whole + clauses).trim() : whole;
 };
 const signature = row => row ? row.key + '\u0000' + row.text : '';
 
@@ -59,6 +60,7 @@ export function createSpokenCursor({now = () => performance.now()} = {}) {
  * the page follows the voice, and shows everything once V has finished.
  * `progress(text, index)` is spokenProgress for this scene.
  */
+const everyPiece = scene => scene.blocks.flatMap(block => [block.id, ...(block.t === 'compare' ? block.cols : block.t === 'flow' ? block.nodes : block.items ?? []).map(item => `${block.id}/${item.id}`)]);
 export function createLessonGate({now = () => Date.now(), patienceMs = 15000} = {}) {
   let serial = null, spoke = false, since = 0, shown = new Set();
   return {
@@ -69,16 +71,19 @@ export function createLessonGate({now = () => Date.now(), patienceMs = 15000} = 
       if (scene.serial !== serial) { serial = scene.serial; spoke = scene.late === true; since = now(); shown = new Set(); }
       const pieces = unspoken(scene).ahead;
       // What has appeared stays: a later reply that happens to use a piece's
-      // words again ("对啦，小火龙怕水") must not take it off the page.
+      // words again ("对啦，小火龙怕水") must not take it off the page. Nor is a piece that
+      // was up before V's words came to it (a picture put up on the caller's question, hung
+      // on nothing) taken off when V's text, which runs ahead of the voice, names it.
+      const visible = ahead => { for (const id of [...pieces, ...everyPiece(scene)]) if (!ahead.includes(id)) shown.add(id); };
       const following = () => {
         const at = progress(), ahead = at.ahead.filter(id => !shown.has(id));
-        for (const id of pieces) if (!ahead.includes(id)) shown.add(id);
+        visible(ahead);
         return {...at, ahead};
       };
       if (speaking && (spoke || speaksOf(scene, text))) { spoke = true; return following(); }
       // Not begun (and not given up on): nothing is shown yet.
       if (!spoke && now() - since < patienceMs) return unspoken(scene);
-      for (const id of pieces) shown.add(id);
+      visible([]);
       return speaking ? following() : null;
     },
   };

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {BOARD_INSTRUCTIONS, boardDirectorFromEnv, boundedBoardRequest, createBoardDirector, mayAskForLesson, createChatCompletionStream} from './board-director.mjs';
+import {BOARD_INSTRUCTIONS, boardDirectorFromEnv, boardRequest, boundedBoardRequest, createBoardDirector, mayAskForLesson, createChatCompletionStream, nameLanguage, LANGUAGE_INSTRUCTIONS} from './board-director.mjs';
 
 const lines = (...ops) => ops.map(op => JSON.stringify(op)).join('\n');
 const scripted = (...replies) => {
@@ -333,6 +333,13 @@ test('a script\'s page is started when the script arrives; the caller\'s screen 
   assert.equal(seen.at(-1).scene.blocks[0].t, 'list');
   assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: script}]})).reason, 'same');
   assert.equal(calls, 1);
+  // A voice whose captions arrive a clause at a time, in its own punctuation, and a reading that
+  // was interrupted and picks up in the middle: still this script's page, never drawn again.
+  for (const text of ['罗马景点散,', '罗马景点散,先按三天排。', '第一天从斗兽场开始,票和古罗马广场是同一张。'])
+    assert.equal((await director.run({owner: 'c', trigger: 'assistant_progress', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text}]})).reason, 'same');
+  assert.equal(calls, 1);
+  // Words that are not in the script are a new reply.
+  assert.notEqual((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: '佛罗伦萨其实更适合慢慢逛，两天就够了。'}]})).reason, 'same');
 });
 
 test('hedged: a reply that has not started in time is raced by a second request', async () => {
@@ -387,4 +394,160 @@ test('a lesson starting keeps the title and print being drawn for the question; 
   const result = await run;
   assert.equal(result.reason, 'drawn');
   assert.deepEqual(director.scene('q').blocks.map(block => block.t), ['photo']);
+});
+
+test('a caller\'s turn that draws nothing leaves the script\'s page in place for the rest of the reading', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  let calls = 0, next = null;
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* () {
+    calls++;
+    if (next) { yield next; return; }
+    yield '{"op":"scene","title":"罗马三天"}\n{"op":"put","block":{"id":"l","t":"list","items":[{"id":"a","h":"斗兽场","q":"第一天从斗兽场开始"}]}}\n';
+  }});
+  const script = '罗马景点散，先按三天排。第一天从斗兽场开始，票和古罗马广场是同一张。';
+  director.note('c', {title: '罗马三天', ask: '那罗马怎么玩', script, lines: [{say: script, show: ''}]});
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: 0, turns: [{role: 'assistant', text: script}]})).reason, 'joined');
+  // A cough, heard as a turn of the caller's: the director draws nothing for it.
+  next = '{"op":"none"}\n';
+  const cough = await director.run({owner: 'c', trigger: 'user', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: '罗马景点散，先按三天排。'}, {role: 'user', text: '嗯'}]});
+  assert.notEqual(cough.reason, 'drawn');
+  const before = calls;
+  assert.equal((await director.run({owner: 'c', trigger: 'assistant_progress', clientRev: director.scene('c').rev, turns: [{role: 'user', text: '嗯'}, {role: 'assistant', text: '第一天从斗兽场开始，票和古罗马广场是同一张。'}]})).reason, 'same');
+  assert.equal(calls, before);
+});
+
+// A page drawn from V's own words (no script): which pictures it holds, and that each is searched for once.
+const cuePage = async () => { const {CUE_INSTRUCTIONS, cueTurns, refineCueOp} = await import('./board-cue.mjs'); return {instructions: CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true}; };
+const line = value => JSON.stringify(value) + '\n';
+const picture = (id, h, img, cue) => ({id, h, img, ...(cue === undefined ? {} : {cue})});
+
+test('pictures of an answer: a thing written again keeps its picture; the same list written again is one list; each picture is asked for once', async () => {
+  const said = ['老城有三处值得看。先到钟楼，', '老城有三处值得看。先到钟楼，楼顶能看到全城。再走到石桥，', '老城有三处值得看。先到钟楼，楼顶能看到全城。再走到石桥，桥头有石狮子。最后是码头。'];
+  const replies = [
+    line({op: 'scene', title: '老城'}) + line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [picture('a', '钟楼', '老城 钟楼', 1), picture('b', '城墙', '老城 城墙')]}}),
+    // The same thing under other search words, the item V has not come to left out, a new one under a used id.
+    line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [picture('a', '钟楼', '钟楼 全景 实拍', 1), {...picture('b', '石桥', '老城 石桥', 3), d: '桥头石狮子'}]}}),
+    line({op: 'put', block: {id: 'g', t: 'list', items: [picture('x', '码头', '老城 码头', 5), {...picture('y', '钟楼', '钟楼 夜景'), d: '看全城'}]}}),
+  ];
+  const fetched = [];
+  const director = createBoardDirector({stream: await cuePage(), prefetch: query => fetched.push(query), complete: async function* () { yield replies.shift(); }});
+  const user = {role: 'user', text: '老城怎么逛'};
+  for (const [index, text] of said.entries()) await director.run({owner: 'c', trigger: index < 2 ? 'assistant_progress' : 'assistant_end', turns: [user, {role: 'assistant', text}]});
+  const scene = director.scene('c');
+  assert.deepEqual(scene.blocks.map(block => [block.id, block.look]), [['g', 'gallery']], 'one list, still a page of pictures');
+  assert.deepEqual(scene.blocks[0].items.map(item => [item.id, item.h, item.img, item.d]), [['a', '钟楼', '老城 钟楼', '看全城'], ['b', '城墙', '老城 城墙', undefined], ['b2', '石桥', '老城 石桥', '桥头石狮子'], ['x', '码头', '老城 码头', undefined]]);
+  assert.ok(scene.blocks[0].items[0].q, 'what the new wording leaves out is kept');
+  assert.deepEqual(fetched, ['老城 钟楼', '老城 城墙', '老城 石桥', '老城 码头']);
+  // The caller speaks again: the list may then be drawn anew under the same ids ("show me more").
+  replies.push(line({op: 'none'}), line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [picture('a', '钟楼', '钟楼 夜景', 0), picture('b', '城墙', '城墙 夜景', 0), picture('b2', '石桥', '石桥 夜景', 0), picture('x', '码头', '码头 夜景', 0)]}}));
+  await director.run({owner: 'c', trigger: 'user', turns: [user, {role: 'assistant', text: said[2]}, {role: 'user', text: '换几张晚上的'}]});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [user, {role: 'assistant', text: said[2]}, {role: 'user', text: '换几张晚上的'}, {role: 'assistant', text: '好，给你换成晚上拍的这几张看看。'}]});
+  assert.deepEqual(director.scene('c').blocks[0].items.map(item => item.img), ['钟楼 夜景', '城墙 夜景', '石桥 夜景', '码头 夜景']);
+});
+
+test('pictures of an answer: a page holds six; a guess V has not come to gives up its place; a script\'s page is its author\'s', async () => {
+  const {PAGE_PICTURES} = await import('./board-director.mjs');
+  assert.equal(PAGE_PICTURES, 6);
+  const names = ['钟楼', '石桥', '码头', '集市', '城墙', '茶馆', '戏台', '渡口'];
+  const said = '老城值得看的有：' + names.slice(2).map(name => `${name}很热闹。`).join('');
+  const user = {role: 'user', text: '老城有什么可看的'};
+  // Opened on the question (two guesses), then V tells six other things.
+  const replies = [
+    line({op: 'scene', title: '老城'}) + line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [picture('a', names[0], '老城 钟楼'), picture('b', names[1], '老城 石桥')]}}),
+    line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [picture('a', names[0], '老城 钟楼'), picture('b', names[1], '老城 石桥'), ...names.slice(2).map((name, index) => picture(`n${index}`, name, `老城 ${name}`, index + 1))]}})
+      + line({op: 'put', block: {id: 'p', t: 'photo', query: '老城 全景', cue: 0}}),
+  ];
+  const requests = [];
+  const director = createBoardDirector({stream: await cuePage(), complete: async function* ({messages}) { requests.push(JSON.parse(messages[1].content)); yield replies.shift(); }});
+  await director.run({owner: 'c', trigger: 'user', turns: [user], unscripted: true});
+  assert.equal(requests[0].unscripted, true);
+  assert.deepEqual(director.scene('c').blocks[0].items.map(item => item.h), names.slice(0, 2), 'a page of pictures before V has said a word');
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [user, {role: 'assistant', text: said}], unscripted: true});
+  assert.equal('unscripted' in requests[1], false, 'said only where it changes what may be drawn');
+  const scene = director.scene('c');
+  assert.deepEqual(scene.blocks.map(block => block.t), ['list'], 'no print beside six pictures');
+  assert.deepEqual(scene.blocks[0].items.filter(item => item.img).map(item => item.h), names.slice(2), 'the six things V told; the two guesses gave way');
+  // V tells two more things: the page is full, and their names go in a list beside the pictures
+  // (a gallery shows only what is pictured). Written again, it is the same two lists.
+  const eight = [...names.slice(2), '码头边的灯塔', '老井'], longer = said + '码头边的灯塔很热闹。老井很热闹。';
+  const whole = line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: eight.map((name, index) => picture(`n${index}`, name, `老城 ${name}`, index + 1))}});
+  replies.push(whole, whole);
+  for (let again = 0; again < 2; again++) {
+    await director.run({owner: 'c', trigger: 'assistant_end', turns: [user, {role: 'assistant', text: longer}], unscripted: true});
+    assert.deepEqual(director.scene('c').blocks.map(block => [block.id, block.look, block.items.map(item => item.h), block.items.filter(item => item.img).length]),
+      [['g', 'gallery', names.slice(2), 6], ['g-rest', undefined, ['码头边的灯塔', '老井'], 0]]);
+  }
+  assert.ok(director.scene('c').blocks[1].items.every(item => item.q), 'each still comes up when V gets to it');
+  // Without the word that V explains by itself, the question alone gets a print at most.
+  const plain = createBoardDirector({stream: await cuePage(), complete: async function* ({messages}) { requests.push(JSON.parse(messages[1].content)); yield line({op: 'scene', title: '老城'}) + line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [picture('a', names[0], '老城 钟楼'), picture('b', names[1], '老城 石桥')]}}); }});
+  await plain.run({owner: 'c', trigger: 'user', turns: [user]});
+  assert.deepEqual(['unscripted' in requests.at(-1), plain.scene('c').blocks.length], [false, 0]);
+  // A script's page (the author's notes go with it) keeps every picture its author asked for,
+  // and is a page of pictures only where the author asked for one.
+  const script = names.map(name => `${name}很热闹。`).join('');
+  for (const [hint, look] of [['list 带图：加一项', undefined], ['图集：加一张', 'gallery']]) {
+    const lesson = createBoardDirector({stream: await cuePage(), complete: async function* () { yield line({op: 'scene', title: '老城'}) + line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: names.map((name, index) => picture(`n${index}`, name, `老城 ${name}`, index))}}); }});
+    lesson.note('c', {title: '老城', script, lines: names.map(name => ({say: `${name}很热闹。`, show: `${hint} ${name}`}))});
+    await lesson.run({owner: 'c', trigger: 'assistant_end', turns: [user, {role: 'assistant', text: script}]});
+    assert.deepEqual([lesson.scene('c').blocks[0].items.filter(item => item.img).length, lesson.scene('c').blocks[0].look], [8, look]);
+  }
+});
+
+test('pictures of an answer: a thing written twice in one list is on the page once', async () => {
+  const said = '老城先看钟楼，楼顶能看到全城。再看石桥，桥头有石狮子。回头再说钟楼，晚上会亮灯。';
+  const director = createBoardDirector({stream: await cuePage(), complete: async function* () {
+    yield line({op: 'scene', title: '老城'}) + line({op: 'put', block: {id: 'g', t: 'list', look: 'gallery', items: [picture('a', '钟楼', '老城 钟楼', 0), picture('b', '石桥', '老城 石桥', 2), picture('c', '钟楼', '老城 钟楼', 4), {id: 'd', h: '石桥', cue: 3}]}})
+      // (Steps may come to the same thing twice: nothing is pictured, nothing is taken out.)
+      + line({op: 'put', block: {id: 's', t: 'steps', items: [{id: 'a', h: '上楼', cue: 1}, {id: 'b', h: '过桥', cue: 3}, {id: 'c', h: '上楼', cue: 5}]}});
+  }});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [{role: 'user', text: '老城怎么逛'}, {role: 'assistant', text: said}]});
+  assert.deepEqual(director.scene('c').blocks.map(block => block.items.map(item => item.h)), [['钟楼', '石桥'], ['上楼', '过桥', '上楼']]);
+});
+
+test('pictures of an answer: a comparison written again with its rows in another order is the one table', async () => {
+  const said = ['甲车和乙车差不多大。先说续航，两台都够用。', '甲车和乙车差不多大。先说续航，两台都够用。再说价格，甲车便宜一些。'];
+  const row = (id, h, cue) => ({id, h, cells: ['甲', '乙'], cue});
+  const table = items => line({op: 'put', block: {id: 'v', t: 'versus', sides: [{h: '甲车', img: '甲车 外观'}, {h: '乙车', img: '乙车 外观'}], items}});
+  const replies = [line({op: 'scene', title: '甲车和乙车'}) + table([row('a', '续航', 1)]), table([row('a', '价格', 3), row('b', '续航', 1)])];
+  const director = createBoardDirector({stream: await cuePage(), complete: async function* () { yield replies.shift(); }});
+  const user = {role: 'user', text: '甲车和乙车怎么选'};
+  await director.run({owner: 'c', trigger: 'assistant_progress', turns: [user, {role: 'assistant', text: said[0]}]});
+  await director.run({owner: 'c', trigger: 'assistant_end', turns: [user, {role: 'assistant', text: said[1]}]});
+  assert.deepEqual(director.scene('c').blocks.map(block => [block.t, block.items.map(item => `${item.id}:${item.h}`)]), [['versus', ['a:续航', 'a2:价格']]]);
+});
+
+test('the page is written in the language V speaks, which is named for the director: asked once for each reply, beside the run', async () => {
+  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
+  const requests = [], heard = [], seen = [];
+  let name = 'français（法语）';
+  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, hear: async words => { heard.push(words); return name; },
+    eye: {find: async () => ({bytes: Buffer.from('jpeg'), type: 'image/jpeg'}), see: async args => { seen.push(args.language); return []; }},
+    complete: async function* ({messages}) { requests.push(JSON.parse(messages[1].content)); yield requests.length === 1 ? '{"op":"scene","title":"Autour de la ville"}\n{"op":"put","block":{"id":"a","t":"list","items":[{"id":"a1","h":"Le vieux port","img":"vieux port","q":"le vieux port"}]}}\n' : '{"op":"none"}\n'; }});
+  const french = "Alors, autour de la ville, tu as le vieux port, et puis";
+  const run = (trigger, text, role = 'assistant') => director.run({owner: 'c', trigger, turns: [{role: 'user', text: 'Et autour ?'}, ...(role === 'assistant' ? [{role, text}] : [])]});
+  // The first run of a reply asks beside itself and goes without a name; the next has it.
+  await run('assistant_progress', french);
+  assert.deepEqual(heard, [french]);assert.equal('language' in requests[0], false);
+  await run('assistant_progress', french + " le marché couvert, qui est très animé le matin,");
+  assert.equal(heard.length, 1, 'the same reply, longer, is not asked about again');
+  assert.equal(requests[1].language, 'français（法语）');assert.equal(Object.keys(requests[1]).at(-1), 'language', 'last, after the words it is the language of');
+  assert.equal(seen.at(-1), 'français（法语）', 'the labels on a picture are written in it too');
+  // Before V answers the next question the page goes with the language V spoke last.
+  await run('user', '', 'user');assert.equal(requests.at(-1).language, 'français（法语）');
+  // V changes language (a call that came back, 11/24): asked again, and the run after that is told.
+  name = '中文';
+  const chinese = '好呀，那我们换一个城市，先说说老城区，';
+  await run('assistant_progress', chinese);assert.equal(heard.length, 2);assert.equal(requests.at(-1).language, 'français（法语）');
+  await run('assistant_progress', chinese + '那里有一条很长的石板路，两边都是小店，');assert.equal(requests.at(-1).language, '中文');
+  // A sound of agreement is not asked about, and a director without the ability is not told anything.
+  await run('assistant_end', 'Mm-hmm.');assert.equal(heard.length, 2);
+  assert.equal('language' in JSON.parse(boardRequest({trigger: 'user', scene: director.scene('c'), turns: [], evidence: []})), false);
+  assert.match(BOARD_INSTRUCTIONS, /请求里的 language 是 V 说话的语言/u);assert.match(BOARD_INSTRUCTIONS, /不要因为画面上是另一种语言就接着用那种语言写/u);
+});
+test('the language is named in one short line', async () => {
+  const says = reply => nameLanguage({words: 'x'.repeat(400), complete: async function* ({messages}) { assert.equal(messages[0].content, LANGUAGE_INSTRUCTIONS); assert.equal(messages[1].content.length, 120); yield* reply; }});
+  assert.equal(await says(['「fran', 'çais（法语）」\n这句话是法语。']), 'français（法语）');
+  assert.equal(await says(['中文。']), '中文');
+  assert.equal(await says(['']), '');
+  assert.equal(await says(['这句话里夹着好几种语言，很难说主要是哪一种，可能是英语也可能是别的']), '', 'an essay is not a name');
 });

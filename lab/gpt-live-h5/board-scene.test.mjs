@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, galleryLayout, normalizeOp, normalizeScene, scalePositions, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
+import {applyOp, createLineParser, emptyScene, flowLayout, focusExists, galleryLayout, namedThings, normalizeOp, normalizeScene, scalePositions, sceneDigest, spokenFocus, spokenProgress} from './board-scene.mjs';
 
 const put = block => normalizeOp({op: 'put', block});
 const run = (...ops) => ops.reduce((scene, op) => applyOp(scene, normalizeOp(op)), emptyScene());
@@ -247,4 +247,37 @@ test('gallery pictures keep their shape in level rows that fit the room', () => 
   // Before the width is known: two to a row.
   assert.deepEqual(galleryLayout([1, 1, 1], 0).rows, [[0, 1], [2]]);
   assert.deepEqual(galleryLayout([], 500).rows, []);
+});
+
+test('the things named on a page are listed in the order they are laid out, once each, six at most', () => {
+  const scene = {blocks: [
+    {id: 'p', t: 'photo', query: 'a harbour'},
+    {id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '灯塔', img: 'x'}, {id: 'b', h: '码头'}, {id: 'c', h: ''}, {id: 'd', h: '灯塔'}]},
+    {id: 's', t: 'steps', items: [{id: 'e', h: '先买票'}, {id: 'f', h: '一个很长很长很长很长很长很长很长很长很长很长的说明不算名字'}]},
+    {id: 'n', t: 'sticky', text: '傍晚去'},
+  ]};
+  assert.deepEqual(namedThings(scene), ['灯塔', '码头', '先买票']);
+  assert.deepEqual(namedThings({blocks: [{id: 'l', t: 'list', items: Array.from({length: 9}, (_, i) => ({id: 'i' + i, h: '第' + i + '样'}))}]}).length, 6);
+  assert.deepEqual(namedThings(null), []);
+});
+
+test('an item with only a name takes the mark when V says the whole name, two characters included', () => {
+  const scene = {blocks: [{id: 'g', t: 'list', look: 'gallery', items: [{id: 'a', h: '白灼虾', img: 'x'}, {id: 'b', h: '虾饺', img: 'y'}, {id: 'c', h: '叉烧', img: 'z'}]}]};
+  const said = '先说白灼虾,清水一烫就很鲜。虾饺呢,皮薄。';
+  const at = phrase => Array.from(said.slice(0, said.indexOf(phrase) + phrase.length)).length;
+  assert.equal(spokenProgress(scene, said, at('先说白灼虾')).focus, 'g/a');
+  assert.equal(spokenProgress(scene, said, at('虾饺')).focus, 'g/b');
+  // Not yet said: still to come, and never by a single character of its name.
+  assert.deepEqual(spokenProgress(scene, said, at('虾饺')).ahead, []);
+  assert.equal(spokenProgress(scene, '虾仁很嫩,叉子别用。', 10).focus, '');
+});
+
+test('the title of a page can be written again without touching what is on it', () => {
+  let scene = emptyScene();
+  for (const op of [{op: 'scene', title: 'La vieille ville'}, {op: 'put', block: {id: 'a', t: 'list', items: [{id: 'a1', h: '老城'}]}}]) scene = applyOp(scene, normalizeOp(op));
+  const renamed = applyOp(scene, normalizeOp({op: 'title', title: '老城'}));
+  assert.equal(renamed.title, '老城');assert.equal(renamed.serial, scene.serial);assert.deepEqual(renamed.blocks, scene.blocks);assert.equal(renamed.rev, scene.rev + 1);
+  assert.equal(applyOp(renamed, normalizeOp({op: 'title', title: '老城'})), renamed, 'the same title changes nothing');
+  assert.equal(normalizeOp({op: 'title', title: ''}), null);
+  assert.equal(applyOp(emptyScene(), normalizeOp({op: 'title', title: '老城'})).title, '', 'an empty page is not given a title this way');
 });
