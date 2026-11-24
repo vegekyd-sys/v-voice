@@ -58,8 +58,9 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{},s
     const timeout=show.recording ? 240_000 : 45_000;
     show.cleanup=setTimeout(()=>{show.done=true;keep(show);close(show);},timeout);
   }
-  // What the audience reads under a cue: the host's short caption, never the Director prompt.
-  const label=(show,version)=>show.labels.get(version) ?? (version===1 ? show.caption : '') ?? '';
+  // What the audience reads under a cue: the host's short caption, or the one Makaron's
+  // showrunner wrote for its own beat; never the Director prompt.
+  const label=(show,version,fallback='')=>show.labels.get(version) ?? (version===1 ? show.caption : fallback) ?? '';
   const report=(show,name,extra={})=>stage({id:show.id,stage:name,ms:Math.max(0,Math.round(clock()-show.at)),...extra});
   function finish(reason='caller'){
     const show=current;
@@ -109,7 +110,7 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{},s
       if(e.data.action==='direction'){
         if(e.data.state==='playing' && Number.isInteger(e.data.version) && e.data.version>(show.version||0)){
           if(e.data.version>1)report(show,'direction-played');
-          show.version=e.data.version;show.cue={version:e.data.version,text:label(show,e.data.version),rtp:e.data.rtpTimestamp};show.note='';
+          show.version=e.data.version;show.cue={version:e.data.version,text:label(show,e.data.version,typeof e.data.caption==='string'?e.data.caption.slice(0,40):''),rtp:e.data.rtpTimestamp};show.note='';
         } else if(e.data.state==='sent')return;
         else if(e.data.state==='rejected')show.note='这条指令未被采用';
         publish(show);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-24 — The live broadcast advances its own story (Candidate)
+
+- Makaron Director runs a showrunner on DeepSeek flash for shows opened with `--story`: it plans a 6–10 beat arc when the show starts and releases one beat once the current direction has held on screen (8 s after the opening, 7 s after its own beat, 12 s after the caller's).
+- The opening goes to the provider unchanged and the first plan runs beside connection setup, so the start is not held by planning.
+- A shot the voice model wrote is sent with `--ready`: it skips Makaron's spoken-draft cleanup and its 650 ms pacing. The live player keeps one poll open, so a new direction leaves for the provider as soon as it exists. The showrunner then drops its queued beats and replans around the caller's direction.
+- Each showrunner beat carries a short audience caption, shown under the picture like the host's captions.
+
 ## 2026-11-24 — Live broadcast review (Candidate)
 
 - The Director worker runs beside the Voice service, so signaling, directions and recording uploads no longer cross a long relay.

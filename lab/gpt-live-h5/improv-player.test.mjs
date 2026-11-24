@@ -17,6 +17,18 @@ test('tool calls open, direct and stop once using Makaron receipts',async()=>{
  assert.deepEqual(events.map(e=>e.action),['start','end']);
  assert.deepEqual(calls.map(c=>c[0]),['start','direct','stop']);
  assert.equal(calls[1].at(-1),'下雨');
+ assert.ok(calls[0].includes('--story'),'Makaron keeps the story moving between directions');
+ assert.ok(calls[1].includes('--ready'),'a shot the model wrote skips the spoken-draft cleanup');
+});
+
+test('the caller\'s own words still go through the cleanup, and the story can be turned off',async()=>{
+ const calls=[];
+ const api=createImprovShow({story:false,run:async args=>{calls.push(args);return args[0]==='start'?{id:'a2',phase:'waiting',playerPath:'/director/player.html#a2.'+'x'.repeat(43)}:{action:'send'};}});
+ await api.command({action:'start',shot:'猫'},{text:'开播'},()=>{});
+ await api.command({action:'direct'},{text:'嗯，下雨吧',id:'t9'});
+ assert.ok(!calls[0].includes('--story'));
+ assert.ok(!calls[1].includes('--ready'));
+ assert.equal(calls[1].at(-1),'嗯，下雨吧');
 });
 
 test('reopening a playing show refocuses its single player and never buys a second session',async()=>{
@@ -175,8 +187,10 @@ test('the player captions a shot with the host caption, never the Director promp
  assert.equal(updates.at(-1).cue.text,'');
  player.receive({action:'label',id:'p1',version:2,text:'小橘猫跳上柜台'});
  assert.equal(updates.at(-1).cue.text,'小橘猫跳上柜台');
+ post({action:'direction',state:'playing',version:3,text:'老板弯腰把礼盒推到小猫面前，近景',caption:'老板把礼盒推给小猫'});
+ assert.equal(updates.at(-1).cue.text,'老板把礼盒推给小猫','a showrunner beat carries its own caption');
  post({action:'ended',reason:'time'});
- assert.deepEqual(stages.map(s=>s.stage),['first-frame','direction-played','ended']);
+ assert.deepEqual(stages.map(s=>s.stage),['first-frame','direction-played','direction-played','ended']);
  assert.equal(stages[0].ms,13000);
  assert.deepEqual(ended,['time']);
  delete globalThis.window;delete globalThis.document;delete globalThis.location;

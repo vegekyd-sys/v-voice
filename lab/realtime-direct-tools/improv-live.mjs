@@ -5,7 +5,7 @@ const execute=promisify(execFile);
 
 export const IMPROV_TOOL = {
   type: 'function', name: 'improv_live',
-  description: '在当前讲解画布开一场可中途改变的娱乐直播。根据整个对话理解用户意图：明确要开播或确认了上一轮的开播提议，直接 start。找现实直播、作图、生成普通视频用相应的其他工具。用户指定首图必须带上画布素材编号、current 或画面序号；用生成的 V 图片时选这幅作品，v 仅代表原始头像。身份或图片有歧义才询问。直播中用户描述的下一幕用 direct，日常聊天直接回答。收播用 end，通话继续。等待回执再报状态，connecting 表示开始连接，不能声称已经出画。回执报错时按错误原文判断：可以换图、先 end 再 start 或如实告诉用户。',
+  description: '在当前讲解画布开一场可中途改变的娱乐直播。根据整个对话理解用户意图：明确要开播或确认了上一轮的开播提议，直接 start。找现实直播、作图、生成普通视频用相应的其他工具。用户指定首图必须带上画布素材编号、current 或画面序号；用生成的 V 图片时选这幅作品，v 仅代表原始头像。身份或图片有歧义才询问。开播后剧情会自己往下演；用户描述或要求的下一幕才用 direct，日常聊天直接回答。收播用 end，通话继续。等待回执再报状态，connecting 表示开始连接，不能声称已经出画。回执报错时按错误原文判断：可以换图、先 end 再 start 或如实告诉用户。',
   parameters: {type:'object', additionalProperties:false, required:['action'], properties:{
     action:{type:'string',enum:['start','direct','end']},
     shot:{type:'string',description:'start 写具体开场，direct 写用户指定的下一幕。以图开场时保留图中主体和场景。最多 600 字。'},
@@ -66,7 +66,8 @@ export function improvArguments(args){
 }
 export const clip=(text,limit=24)=>{const chars=Array.from(String(text??'').replace(/\s+/gu,' ').trim());return chars.length>limit?chars.slice(0,limit-1).join('')+'…':chars.join('');};
 const ENDINGS={time:'本场已到时长上限',failed:'直播连接中断',caller:'用户在画面上结束了直播',call:'通话结束'};
-export function createImprovShow({run}) {
+// story: Makaron keeps the show moving between the caller's directions.
+export function createImprovShow({run,story=true}) {
   let show=null, starting=null, closed=false, emit, ended=null;
   const directions=new WeakMap(), started=new WeakSet();
   async function stop(id,reason='') {
@@ -77,7 +78,7 @@ export function createImprovShow({run}) {
     return true;
   }
   async function start(shot,send,imageUrl,aspect,imageName,caption){
-    const result=await run(['start','--prompt',shot,'--request-id',randomUUID(),...(imageUrl && aspect?['--aspect-ratio',aspect]:[]),...(imageUrl?['--image',imageUrl]:[])]);
+    const result=await run(['start','--prompt',shot,'--request-id',randomUUID(),...(story?['--story']:[]),...(imageUrl && aspect?['--aspect-ratio',aspect]:[]),...(imageUrl?['--image',imageUrl]:[])]);
     if(closed){await run(['stop',result.id]);throw Error('这通电话已结束');}
     if(result.phase!=='waiting'||!/^\/director\/player\.html#[a-z0-9-]+\.[a-zA-Z0-9_-]{43}$/.test(result.playerPath))throw Error('Makaron 未返回有效的播放票据');
     show={id:result.id,imageName}; emit=send; ended=null;
@@ -107,7 +108,9 @@ export function createImprovShow({run}) {
       const words=(shot || turn.text)?.trim();
       if(!words || words.length>600)throw Error('需要简短的下一幕描述');
       const id=show.id;
-      if(!directions.has(turn))directions.set(turn,run(['direct',id,'--turn-id',String(turn.id||randomUUID()),'--',words]));
+      // A shot the model wrote is already a finished direction: send it as is, so the picture
+      // turns at once. The caller's raw words still go through Makaron's spoken-draft cleanup.
+      if(!directions.has(turn))directions.set(turn,run(['direct',id,'--turn-id',String(turn.id||randomUUID()),...(shot?.trim()?['--ready']:[]),'--',words]));
       const result=await directions.get(turn);
       if(Number.isInteger(result?.version) && show?.id===id)send({type:'improv.live',action:'label',id,version:result.version,text:label||clip(turn.text)});
       return {...result,instruction:'根据导演回执回应。已提交的下一幕仍需等待在画面中播出。'};
