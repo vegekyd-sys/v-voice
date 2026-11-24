@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-whole-results-20261124",
-  "version": "voice-gpt-live-11.20261124.5",
-  "entryCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
-  "deviceEntryCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
-  "filesSha256": "99bad50d9640c821d87a1d655dd2ee68b47ab6ffb26bcc1d38a7649544542cce",
-  "registration": "voice-whole-results-20261124/release.json",
-  "previousEntryCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
+  "release": "voice-makaron-director-20261124",
+  "version": "voice-makaron-director.20261124.5",
+  "entryCommit": "53fe532cb76e1b25b48d93eb85e849a0e3d96f5e",
+  "deviceEntryCommit": "53fe532cb76e1b25b48d93eb85e849a0e3d96f5e",
+  "filesSha256": "d5938dcce074869b3b49905cf8906c58267fca51fe18001c3ae78cb999eadac2",
+  "registration": "voice-makaron-director-20261124/release.json",
+  "previousEntryCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-24T21:50:00+08:00",
-  "runtimeDifference": "GPT Live 1.1 拿到完整的工具结果（日程、网页、后台任务、搜索和记忆），上限与豆包相同；其余与上一版相同。"
+  "validatedAt": "2026-11-24T23:45:00+08:00",
+  "runtimeDifference": "讲解画布里的即兴直播（仅私人入口）、完整原话字幕、录像上传放宽到 15 分钟；其余与上一版相同。"
 }
