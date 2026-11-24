@@ -1,3 +1,4 @@
+import {toolBriefs} from './capabilities.mjs';
 import {randomUUID} from 'node:crypto';
 import {compactSearchResult,plainText as plain,searchDigest,memoryDigest,shanghaiDate} from './search-result.mjs';
 import {processExited} from './tools.mjs';
@@ -59,20 +60,8 @@ export const GPT_LIVE_IDENTITY=[
 const onScreen=names=>`用户的屏幕上已经摆好了这几样的照片，按顺序是：${names.join('、')}。就按这个顺序把这几样讲到，讲到哪一样就说出它的名字；想补充别的，放在这几样之后。`;
 export function gptLiveDelegationPolicy(names,{display=true}={}){
   const has=name=>names.has(name);
-  const can=[
-    has('web_search')&&'搜索：上网查新闻、比分、股价、天气、价格、公开资料，几秒内回来',
-    has('web_fetch')&&'网页：打开一个网址读原文',
-    has('current_time')&&'时间：现在的上海时间、日期、星期',
-    has('memory_search')&&'记忆：用户的个人记忆、家人、偏好、项目历史、以前聊过的事',
-    (has('feishu_calendar')||has('lark_read'))&&'飞书：飞书日程和飞书资料（只读）',
-    has('exec')&&'创作：直接生成或修改一张图片、一个短视频',
-    has('show_content')&&display&&'上屏：把已有的真实内容放到屏幕上',
-    has('explain_on_board')&&'讲解：准备一段带画面和真实图片的讲解稿或故事，由你念出来',
-    has('delegate_to_v')&&'办事：多步调研、写文档、发消息、改日程等长任务或写操作，由后台持续完成',
-    has('cancel_task')&&'取消：取消正在执行的后台任务',
-    has('send_task_updates')&&'进展发群：把任务进展和结果发到飞书群',
-    has('end_call')&&'挂断：结束这通电话',
-  ].filter(Boolean);
+  // What the backend can do: one line per tool this call has, shared with every delegation model (capabilities.mjs).
+  const can=toolBriefs(names,{display});
   return [
     'Backchannel policy: 用户说话时可以轻轻附和（嗯、对、哈哈），不抢话，不打断他的思路。',
     'Interruption policy: 用户一开口就停下来听，按他的新话回应；被打断的内容不自己续讲，除非他让你接着说。',

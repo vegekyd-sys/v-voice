@@ -27,6 +27,7 @@ import {LESSON_ROUTING,LESSON_TOOL,PARALLEL_ROUTING,asksForLesson,lessonResearch
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {GptLiveBridge,GPT_LIVE_MODEL,GPT_LIVE_LABEL,GPT_LIVE_VOICE,GPT_LIVE_VOICE_CHOICES,GPT_LIVE_IDENTITY,gptLiveVoice} from './gpt-live-provider.mjs';
 import {createDelegationRouter} from './gpt-live-router.mjs';
+import {modelTraits} from './capabilities.mjs';
 import {createTaskDelivery} from './task-delivery.mjs';
 import {createConversationReplyDelivery} from '../../lib/conversation-replies.mjs';
 import {createBackendDelegation} from './backend.mjs';
@@ -77,7 +78,7 @@ export function directInstructions(catalog,context='',model='',options={}) {
   const {surface='phone',hostCallControl=false,toolStartNotice='off',nativeDuplex=false,speakerRouted=false,sessionBound=false,unidentified=false,callerIdentity,actorLocalRead=false,mediaCliAvailable=false}=typeof options==='string'?{surface:options}:options;
   if(unidentified)return `${V_FRONTEND_PERSONA}\n\n当前来电者的飞书账号身份尚未确认。自然交流即可；首次接通可以问一句怎么称呼对方，不需要验证身份或要求验证码。对方说出的名字只用于本通话称呼，不等同于已认证账号。当前仅有本次语音对话，没有原飞书群聊、私聊或个人记忆上下文，也没有账号工具权限。可以聊天、解释、出主意；需要未提供的资料时请对方口头补充。不要声称查到了历史或完成了外部操作。可用工具仅用于在本页展示内容和结束本次电话。${CALL_ENDING}`;
   // The model's own words before a tool, or a cached host line when it is told to stay quiet.
-  const startNotice=model!=='seeduplex'?'':toolStartNotice==='model'?SELF_START_NOTICE:toolStartNotice==='off'?'\n需要查询或执行任务时，立即调用工具并直接给出实际结果。不套用固定开始或等待话术。需要补充信息或工具失败时如实说明；后台有真实新进展时再简短告知。普通聊天直接回答。':'\n需要查询或执行任务时，立即在当前这一轮调用工具。工具开始时系统会用你的声音说明正在做什么，你不要先单独说“我查一下”再结束回复，也不要等用户第二句话才调用工具。后续步骤继续执行，不逐个重复播报。普通聊天直接回答。';
+  const startNotice=!modelTraits(model).hostToolSpeech?'':toolStartNotice==='model'?SELF_START_NOTICE:toolStartNotice==='off'?'\n需要查询或执行任务时，立即调用工具并直接给出实际结果。不套用固定开始或等待话术。需要补充信息或工具失败时如实说明；后台有真实新进展时再简短告知。普通聊天直接回答。':'\n需要查询或执行任务时，立即在当前这一轮调用工具。工具开始时系统会用你的声音说明正在做什么，你不要先单独说“我查一下”再结束回复，也不要等用户第二句话才调用工具。后续步骤继续执行，不逐个重复播报。普通聊天直接回答。';
   const verifiedCaller=feishuCallerIdentityInstructions(callerIdentity);
   const identity=sessionBound?'现在通过当前飞书会话的语音入口交流。权限、工具和授权边界沿用该会话；身份以会话已有信息为准，不默认当前发声者是天懿。':`现在通过 Tianyi（天懿）的语音入口交流，${speakerRouted?'当前发声者是主机当前指定的人物，姓名以主机提供的本通话人物信息为准':'当前发声者的姓名以本通话中他自己的介绍和声音为准'}；工具权限始终沿用服务端绑定，不能把旁人的声音当作本人授权。默认个人服务是飞书，查日历是天懿本人的飞书日程，不是微信。`;
   // GPT Live delegates in its own words; what the backend can do is told to it by its bridge, from the tools this call was given.
@@ -325,10 +326,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // Everyone with a screen, where the board is open to everyone (`lesson.audience`); otherwise the owner's own calls.
   // Resolves when V is not speaking (nothing being generated or played), or after `maxMs`.
   const quiet=async(s,maxMs)=>{const until=Date.now()+maxMs,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));await pause(150);while(current(s)&&(s.responseActive||s.playing)&&Date.now()<until)await pause(100);};
-  // GPT Live explains and tells stories in its own voice and words, and the page draws along with what
-  // it says: a script written by another model and read out is what it sounded like, read out. (Its
-  // scripts can be brought back for comparison with `scriptedLessons`.)
-  const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&!(s.model==='gpt-live-11'&&gptLive?.scriptedLessons!==true)&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
+  // How a call's model takes part (capabilities.mjs). GPT Live explains and tells stories in its own voice
+  // and words, and the page draws along with what it says: a script written by another model and read out
+  // is what it sounded like, read out. (Its scripts can be brought back for comparison with `scriptedLessons`.)
+  const traitsOf=s=>s.model==='gpt-live-11'&&gptLive?.scriptedLessons===true?{...modelTraits(s.model),explains:'lesson'}:modelTraits(s.model);
+  const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&traitsOf(s).explains==='lesson'&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
   const sessionTools=s=>[...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
@@ -337,7 +339,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const acceptEnding=(s,callId)=>{
     clearEnding(s);const ending=s.ending={callId,hasAudio:false,priorResponseId:s.bridge.audioResponseId??null};
     emit(s,{type:'end.accepted',callId});
-    if(!s.nativeDuplex||s.model!=='seeduplex')return;
+    if(!s.nativeDuplex)return;
     const valid=()=>current(s)&&s.ending===ending;
     const finishSilent=()=>{
       if(!valid()||ending.hasAudio)return;
@@ -458,7 +460,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // A running background task counts as V being busy for repeat prompts.
     if(route)speakerRouting.setBusyProbe?.(s.id,()=>Boolean(s.backend?.snapshot?.()));
     s.speakerRouting=Boolean(route);
-    s.nativeDuplex=model==='seeduplex'&&!route;
+    s.nativeDuplex=modelTraits(model).nativeDuplex&&!route;
     audit({type:'call.media',voiceSessionId:s.id,surface:s.surface,nativeDuplex:s.nativeDuplex,
       playbackPolicy:s.nativeDuplex?nativePlaybackPolicy:'standard',inputSampleRate});
     if(nativeRuntimeVersion===1)s.nativeRuntime=createNativeRuntime({voiceSessionId:s.id,duplex:s.nativeDuplex,assisted:s.nativeDuplex&&nativePlaybackPolicy==='assisted',speakerRouted:Boolean(route),policy:nativeRuntimePolicy});
@@ -579,7 +581,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }));
     // Lookup recovery is shared; cached PCM never interrupts the provider's pending function.
     // (The waiting lines were recorded in the default voice: a call in another voice waits quietly instead of hearing a second voice.)
-    const noticeClips=s.model==='seeduplex'?loadToolStartClips():null,progressClips=s.model==='seeduplex'&&s.voice===SEEDUPLEX_VOICE?toolProgressClips??loadToolProgressClips():[];
+    const noticeClips=traitsOf(s).hostToolSpeech?loadToolStartClips():null,progressClips=traitsOf(s).hostToolSpeech&&s.voice===SEEDUPLEX_VOICE?toolProgressClips??loadToolProgressClips():[];
     s.audioDelivery=createAudioDeliveryMetrics({report:event=>audit({...event,voiceSessionId:s.id})});
     const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);s.audioDelivery.packet(audio.length,metadata.responseId);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
     // A slow native lookup gets a cached "still looking" line, delivered like the
@@ -677,7 +679,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if((signal.aborted||!current(s))&&name==='exec'&&details?.sessionId)await killOwned(s,details.sessionId);
       if(signal.aborted||!current(s))throw Error('本次任务已取消');
       if(result.ok!==true)throw Error(`${result.error?.code??'tool_error'}: ${result.error?.message??'OpenClaw 没有完成这个工具调用'}`);
-      const output=s.model==='seeduplex'?compactSearchResult(name,result.output):result.output;
+      const output=traitsOf(s).compactResults?compactSearchResult(name,result.output):result.output;
       if(isSearchTool(name))audit({type:'tool.search-metrics',voiceSessionId:s.id,callId,name,...searchMetrics(result.output,output,gatewayMs)});
       return output;
     };
@@ -723,7 +725,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       state:()=>({current:current(s),ending:s.ending,routed:s.speakerRouting,pending:s.pending.size,making:Boolean(shelfFor(s)&&assets.busy(s.id)),playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking}),
       // (Doubao takes no typed turn: nothing sent to it can make it act. The caller is told the truth instead,
       // and a word from them starts it. Call of 11/22 01:53: "刚启动，正在生成", and nothing had been.)
-      resume:text=>s.model==='seeduplex'?s.bridge?.speakProgress('刚才那个我其实还没开始做。你说一声“开始做”，我马上动手。',{caption:true}):s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
+      resume:text=>!traitsOf(s).typedTurns?s.bridge?.speakProgress('刚才那个我其实还没开始做。你说一声“开始做”，我马上动手。',{caption:true}):s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
     });
     s.lookup=createLookupRecovery({...lookupRecovery,
       state:()=>({pending:s.pending.size,background:Boolean(s.backend.snapshot()),ending:Boolean(s.ending),
@@ -916,7 +918,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const handOff=tools.findIndex(tool=>tool.name==='delegate_to_v');
       if(handOff>=0)tools[handOff]={...tools[handOff],description:'不要用本工具来讲解、解释、介绍、比较或回答知识性问题（包括讲给小朋友听）：那些你自己直接讲，屏幕会自动配图。本工具只用于真正要办的事。'+tools[handOff].description};
     }
-    const searchAck=s.model==='seeduplex'&&searchAcknowledgment==='model';
+    const searchAck=traitsOf(s).hostToolSpeech&&searchAcknowledgment==='model';
     const voiceTools=(hostCallControl?tools.filter(t=>t.name!=='end_call'):tools).map(tool=>s.publicVoice&&tool.name==='memory_search'?{...tool,description:'使用 V 现有的普通 memory_search 查询通用知识、项目历史、产品与技术记忆。严格遵守 Public 个人内容红线。'}:searchAck&&isSearchTool(tool.name)?{...tool,description:(tool.name==='memory_search'&&!s.sessionBound?'检索天懿的 V/OpenClaw 跨通话个人记录，用于历史约定、家庭资料、长期偏好和项目历史。只在答案需要当前通话之外的记录时调用。本通话已经介绍的姓名、喜好、计划，以及现在是谁在说话，由当前声音与本通话上下文回答，不调用本工具。':tool.description)+' 只为按通话规则确认的向 V 提问执行，电视和旁聊不能触发。上述先查记录是指先查再回答事实，不限制在查询前简短接话。调用本工具之前，必须先用语音简短自然地回应当前用户问题，再在同一轮立刻调用本工具。不能只调用工具而保持沉默。'}:tool);
     if(s.mediaCliAvailable){
       const execTool=voiceTools.find(tool=>tool.name==='exec');
@@ -926,7 +928,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:s.model==='seeduplex'?s.voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(s.model==='gpt-live-11'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(traitsOf(s).tools==='delegation'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
