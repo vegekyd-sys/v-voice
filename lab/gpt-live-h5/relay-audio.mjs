@@ -382,7 +382,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       activity(e.playing&&context.state==='running');reportBusy();
     };
     for(const buffer of pendingOutput)transfer(buffer);pendingOutput.length=0;if(outputComplete)speaker.port.postMessage({type:'done',epoch});
-    const receiveInput=buffer=>{if(closed||uploadFailed)return;
+    const receiveInput=(buffer,lastInBatch=true)=>{if(closed||uploadFailed)return;
       if(!(buffer instanceof ArrayBuffer)||buffer.byteLength!==960){onError(Error('麦克风音频帧格式无效'));return;}
       // The hardware adapter already supplies 24 kHz PCM. Do not play it into
       // a MediaStream and capture it again on the output audio clock.
@@ -407,9 +407,9 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
         }
         uploadStalledAt=null;
         inputBatch.push(frame);inputBatchBytes+=frame.byteLength;
-        // Preserve the native 20ms uplink cadence across hosted proxies.
-        // A speaker decision still owns interruption; batching does not.
-        flushInput();}
+        // All three frames of a hardware packet arrive in the same callback.
+        // Keep the per-frame speech detector, then send these samples together.
+        if(lastInBatch||inputBatch.length>=3)flushInput();}
     };
     if(typeof subscribePcm==='function')stopPcm=subscribePcm(receiveInput);
     else {

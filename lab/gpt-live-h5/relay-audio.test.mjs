@@ -529,3 +529,12 @@ test('a congested uplink sheds microphone frames and only a stuck one ends the c
  sock.bufferedAmount=1000;frame();assert.equal(f.relay.stats.droppedInputFrames,3);assert.deepEqual(f.errors,[]);
  sock.bufferedAmount=96001;frame();clock+=31000;frame();assert.deepEqual(f.errors,['音频上传积压，请重新拨号']);assert(f.events.some(e=>e.type==='upload.backpressure'));
 });
+
+test('one TV hardware batch reaches the relay in order without waiting for another packet',async t=>{
+ let receive;const f=await fixture(t,'seeduplex',false,{stream:{getAudioTracks:()=>[]},subscribePcm:fn=>{receive=fn;}});
+ for(let i=1;i<=3;i++)receive(new Int16Array(480).fill(i).buffer,i===3);
+ const sent=f.sent.filter(frame=>frame instanceof ArrayBuffer);assert.equal(sent.length,1);
+ const pcm=new Int16Array(sent[0]);assert.equal(pcm.length,1440);
+ for(let i=0;i<3;i++)assert(pcm.subarray(i*480,(i+1)*480).every(v=>v===i+1));
+ f.relay.dispose();
+});

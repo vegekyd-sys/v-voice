@@ -128,7 +128,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
           if(Number.isFinite(frame.processMs)){metrics.dspMs+=Math.round(frame.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(frame.processMs));}
           if(metadata?.version!==4)outstanding--;
           if(!batched&&metadata?.channelLayout)inputGain.process(frame.buffer);
-          if(pcmSink)pcmSink(frame.buffer);else node?.port.postMessage(frame.buffer,[frame.buffer]);
+          if(pcmSink)pcmSink(frame.buffer,frame===frames[frames.length-1]);else node?.port.postMessage(frame.buffer,[frame.buffer]);
         }
         if(metadata?.version===4)worker.postMessage({type:'consumed',sequence:frames[frames.length-1].sequence});
         else if(metadata?.version>=2&&outstanding<=4)schedulePull(0);

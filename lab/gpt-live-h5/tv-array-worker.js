@@ -1,6 +1,16 @@
 // PCM remains local memory. This worker has no transcript, model or network API.
 importScripts('./assets/tv-aec/webrtcaec3-0.3.0.js');
-let batchSize=1,outputs,Gain,gain;
+let batchSize=1,outputs,Gain,gain,nativeAcknowledged=0;
+// Return hardware credits after DSP instead of making the microphone wait for a
+// full UI round trip per packet. At most six decoded packets can await the page,
+// plus two held by the existing native eight-frame window (24 frames total).
+function releaseNativeCredits(){
+ const until=Math.min(lastSequence,consumedSequence+(batchSize===3?18:0));
+ while(nativeAcknowledged+batchSize<=until){
+   nativeAcknowledged+=batchSize;
+   nativePort.postMessage(JSON.stringify({type:'consumed',sequence:nativeAcknowledged}));
+ }
+}
 let module,Processor,dsp,channels=0,closed=false,lastSequence=0,renderMs=0,renderFrames=0,renderEnergy=0,nativePort,consumedSequence=0;
 Promise.all([WebRtcAec3(),import('./tv-array-dsp.mjs')]).then(([m,p])=>{module=m;Processor=p.TvArrayEchoProcessor;Gain=p.TvInputGain;postMessage({type:'ready'});}).catch(()=>postMessage({type:'error',message:'回声消除初始化失败'}));
 function handle(data){
@@ -18,21 +28,21 @@ function handle(data){
      if(packet.error){postMessage({type:'error',code:packet.error});return;}
      if(packet.type==='ready'){batchSize=packet.batchSize===3&&data.batchSize===3?3:1;postMessage({type:'stream-ready'});return;}
      const frames=batchSize===1?[packet]:packet;
-     if(!Array.isArray(frames)||frames.length!==batchSize||lastSequence-consumedSequence+batchSize>8)throw Error('Invalid native audio batch');
+     if(!Array.isArray(frames)||frames.length!==batchSize||lastSequence-consumedSequence+batchSize>(batchSize===3?24:8))throw Error('Invalid native audio batch');
      outputs=batchSize>1?[]:null;
      for(const frame of frames){
        if(frame.channels!==channels||typeof frame.pcm!=='string'||frame.pcm.length>16384)throw Error('Invalid native audio frame');
        const binary=atob(frame.pcm),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
        handle({type:'capture',sequence:frame.sequence,buffer:bytes.buffer});
      }
-     if(outputs && outputs.length===batchSize)postMessage({type:'pcm-batch',frames:outputs},outputs.map(f=>f.buffer));
+     if(outputs && outputs.length===batchSize){postMessage({type:'pcm-batch',frames:outputs},outputs.map(f=>f.buffer));releaseNativeCredits();}
      outputs=null;
     }catch(error){postMessage({type:'error',code:'TV_MIC_STREAM',message:error.message});}
    };nativePort.start();nativePort.postMessage(JSON.stringify({type:'ready',batchSize:data.batchSize===3?3:1}));return;
   }
   if(data.type==='consumed'){
    if(!nativePort||data.sequence!==consumedSequence+batchSize||data.sequence>lastSequence)throw Error('Invalid native audio acknowledgement');
-   consumedSequence=data.sequence;nativePort.postMessage(JSON.stringify({type:'consumed',sequence:data.sequence}));return;
+   consumedSequence=data.sequence;releaseNativeCredits();return;
   }
   if(data.type==='configure'){if(!module||![4,6].includes(data.channels))throw Error('电视阵列格式无效');dsp?.close();channels=data.channels;const sampleRate=data.sampleRate??48000;if(![16000,48000].includes(sampleRate))throw Error('Invalid capture rate');const frameSize=sampleRate/50;dsp=new Processor(module,channels,sampleRate,data.channelLayout);
   // Exercise the actual WASM paths before opening the hardware route. The
