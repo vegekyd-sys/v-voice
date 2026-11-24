@@ -229,6 +229,13 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-makaron-director.20261124.5',date:'2026-11-24',
+    title:'直播录像在网速慢时也能存到服务器',
+    items:[
+      '收播后录像会在后台继续上传，网速慢时最多等 15 分钟，不再传到一半被切断；录像体积也缩小了约一半。上传期间可以继续聊天，也可以先在画布上保存本地副本。',
+    ],
+  },
+  {
     version:'voice-makaron-director.20261124.4',date:'2026-11-24',
     title:'讲解画布里可以开一场即兴直播',
     items:[

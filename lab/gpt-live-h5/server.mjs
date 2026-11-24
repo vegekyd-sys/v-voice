@@ -532,7 +532,9 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           for(const key of ['x-director-player','x-fal-target-url','content-type'])if(req.headers[key])headers[key]=req.headers[key];
         }
         const closed = new AbortController();
-        const signal = AbortSignal.any([closed.signal, AbortSignal.timeout(95000)]);
+        // A recording leaves the caller's browser after the show over whatever uplink it has;
+        // give that one upload minutes, not the 95 s every other player request gets.
+        const signal = AbortSignal.any([closed.signal, AbortSignal.timeout(pathname.endsWith('/recording') ? 900000 : 95000)]);
         res.once('close',()=>closed.abort());
         try {
           const upstream=await fetch(target,{method:req.method,headers,redirect:'error',signal,...(directorOp?{body:req,duplex:'half'}:{})});
