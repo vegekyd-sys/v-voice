@@ -26,3 +26,14 @@ test('invalid or overflowing startup frames close the allocation and cannot be m
  for(let i=0;i<129;i++)b.socket.message({type:'audio'});
  let closed=false;b.socket.onclose=()=>closed=true;b.adopt();assert.equal(closed,true);assert.equal(b.socket.readyState,3);
 });
+
+test('an idle transport pulse in flight at click never acts as a reservation',async()=>{
+ const socket=new Socket(),sent=[];
+ socket.send=params=>sent.push(params);
+ const url=new URL('https://voice.example/api/dial?dialVersion=2&model=seeduplex');
+ const connection=createDialConnection({url,standby:socket});
+ assert.deepEqual(sent,['dialVersion=2&model=seeduplex']);
+ socket.message({type:'standby.pulse'});socket.message(reserved);
+ assert.equal((await connection.reservation).voiceSessionId,'test');
+ connection.dispose();
+});

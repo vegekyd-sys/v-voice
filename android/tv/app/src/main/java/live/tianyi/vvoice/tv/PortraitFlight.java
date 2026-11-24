@@ -70,7 +70,13 @@ final class PortraitFlight {
                     if(t<1){layer.postOnAnimation(this);return;}
                     web.evaluateJavascript("window.vVoiceTV?.finishEnter?.()",unused->{
                         if(layer==owner)web.postVisualStateCallback(1,new WebView.VisualStateCallback(){
-                            @Override public void onComplete(long request){if(layer==owner)clear();}
+                            @Override public void onComplete(long request){
+                                // This callback guarantees the next draw contains the live
+                                // portrait. Keep the copy until that draw is on screen.
+                                if(layer==owner)web.postOnAnimation(()->web.postOnAnimation(()->{
+                                    if(layer==owner)web.postDelayed(()->{if(layer==owner)clear();},80);
+                                }));
+                            }
                         });
                     });
                 }
