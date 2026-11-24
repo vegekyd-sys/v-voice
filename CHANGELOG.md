@@ -2,6 +2,13 @@
 
 
 
+
+## 2026-11-25 — The owner's entries pay for media with the owner's account (`voice-owner-media.20261125.1`)
+
+- A call from Tianyi's own entry (`permissionProfile` `personal-tianyi`) mapped to a group whose self-registered Makaron account had 2 credits. Since 2026-11-22 the call paid for media with that group binding, while the same session's background tasks pay with the account the Gateway injects (the owner's, 34k credits). An image request on the call reported insufficient credits.
+- The owner's entries now reserve with `ownerMedia`: the media runner uses the owner's account (the same store the explicit company binding reads) and never registers a group account for them. Its credit message names the owner's account.
+- Other confirmed callers keep their session binding.
+
 ## 2026-11-24 — Live broadcast recordings reach the server on a slow uplink (`voice-makaron-director.20261124.5`)
 
 - Online acceptance found the recording upload cut off: through the production tunnel it arrived at about 70 KB/s, and the Voice relay gave every Director player request 95 s. The recording upload alone now gets 15 minutes; other player requests keep 95 s.

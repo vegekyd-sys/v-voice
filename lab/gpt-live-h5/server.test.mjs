@@ -57,6 +57,7 @@ test('native preference is advertised while legacy clients retain speaker and ca
   }
   assert.deepEqual(reservations.map(p=>p.inputPolicy),['speaker','native','speaker','speaker']);
   assert(reservations.every(p=>p.sessionKey===GPT_LIVE_PERSONAL_SESSION_KEY));
+  assert(reservations.every(p=>p.ownerMedia===true),'the owner entry pays for media with the owner account');
   assert.equal((await f.request('session',{model:'seeduplex',inputPolicy:'untrusted'})).status,400);
 });
 
@@ -368,7 +369,7 @@ test('Grok voice selection is validated before closing a call and server keeps i
  const f=await fixture(t,{directVoice:{models:()=>[],reserve:async params=>{received.push(params);return {voiceSessionId:'selected',transport:'gateway-relay',voice:params.voice};},close:async id=>closed.push(id),dispose:async()=>{}}});
  const response=await f.request('session',{model:'grok',voice:'iris',sessionKey:'untrusted-browser'});
  assert.equal(response.status,200);assert.equal((await response.json()).voice,'iris');
- assert.deepEqual(received,[{model:'grok',voice:'iris',sessionKey:GPT_LIVE_PERSONAL_SESSION_KEY}]);
+ assert.deepEqual(received,[{ownerMedia:true,model:'grok',voice:'iris',sessionKey:GPT_LIVE_PERSONAL_SESSION_KEY}]);
  for(const voice of ['',null,'unknown'])assert.equal((await f.request('session',{model:'grok',voice})).status,400);
  assert.equal(closed.length,0);assert.equal(received.length,1);
 });
