@@ -33,5 +33,10 @@ test('playback metrics follow output time rather than the scheduling cursor and 
 
 test('a missed scheduling deadline is counted even when completed PCM is still queued',t=>{
  const f=fixture(t);f.send({type:'audio',buffer:new Int16Array(24000).fill(100).buffer});f.send({type:'done'});f.tick(0);
- assert.equal(f.tick(.5).underflows,1);f.s.disconnect();
+ assert.equal(f.tick(.7).underflows,1);f.s.disconnect();
+});
+
+test('a 400 ms UI delay plays through on the native renderer',t=>{
+ const f=fixture(t);f.send({type:'audio',buffer:new Int16Array(24000).fill(100).buffer});f.send({type:'done'});f.tick(0);
+ const report=f.tick(.4);assert.equal(report.underflows,0);assert.ok(report.consumed>0);f.s.disconnect();
 });

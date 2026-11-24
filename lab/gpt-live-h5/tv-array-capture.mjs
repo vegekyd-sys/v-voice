@@ -4,24 +4,28 @@ import {PcmPlaybackQueue} from './relay-audio.mjs';
 export const hasTvArrayCapture=()=>globalThis.vTvAudioCapability?.version===1&&typeof globalThis.VTVArray?.start==='function';
 export const tvArraySupportsModel=model=>['seeduplex','grok'].includes(model);
 const fault=(code,message)=>Object.assign(Error(message),{code});
-// Only code and WASM are warmed. A dial still owns every port, AEC instance and microphone grant.
-let idleRuntime;
-function loadRuntime(){
+// Only hardware format survives a call. The standby worker trains on synthetic frames.
+let idleRuntime, lastFormat;
+function loadRuntime(format){
   const worker=new Worker(new URL('./tv-array-worker.js',import.meta.url));
   let cancel;
   const ready=new Promise((resolve,reject)=>{
     const finish=error=>{clearTimeout(timer);worker.onmessage=worker.onerror=null;error?reject(error):resolve();};
     const timer=setTimeout(()=>finish(fault('TV_DSP_TIMEOUT','电视音频准备超时，请重试')),8000);
     cancel=()=>finish(fault('TV_MIC_CANCELLED','采集已结束'));
-    worker.onmessage=({data})=>{if(data.type==='ready')finish();else if(data.type==='error')finish(fault('TV_DSP_INIT','电视音频准备失败，请重试'));};
+    worker.onmessage=({data})=>{
+      if(data.type==='ready'&&format)worker.postMessage({type:'configure',...format});
+      else if(data.type==='ready'||data.type==='configured')finish();
+      else if(data.type==='error')finish(fault('TV_DSP_INIT','电视音频准备失败，请重试'));
+    };
     worker.onerror=()=>finish(fault('TV_DSP_LOAD','电视音频加载失败，请重试'));
   });
-  return {worker,ready,cancel};
+  return {worker,ready,cancel,format};
 }
 export function warmTvAudio(){
   if(idleRuntime||typeof globalThis.VTVArray?.start!=='function')return;
   try{
-    const runtime=idleRuntime=loadRuntime();
+    const runtime=idleRuntime=loadRuntime(lastFormat);
     runtime.ready.catch(()=>{if(idleRuntime===runtime){runtime.worker.terminate();idleRuntime=null;}});
   }catch{/* The next dial can retry loading the worker. */}
 }
@@ -139,8 +143,11 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       metadata=JSON.parse(bridge.start(token,id));
       if(metadata.error)throw fault('TV_MIC_START',metadata.error);
       if(![2,3,4].includes(metadata.version)||![16000,48000].includes(metadata.sampleRate)||![4,6].includes(metadata.channels))throw fault('TV_MIC_FORMAT','电视阵列不支持当前格式');
-      await configure(metadata.channels,metadata.sampleRate);
-      if(metadata.version===4)await openWorkerStream();
+      const format={channels:metadata.channels,sampleRate:metadata.sampleRate,channelLayout:metadata.channelLayout};
+      // The new microphone grant determines the actual hardware route on every call.
+      if(metadata.version!==4||!runtime.format||JSON.stringify(runtime.format)!==JSON.stringify(format))
+        await configure(metadata.channels,metadata.sampleRate);
+      if(metadata.version===4){await openWorkerStream();lastFormat=format;}
     }else await configure(4);
     if(!directPcm){
     const worklet=`const PcmPlaybackQueue=${PcmPlaybackQueue.toString()};\nclass ArrayInput extends AudioWorkletProcessor {constructor(){super();this.q=new PcmPlaybackQueue(sampleRate,20,24000);this.tick=0;this.peak=0;this.port.onmessage=({data})=>{try{this.q.push(new Int16Array(data));this.peak=Math.max(this.peak,this.q.frames);}catch{this.port.postMessage({type:'overflow',frames:this.q.frames,consumed:this.q.consumed,at:currentTime});}};}process(i,o){if(o[0]?.[0])this.q.render(o[0][0],currentTime);if(++this.tick%375===0){this.port.postMessage({type:'queue',frames:this.q.frames,peak:this.peak,consumed:this.q.consumed,at:currentTime,underflows:this.q.underflows});this.peak=0;}return true;}}registerProcessor('v-tv-array-input',ArrayInput);`;
