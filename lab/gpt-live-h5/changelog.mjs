@@ -196,6 +196,7 @@ export const NATIVE_DUPLEX_CANDIDATE_UPDATE = {
     '仅 Candidate；持续电视、人声干扰和真人设备验收仍在验证。',
   ],
 };
+// The Candidate's record (2026-11-23 to 11-24); released as voice-makaron-director.20261124.4 in VOICE_UPDATES.
 export const DIRECTOR_CANDIDATE_UPDATE = {
   version:'voice-makaron-director.20261124.3',date:'2026-11-24',status:'candidate-validation',
   title:'在讲解画布中主持即兴直播',
@@ -227,6 +228,16 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
   ],
 };
 export const VOICE_UPDATES = [
+  {
+    version:'voice-makaron-director.20261124.4',date:'2026-11-24',
+    title:'讲解画布里可以开一场即兴直播',
+    items:[
+      '让 V 用一张图开播：可以是刚画的图、你在文字输入里加的图，或 V 自己的形象。画面出现在画布里，左上角 REC 计时，下方一句话写出正在播的这一幕。',
+      '开播后剧情会自己往下演；你随时插一句，这句话直接送进画面并完整写在下方，故事接着围绕它演。',
+      '说「收播」结束，录像自动保存，可回放、下载，也能接着聊；之后的讲解内容会照常接替画面。',
+      '目前只在 Tianyi 的私人入口开放，其他来电者看不到这个功能。',
+    ],
+  },
   {
     version:'voice-gpt-live-11.20261124.5',date:'2026-11-24',
     title:'GPT Live 1.1 查到的内容不再被截掉一半',

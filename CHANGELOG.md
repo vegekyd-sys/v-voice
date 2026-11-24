@@ -1,5 +1,13 @@
 # Changelog
 
+
+## 2026-11-24 — Live broadcast on the lesson board released (`voice-makaron-director.20261124.4`)
+
+- The Candidate work below (2026-11-23 to 11-24) goes to production: the voice model opens, steers and ends a Makaron Director broadcast with `improv_live`, the show advances its own story, and the recording is archived on the board.
+- It is offered only to the personal entry (`permissionProfile` `personal-tianyi`) on a service with `VOICE_IMPROV_LIVE=1`, a Director CLI path and a Director address; other callers, the App's native runtime, robots and speakers do not get the tool.
+- The Director runs beside the Voice service on the same host (Makaron `services/director/start-host.mjs`), accepting only that service's Makaron key. Provider costs are that deployment's own; Makaron credits are not charged.
+- The Gateway is not restarted by this release.
+
 ## 2026-11-24 — The live broadcast advances its own story (Candidate)
 
 - Makaron Director runs a showrunner on DeepSeek flash for shows opened with `--story`: it plans a 6–10 beat arc when the show starts and releases one beat once the current direction has held on screen (8 s after the opening, 7 s after its own beat, 12 s after the caller's).
