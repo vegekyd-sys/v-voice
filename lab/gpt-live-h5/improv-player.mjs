@@ -1,6 +1,6 @@
 // The playback peer belongs to the call. The lesson board can collapse, move
 // to another sheet or reopen while Makaron continues recording the same peer.
-export function createImprovPlayer({context,update,ended,notice,archive=()=>{}}){
+export function createImprovPlayer({context,update,ended,notice,archive=()=>{},stage=()=>{},clock=()=>performance.now()}){
   let current, callerSpeaking=false, hostSpeaking=false, outputMuted=false;
   function mix(show) {
     if(!show?.gain)return;
@@ -36,12 +36,12 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
     show.gain=show.source=show.track=show.bind=null;show.mixed=false;
   }
   function publish(show) {
-    update({id:show.id,stream:show.stream,muted:!!show.muted,imageUrl:show.imageUrl,cue:show.cue,note:show.note,focus:show.focus});
+    update({id:show.id,stream:show.stream,muted:!!show.muted,imageUrl:show.imageUrl,name:show.name,cue:show.cue,note:show.note,focus:show.focus});
   }
   function keep(show) {
     if(!show.stream && !show.recording)return;
     const video=show.frame.contentDocument?.querySelector('video');
-    archive({id:show.id,shape:video?.videoWidth/video?.videoHeight || show.shape, poster:show.poster || show.imageUrl, recording:show.recording, done:!!show.done, caption:show.cue?.text});
+    archive({id:show.id,shape:video?.videoWidth/video?.videoHeight || show.shape, poster:show.poster || show.imageUrl, recording:show.recording, done:!!show.done, name:show.name, caption:show.cue?.text});
   }
   function detach(show) {
     disconnectSound(show);
@@ -58,18 +58,27 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
     const timeout=show.recording ? 240_000 : 45_000;
     show.cleanup=setTimeout(()=>{show.done=true;keep(show);close(show);},timeout);
   }
-  function finish(){
+  // What the audience reads under a cue: the host's short caption, never the Director prompt.
+  const label=(show,version)=>show.labels.get(version) ?? (version===1 ? show.caption : '') ?? '';
+  const report=(show,name,extra={})=>stage({id:show.id,stage:name,ms:Math.max(0,Math.round(clock()-show.at)),...extra});
+  function finish(reason='caller'){
     const show=current;
     if(!show)return;
     keep(show);detach(show);
-    show.frame.contentWindow?.postMessage({id:show.id,action:'end'},location.origin);
-    ended(show.id);
+    show.frame.contentWindow?.postMessage({id:show.id,action:'end',reason},location.origin);
+    ended(show.id,reason);
     scheduleCleanup(show);
   }
   function receive(event){
     if(event.action!=='start'){
       if(current?.id!==event.id)return;
-      if(event.action==='end')finish();
+      if(event.action==='label' && Number.isInteger(event.version) && typeof event.text==='string'){
+        current.labels.set(event.version,event.text.slice(0,60));
+        if(current.cue?.version===event.version){current.cue={...current.cue,text:label(current,event.version)};publish(current);}
+        return;
+      }
+      // The service already confirmed the stop; the player only has to wind down.
+      if(event.action==='end')finish('stopped');
       if(event.action==='focus'){current.focus=(current.focus||0)+1;publish(current);}
       return;
     }
@@ -78,22 +87,29 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
     if(url.origin!==location.origin || !url.pathname.endsWith('/director/player.html'))return;
     url.searchParams.set('embed','1');
     const frame=document.createElement('iframe');frame.hidden=true;frame.title='Makaron Director 直播连接';frame.allow='autoplay';
-    const show={id:event.id,imageUrl:event.imageUrl,frame,listener:e=>{
+    const show={id:event.id,imageUrl:event.imageUrl,name:typeof event.name==='string'?event.name.slice(0,30):'',caption:typeof event.caption==='string'?event.caption.slice(0,60):'',labels:new Map(),at:clock(),frame,listener:e=>{
       if(e.source!==frame.contentWindow || e.origin!==location.origin || e.data?.source!=='makaron-director' || e.data.id!==event.id)return;
       if(e.data.action==='stopped'){const v=frame.contentDocument?.querySelector('video');show.shape=v?.videoWidth/v?.videoHeight;show.poster=e.data.poster;keep(show);disconnectSound(show);return;}
       if(e.data.action==='recorded' && e.data.blob instanceof Blob && e.data.blob.size && !show.recording){
         show.recording=URL.createObjectURL(e.data.blob);keep(show);scheduleCleanup(show);return;
       }
+      if(e.data.action==='stage' && typeof e.data.stage==='string'){report(show,e.data.stage,Number.isInteger(e.data.status)?{status:e.data.status}:{});return;}
       if(e.data.action==='ended'){
         show.done=true;keep(show);
-        if(current===show){ended(event.id);notice(e.data.failed?'直播连接失败，可以重新开播':'直播结束，通话继续',e.data.failed);}
+        const reason=['time','failed','provider','stopped','caller'].includes(e.data.reason)?e.data.reason:e.data.failed?'failed':'stopped';
+        report(show,'ended',{reason});
+        if(current===show){
+          ended(event.id,reason);
+          notice(reason==='failed'?(show.played?'直播连接中断，可以重新开播':'直播没连上，可以重新开播'):reason==='time'?'本场直播到时长上限，已自动收播':'直播结束，通话继续',reason==='failed');
+        }
         close(show);return;
       }
       if(current!==show)return;
-      if(e.data.action==='playing'){attachSound(show,frame.contentDocument.querySelector('video')?.srcObject);publish(show);}
+      if(e.data.action==='playing'){if(!show.played){show.played=true;report(show,'first-frame');}attachSound(show,frame.contentDocument.querySelector('video')?.srcObject);publish(show);}
       if(e.data.action==='direction'){
         if(e.data.state==='playing' && Number.isInteger(e.data.version) && e.data.version>(show.version||0)){
-          show.version=e.data.version;show.cue={version:e.data.version,text:String(e.data.text||'').slice(0,2000),rtp:e.data.rtpTimestamp};show.note='';
+          if(e.data.version>1)report(show,'direction-played');
+          show.version=e.data.version;show.cue={version:e.data.version,text:label(show,e.data.version),rtp:e.data.rtpTimestamp};show.note='';
         } else if(e.data.state==='sent')return;
         else if(e.data.state==='rejected')show.note='这条指令未被采用';
         publish(show);
@@ -102,7 +118,7 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{}})
     current=show;window.addEventListener('message',show.listener);
     publish(show);frame.src=url.href;document.body.append(frame);
   }
-  return {receive,finish,
+  return {receive,finish:(reason='caller')=>finish(reason),
     toggleSound(){if(current){current.muted=!current.muted;mix(current);publish(current);}},
     setOutputMuted(value){outputMuted=value;mix(current);},
     setHostSpeaking(value){hostSpeaking=value;mix(current);},

@@ -939,23 +939,29 @@ class BoardGuard extends React.Component {
 export function Board(props) {
   return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
 }
-function Recorded({clip,save}) {
-  const [saved,setSaved]=useState('');
-  return <div className="board-scroll board-live-media"><figure className="improv-stage">
-    <div className="board-work-frame improv-picture" data-playing="true" style={{'--shape':clip.shape || 16/9}}>
-    {clip.recording ? <video className="improv-replay" src={clip.recording} poster={clip.poster} playsInline controls preload="metadata" aria-label="直播回放"/> :
-      clip.poster && <img className="improv-replay" src={clip.poster} alt="直播停下时的画面"/>}</div>
-    <figcaption>{clip.caption && <p>{clip.caption}</p>}</figcaption>
-    {clip.recording ? <button type="button" className="board-report" onClick={async()=>setSaved(await save({src:clip.recording,kind:'video',name:'直播回放'}))}>{saved || '保存录像'}</button> :
-      <small>{clip.done?'本场没有可保存的录像':'正在整理录像…'}</small>}
+// A broadcast that has ended stays on the board as its recording, framed like any made video.
+function Recorded({clip, save}) {
+  const [saved, setSaved] = useState('');
+  return <div className="board-scroll board-live-media"><figure className="board-work improv-stage" data-kind="live" data-state="ready">
+    <div className="board-work-frame" style={{'--shape': clip.shape || 16 / 9}}>
+      {clip.recording ? <video className="board-work-print" data-loaded="true" src={clip.recording} poster={clip.poster} playsInline controls preload="metadata" aria-label="直播录像" />
+        : clip.poster ? <img className="board-work-print" data-loaded="true" src={clip.poster} alt="直播停下时的画面" />
+        : <div className="board-work-failed"><p>本场没有画面</p></div>}
+    </div>
+    <figcaption>
+      {clip.name && <span className="board-work-name">{clip.name}</span>}
+      <small>{clip.recording ? '直播录像' : clip.done ? '本场没有可保存的录像' : '正在整理录像…'}</small>
+      {clip.recording && <button type="button" className="improv-end" onClick={async () => setSaved(await save({src: clip.recording, kind: 'video', name: clip.name ? clip.name + ' 直播' : '直播录像'}))}>{saved || '保存录像'}</button>}
+    </figcaption>
+    {clip.caption && <p className="improv-cue">{clip.caption}</p>}
   </figure></div>;
 }
 function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   if (liveId || recordings.length) {
     if (pages.length === 1 && !scene.title && !scene.blocks.length) pages.pop();
-    for(const clip of recordings)if(clip.id!==liveId)pages.push({serial:clip.id,title:"直播回放",blocks:[],clip});
-    if(liveId)pages.push({serial: liveId, title: "即兴直播", blocks: []});
+    for(const clip of recordings)if(clip.id!==liveId)pages.push({serial:clip.id,title:"直播录像",blocks:[],clip});
+    if(liveId)pages.push({serial: liveId, title: "直播中", blocks: []});
   }
   const active = Math.max(0, pages.findIndex(page => page.serial === scene.serial));
   const track = useRef(null);

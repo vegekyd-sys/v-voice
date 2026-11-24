@@ -44,6 +44,10 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(Number.isInteger(event.upstreamStatus)?{upstreamStatus:event.upstreamStatus}:{}),
         ...(['billing','capacity','offer','access','upstream'].includes(event.issue)?{issue:event.issue}:{})});
     }
+    if(event.type==='improv.stage' && typeof event.stage==='string' && event.stage.length<24){
+      return enqueue({...owner,type:event.type,stage:event.stage,...(Number.isSafeInteger(event.ms)?{ms:event.ms}:{}),
+        ...(typeof event.reason==='string'&&event.reason.length<12?{reason:event.reason}:{}),...(Number.isSafeInteger(event.status)?{status:event.status}:{})});
+    }
     if(event.type==='call.media'){
       if(!['phone','speaker'].includes(event.surface)||!['standard','courtesy','provider','assisted'].includes(event.playbackPolicy)||
         typeof event.nativeDuplex!=='boolean'||![16000,24000].includes(event.inputSampleRate))return false;

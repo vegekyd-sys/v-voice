@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createImprovShow} from '../realtime-direct-tools/improv-live.mjs';
+import {createImprovPlayer as createImprovPlayerForTest} from './improv-player.mjs';
 
 test('tool calls open, direct and stop once using Makaron receipts',async()=>{
  const calls=[],events=[];
@@ -130,4 +131,53 @@ test('a stopped show remains available to its uploader after the capture timeout
  send('ended');
  assert.equal(removed,true);
  assert.equal(clips.at(-1).done,true);
+});
+
+test('a failed start leaves the same request free to retry and hands Makaron\'s reason to the model',async()=>{
+ let fail=true;const events=[];
+ const api=createImprovShow({run:async args=>{
+   if(args[0]==='start'&&fail){fail=false;throw Error('Makaron Director：已有直播会话，请先收播');}
+   if(args[0]==='start')return {id:'r1',phase:'waiting',playerPath:'/director/player.html#r1.'+'x'.repeat(43)};
+   return {phase:'ended'};
+ }});
+ const turn={text:'用这张开直播'};
+ await assert.rejects(api.command({action:'start',shot:'开场'},turn,e=>events.push(e)),/已有直播会话/u);
+ const result=await api.command({action:'start',shot:'开场',caption:'巧克力店开门了'},turn,e=>events.push(e));
+ assert.equal(result.state,'connecting');
+ assert.equal(events[0].caption,'巧克力店开门了');
+});
+
+test('a show that ended on its own tells the next direction why, and labels follow accepted directions',async()=>{
+ const events=[];
+ const api=createImprovShow({run:async args=>args[0]==='start'?{id:'e1',phase:'waiting',playerPath:'/director/player.html#e1.'+'x'.repeat(43)}:args[0]==='direct'?{action:'send',version:2}:{phase:'ended'}});
+ const send=e=>events.push(e);
+ await api.command({action:'start',shot:'开场'},{text:'开播'},send);
+ await api.command({action:'direct',shot:'一只小橘猫轻轻跳上木质柜台，尾巴扫过玻璃罐',caption:'小橘猫跳上柜台'},{text:'来只小橘猫',id:'t2'},send);
+ assert.deepEqual(events.at(-1),{type:'improv.live',action:'label',id:'e1',version:2,text:'小橘猫跳上柜台'});
+ await api.end('e1','time');
+ await assert.rejects(api.command({action:'direct',shot:'下雪'},{text:'下雪吧'},send),/时长上限/u);
+});
+
+test('the player captions a shot with the host caption, never the Director prompt, and reports milestones',()=>{
+ const listeners=[],updates=[],stages=[],ended=[];
+ const frame={hidden:false,contentWindow:{postMessage(){}},contentDocument:{querySelector:()=>null},remove(){}};
+ globalThis.window={addEventListener:(t,l)=>listeners.push(l),removeEventListener(){}};
+ globalThis.document={baseURI:'https://v.example/voice/',createElement:()=>frame,body:{append(){}}};
+ globalThis.location={origin:'https://v.example'};
+ let now=0;
+ const player=createImprovPlayerForTest({update:v=>updates.push(v),ended:(id,reason)=>ended.push(reason),notice(){},stage:s=>stages.push(s),clock:()=>now});
+ player.receive({action:'start',id:'p1',playerPath:'/director/player.html#p1.'+'x'.repeat(43),name:'巧克力店',caption:'开门营业'});
+ const post=data=>listeners.forEach(l=>l({source:frame.contentWindow,origin:'https://v.example',data:{source:'makaron-director',id:'p1',...data}}));
+ now=13000;post({action:'playing'});
+ post({action:'direction',state:'playing',version:1,text:'以巴黎巧克力店柜台后的V为第一帧，暖光保持'});
+ assert.equal(updates.at(-1).cue.text,'开门营业');
+ post({action:'direction',state:'playing',version:2,text:'长长的导演提示词'});
+ assert.equal(updates.at(-1).cue.text,'');
+ player.receive({action:'label',id:'p1',version:2,text:'小橘猫跳上柜台'});
+ assert.equal(updates.at(-1).cue.text,'小橘猫跳上柜台');
+ post({action:'ended',reason:'time'});
+ assert.deepEqual(stages.map(s=>s.stage),['first-frame','direction-played','ended']);
+ assert.equal(stages[0].ms,13000);
+ assert.deepEqual(ended,['time']);
+ delete globalThis.window;delete globalThis.document;delete globalThis.location;
 });

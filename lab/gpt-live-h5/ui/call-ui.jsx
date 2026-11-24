@@ -425,61 +425,77 @@ function TvIsland({state,actions,status}) {
   </section>;
 }
 
+const mmss = seconds => String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+// A live broadcast is one more work on the board: the same frame, sketch and caption as a
+// picture or a video being made, with REC on the picture and the shot that is playing under it.
 function ImprovStage({show, actions}) {
   const video = useRef(null);
   const [playing, setPlaying] = useState(false);
-  const [seconds,setSeconds]=useState(0);
+  const [seconds, setSeconds] = useState(0);
+  const [waited, setWaited] = useState(0);
   const [blocked, setBlocked] = useState(false);
-  const [caption,setCaption] = useState('');
-  const [shape,setShape] = useState(16 / 9);
+  const [caption, setCaption] = useState(null);
+  const [shape, setShape] = useState(16 / 9);
   const nextCue = useRef(null);
-  useLayoutEffect(()=>{nextCue.current=show.cue;},[show.cue]);
+  useLayoutEffect(() => { nextCue.current = show.cue; }, [show.cue]);
+  // A cue's words can arrive after its frame (a host caption follows the receipt).
+  useEffect(() => { if (caption && show.cue?.version === caption.version && show.cue.text !== caption.text) setCaption(show.cue); }, [show.cue]);
+  useEffect(() => {
+    if (playing) return;
+    const since = Date.now(), timer = setInterval(() => setWaited(Math.floor((Date.now() - since) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [playing]);
   useEffect(() => {
     const element = video.current;
-    let active = true, frame, version=0;
-    setPlaying(false);setBlocked(false);
+    let active = true, frame, version = 0;
+    setPlaying(false); setBlocked(false);
     element.srcObject = show.stream ?? null;
-    if(!show.stream)return;
+    if (!show.stream) return;
     // The embedded peer and this visible video share the RTP clock. A cue
     // arriving between two paints stays hidden until its frame reaches here.
     const present = (_now, metadata) => {
-      if(!active || !element.videoWidth)return;
-      setPlaying(true);setSeconds(Math.floor(metadata?.mediaTime ?? element.currentTime));setBlocked(false);setShape(element.videoWidth/element.videoHeight);
-      const cue=nextCue.current;
-      if(cue && cue.version>version && (cue.rtp==null || metadata?.rtpTimestamp==null ||
-          ((metadata.rtpTimestamp-cue.rtp)>>>0)<0x80000000)){
-        version=cue.version;setCaption(cue.text);
+      if (!active || !element.videoWidth) return;
+      setPlaying(true); setSeconds(Math.floor(metadata?.mediaTime ?? element.currentTime)); setBlocked(false); setShape(element.videoWidth / element.videoHeight);
+      const cue = nextCue.current;
+      if (cue && cue.version > version && (cue.rtp == null || metadata?.rtpTimestamp == null ||
+          ((metadata.rtpTimestamp - cue.rtp) >>> 0) < 0x80000000)) {
+        version = cue.version; setCaption(cue);
       }
     };
-    const tick=(time,metadata)=>{present(time,metadata);if(active)frame=element.requestVideoFrameCallback(tick);};
-    const fallback=()=>{if(element.readyState>=2 && !element.paused)present();};
-    if(element.requestVideoFrameCallback) frame=element.requestVideoFrameCallback(tick);
-    else element.addEventListener('timeupdate',fallback);
-    element.play().catch(()=>{if(active)setBlocked(true);});
+    const tick = (time, metadata) => { present(time, metadata); if (active) frame = element.requestVideoFrameCallback(tick); };
+    const fallback = () => { if (element.readyState >= 2 && !element.paused) present(); };
+    if (element.requestVideoFrameCallback) frame = element.requestVideoFrameCallback(tick);
+    else element.addEventListener('timeupdate', fallback);
+    element.play().catch(() => { if (active) setBlocked(true); });
     return () => {
-      active=false;
-      if(frame!=null)element.cancelVideoFrameCallback(frame);
-      element.removeEventListener('timeupdate',fallback);
-      element.srcObject=null;
+      active = false;
+      if (frame != null) element.cancelVideoFrameCallback(frame);
+      element.removeEventListener('timeupdate', fallback);
+      element.srcObject = null;
     };
   }, [show.stream]);
-  return <figure className="improv-stage" aria-label="即兴直播">
-    <div className="board-work-frame improv-picture" data-playing={playing || undefined} style={{'--shape':shape}}>
-      {show.imageUrl && !playing && <img className="improv-cover" src={show.imageUrl} alt="开场参考图" onLoad={e=>{if(!video.current?.videoWidth)setShape(e.target.naturalWidth/e.target.naturalHeight);}}/>}
-      {!show.imageUrl && !playing && <div className="board-work-sketch" aria-hidden="true"><i/><i/><i/></div>}
-      {playing && <span className="improv-rec" aria-label="正在录制"><i/>REC <time>{String(Math.floor(seconds/60)).padStart(2,'0')}:{String(seconds%60).padStart(2,'0')}</time></span>}
-      <video ref={video} id="improvVideo" playsInline muted autoPlay />
+  return <figure className="board-work improv-stage" data-kind="live" data-state={playing ? 'live' : 'making'} aria-label="即兴直播">
+    <div className="board-work-frame" style={{'--shape': shape}}>
+      {show.imageUrl && !playing && <img className="board-work-under" src={show.imageUrl} alt="" decoding="async"
+        onLoad={e => { if (!video.current?.videoWidth) setShape(e.target.naturalWidth / e.target.naturalHeight); }} />}
+      {!playing && <div className="board-work-sketch" data-over={show.imageUrl ? 'true' : undefined}>
+        <i /><i /><i />
+        {blocked ? <button type="button" className="board-report" onClick={() => video.current.play().catch(() => setBlocked(true))}>点一下开始播放</button>
+          : <p>{show.stream ? '第一幕马上到' : '正在连线直播'}<span> · {waited} 秒</span></p>}
+      </div>}
+      <video ref={video} className="board-work-print" data-loaded={playing || undefined} playsInline muted autoPlay />
+      {playing && <span className="improv-rec" role="timer" aria-label={'正在直播，已录制 ' + mmss(seconds)}><i />REC <time>{mmss(seconds)}</time></span>}
+      {playing && <button type="button" className="board-work-sound" data-quiet={show.muted || undefined} aria-pressed={!show.muted}
+        aria-label={show.muted ? '恢复直播声音' : '静音直播声音'} onClick={actions.toggleImprovSound}>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />{show.muted ? <path d="m16 9.5 5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" />}</svg>
+      </button>}
     </div>
-    <figcaption aria-live="polite">
-      {blocked ? <button type="button" className="board-report" onClick={()=>video.current.play().catch(()=>setBlocked(true))}>播放画面</button>
-        : !playing && <small>正在准备第一幕…</small>}
-      {playing && caption && <p>{caption}</p>}
-      {show.note && <small>{show.note}</small>}
+    <figcaption>
+      {show.name && <span className="board-work-name">{show.name}</span>}
+      <small>{playing ? 'V 主持的直播 · 说下一幕就能改' : '用这张开场'}</small>
+      <button type="button" className="improv-end" onClick={actions.endImprov}>收播</button>
     </figcaption>
-    <div className="improv-controls">
-      <button className="board-report improv-sound" type="button" aria-label={show.muted?'恢复直播声音':'静音直播声音'} aria-pressed={show.muted} title={show.muted?'恢复直播声音':'静音直播声音'} onClick={actions.toggleImprovSound}><Icon d={show.muted?SPEAKER_OFF:SPEAKER}/></button>
-      <button className="board-report" type="button" onClick={actions.endImprov}>结束直播</button>
-    </div>
+    <p className="improv-cue" aria-live="polite" key={caption?.version ?? 0}>{playing && caption?.text ? caption.text : show.note || ''}</p>
   </figure>;
 }
 

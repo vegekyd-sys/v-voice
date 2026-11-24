@@ -5,10 +5,11 @@ const execute=promisify(execFile);
 
 export const IMPROV_TOOL = {
   type: 'function', name: 'improv_live',
-  description: '在当前讲解画布开一场可中途改变的娱乐直播。根据整个对话理解用户意图：明确要开播或确认了上一轮的开播提议，直接 start。找现实直播、作图、生成普通视频用相应的其他工具。用户指定首图必须带上画布素材编号、current 或画面序号；用生成的 V 图片时选这幅作品，v 仅代表原始头像。身份或图片有歧义才询问。直播中用户描述的下一幕用 direct，日常聊天直接回答。收播用 end，通话继续。等待回执再报状态，connecting 表示开始连接，不能声称已经出画。',
+  description: '在当前讲解画布开一场可中途改变的娱乐直播。根据整个对话理解用户意图：明确要开播或确认了上一轮的开播提议，直接 start。找现实直播、作图、生成普通视频用相应的其他工具。用户指定首图必须带上画布素材编号、current 或画面序号；用生成的 V 图片时选这幅作品，v 仅代表原始头像。身份或图片有歧义才询问。直播中用户描述的下一幕用 direct，日常聊天直接回答。收播用 end，通话继续。等待回执再报状态，connecting 表示开始连接，不能声称已经出画。回执报错时按错误原文判断：可以换图、先 end 再 start 或如实告诉用户。',
   parameters: {type:'object', additionalProperties:false, required:['action'], properties:{
     action:{type:'string',enum:['start','direct','end']},
     shot:{type:'string',description:'start 写具体开场，direct 写用户指定的下一幕。以图开场时保留图中主体和场景。最多 600 字。'},
+    caption:{type:'string',description:'画面下方给观众看的一句镜头说明，口语、不超过 24 字，例如「小橘猫跳上柜台」。不要写画面要求或镜头术语。'},
     openingImage:{type:'string',description:'仅 start。指定作品时用本通电话素材编号（例如 a1、p2），指当前显示或选中图片用 current。纯文字开场可省略。'},
     imagePosition:{type:'integer',minimum:1,maximum:16,description:'仅 start。用户按当前页面顺序指定的第几张图，从 1 起。与 openingImage 二选一。'}
   }}
@@ -26,7 +27,12 @@ export function directorCommand(environment=process.env) {
     try{
       const {stdout}=await execute(binary,['director','--json',...args],{env,timeout:45000,maxBuffer:65536});
       return JSON.parse(stdout);
-    }catch{throw Error('Makaron Director 未确认操作，请查看本场状态');}
+    }catch(error){
+      // The CLI prints Makaron's own reason as its last stderr line. Hand that
+      // reason to the model so it can choose: end first, pick another image, or explain.
+      const reason=String(error?.stderr??'').trim().split('\n').at(-1)?.replace(/https?:\/\/\S+/gu,'').trim().slice(0,160);
+      throw Error(error?.killed?'Makaron Director 超时未回应，可以稍后重试':reason?'Makaron Director：'+reason:'Makaron Director 未确认操作，请查看本场状态');
+    }
   };
   run.uploadReference = async (bytes, contentType) => {
     const ext = {'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[contentType];
@@ -46,49 +52,55 @@ export function directorCommand(environment=process.env) {
   return run;
 }
 
+export const clip=(text,limit=24)=>{const chars=Array.from(String(text??'').replace(/\s+/gu,' ').trim());return chars.length>limit?chars.slice(0,limit-1).join('')+'…':chars.join('');};
+const ENDINGS={time:'本场已到时长上限',failed:'直播连接中断',caller:'用户在画面上结束了直播',call:'通话结束'};
 export function createImprovShow({run}) {
-  let show=null, starting=null, lastStart, closed=false, emit;
-  const directions=new WeakMap();
-  async function stop(id) {
+  let show=null, starting=null, closed=false, emit, ended=null;
+  const directions=new WeakMap(), started=new WeakSet();
+  async function stop(id,reason='') {
     if(!show || show.id!==id)return false;
     const result=await run(['stop',id]);
     if(result.phase!=='ended')throw Error('Makaron 尚未确认收播');
-    if(show?.id===id){show=null;emit?.({type:'improv.live',id,action:'end'});}
+    if(show?.id===id){show=null;ended={reason:ENDINGS[reason]??'',at:Date.now()};emit?.({type:'improv.live',id,action:'end'});}
     return true;
   }
-  async function start(shot,send,imageUrl,aspect,imageName){
+  async function start(shot,send,imageUrl,aspect,imageName,caption){
     const result=await run(['start','--prompt',shot,'--request-id',randomUUID(),...(imageUrl && aspect?['--aspect-ratio',aspect]:[]),...(imageUrl?['--image',imageUrl]:[])]);
     if(closed){await run(['stop',result.id]);throw Error('这通电话已结束');}
     if(result.phase!=='waiting'||!/^\/director\/player\.html#[a-z0-9-]+\.[a-zA-Z0-9_-]{43}$/.test(result.playerPath))throw Error('Makaron 未返回有效的播放票据');
-    show={id:result.id,imageName}; emit=send;
-    send({type:'improv.live',action:'start',id:show.id,playerPath:result.playerPath,...(imageUrl?{imageUrl}:{})});
+    show={id:result.id,imageName}; emit=send; ended=null;
+    send({type:'improv.live',action:'start',id:show.id,playerPath:result.playerPath,...(imageUrl?{imageUrl}:{}),...(imageName?{name:clip(imageName,30)}:{}),...(caption?{caption}:{})});
     return {requested:true,action:'start',state:'connecting',openingImageName:imageName};
   }
   return {
-    async command({action,shot},turn,send,imageUrl='',aspect='',imageName=''){
+    async command({action,shot,caption},turn,send,imageUrl='',aspect='',imageName=''){
       if(closed || !turn)throw Error('需要当前通话内的用户请求');
+      const label=clip(caption);
       if(action==='start'){
         if(show){send({type:'improv.live',action:'focus',id:show.id});return {requested:true,action,state:'existing',openingImageName:show.imageName};}
         if(starting)return starting;
-        if(lastStart===turn)throw Error('本轮的开播请求已经处理');
+        // One show per spoken request; a failed attempt leaves the turn free to retry.
+        if(started.has(turn))throw Error('本轮已经开过一场直播，它已结束；需要再开请等用户再次要求');
         if(!shot?.trim() || shot.length>600)throw Error('需要简短的开场描述');
-        lastStart=turn;
-        starting=start(shot.trim(),send,imageUrl,aspect,imageName);
-        try{return await starting;}finally{starting=null;}
+        starting=start(shot.trim(),send,imageUrl,aspect,imageName,label);
+        try{const result=await starting;started.add(turn);return result;}finally{starting=null;}
       }
-      if(starting)await starting;
+      if(starting)await starting.catch(()=>{});
       if(action==='end'){
-        if(show)await stop(show.id);
+        if(show)await stop(show.id,'caller');
         return {requested:true,action,state:'ended'};
       }
-      if(action!=='direct'||!show)throw Error('当前没有直播');
+      if(action!=='direct')throw Error('不支持的直播操作');
+      if(!show)throw Error(ended?'当前没有直播：'+(ended.reason||'上一场已结束')+'。需要的话可以重新开播':'当前没有直播');
       const words=(shot || turn.text)?.trim();
       if(!words || words.length>600)throw Error('需要简短的下一幕描述');
-      if(!directions.has(turn))directions.set(turn,run(['direct',show.id,'--turn-id',String(turn.id||randomUUID()),'--',words]));
+      const id=show.id;
+      if(!directions.has(turn))directions.set(turn,run(['direct',id,'--turn-id',String(turn.id||randomUUID()),'--',words]));
       const result=await directions.get(turn);
+      if(Number.isInteger(result?.version) && show?.id===id)send({type:'improv.live',action:'label',id,version:result.version,text:label||clip(turn.text)});
       return {...result,instruction:'根据导演回执回应。已提交的下一幕仍需等待在画面中播出。'};
     },
     end:stop,
-    close(){closed=true;if(show)void stop(show.id).catch(()=>{});}
+    close(){closed=true;if(show)void stop(show.id,'call').catch(()=>{});}
   };
 }

@@ -657,7 +657,7 @@ async function stopCall({failure}={}) {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
-    active.improv?.finish();
+    active.improv?.finish('call');
     view.set({improv:null,recordings:[]});
     for(const clip of active.recordings?.values()??[])if(clip.recording)URL.revokeObjectURL(clip.recording);
     active.avatarTelemetry?.close();
@@ -795,7 +795,8 @@ async function startCall() {
         active.recordings??=new Map();active.recordings.set(clip.id,clip);
         view.set({recordings:[...active.recordings.values()]});
       },
-      ended: id => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id}).catch(()=>{}); },
+      ended: (id,reason) => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id,reason}).catch(()=>{}); },
+      stage: ({stage,ms,reason,status}) => { if (call === active) void api('improv-stage',{voiceSessionId:active.voiceSessionId,stage,ms,reason,status}).catch(()=>{}); },
       notice: (text,failed) => { if (call === active) setStatus(text,{tone:failed?'problem':'success'}); }
     });
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');

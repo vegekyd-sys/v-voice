@@ -991,7 +991,16 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if(pathname==='/api/close'&&params.voiceSessionId!==context.active?.reservation.voiceSessionId&&isClosedCall(context,params.voiceSessionId)){letGo(context,params.voiceSessionId);return json(res,200,{ok:true});}
       if (!context.active || params.voiceSessionId !== context.active.reservation.voiceSessionId) return json(res, 409, { error: "通话已结束，请重新开始" });
       context.active.touchedAt = Date.now();
-      if(pathname==='/api/improv-end')return json(res,200,{ended:await context.active.improv?.end(params.id)??false});
+      if(pathname==='/api/improv-end')return json(res,200,{ended:await context.active.improv?.end(params.id,['time','failed','caller'].includes(params.reason)?params.reason:'')??false});
+      // Player milestones carry no content: which stage, how long since the start receipt, and why it ended.
+      if(pathname==='/api/improv-stage'){
+        const stage=['ice','offer','configured','first-frame','direction-played','ended','recorded','record-failed'].includes(params.stage)?params.stage:null;
+        if(stage&&context.active.improv)callControlAudit({type:'improv.stage',voiceSessionId:context.active.reservation.voiceSessionId,stage,
+          ...(Number.isSafeInteger(params.ms)&&params.ms>=0&&params.ms<3_600_000?{ms:params.ms}:{}),
+          ...(['time','failed','caller','call','provider'].includes(params.reason)?{reason:params.reason}:{}),
+          ...(Number.isSafeInteger(params.status)&&params.status>=100&&params.status<600?{status:params.status}:{})});
+        return json(res,200,{ok:true});
+      }
       if(pathname==='/api/device-result'){
         const active=context.active;
         if(active.direct||!active.deviceBound||active.deviceRetired||Object.keys(params).some(k=>!['voiceSessionId','frame'].includes(k)))return json(res,409,{error:'设备通道已结束'});
