@@ -109,7 +109,8 @@ export function createImprovPlayer({context,update,ended,notice,archive=()=>{},s
       if(e.data.action==='playing'){if(!show.played){show.played=true;report(show,'first-frame');}attachSound(show,frame.contentDocument.querySelector('video')?.srcObject);publish(show);}
       if(e.data.action==='direction'){
         if(e.data.state==='playing' && Number.isInteger(e.data.version) && e.data.version>(show.version||0)){
-          if(e.data.version>1)report(show,'direction-played');
+          // Beats the showrunner wrote carry their own caption; the caller's directions do not.
+          if(e.data.version>1)report(show,typeof e.data.caption==='string'&&!show.labels.has(e.data.version)?'beat-played':'direction-played');
           show.version=e.data.version;show.cue={version:e.data.version,text:label(show,e.data.version,typeof e.data.caption==='string'?e.data.caption.slice(0,40):''),rtp:e.data.rtpTimestamp};show.note='';
         } else if(e.data.state==='sent')return;
         else if(e.data.state==='rejected')show.note='这条指令未被采用';

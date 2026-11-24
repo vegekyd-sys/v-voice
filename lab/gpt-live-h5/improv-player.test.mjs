@@ -31,6 +31,18 @@ test('the caller\'s own words still go through the cleanup, and the story can be
  assert.equal(calls[1].at(-1),'嗯，下雨吧');
 });
 
+test('an older Makaron CLI without the new options still starts and directs',async()=>{
+ const calls=[],events=[];
+ const run=async args=>{calls.push(args);return args[0]==='start'?{id:'o1',phase:'waiting',playerPath:'/director/player.html#o1.'+'x'.repeat(43)}:{action:'send',version:2};};
+ run.features=async()=>({story:false,ready:false});
+ const api=createImprovShow({run});
+ await api.command({action:'start',shot:'猫'},{text:'开播'},e=>events.push(e));
+ await api.command({action:'direct',shot:'下雨'},{text:'一只小橘猫跳上了柜台，老板递给他一个系着红丝带的小礼盒',id:'t3'},e=>events.push(e));
+ assert.ok(!calls[0].includes('--story'));
+ assert.ok(!calls[1].includes('--ready'));
+ assert.equal(events.at(-1).text,'一只小橘猫跳上了柜台','without a model caption the first phrase of the caller is shown');
+});
+
 test('reopening a playing show refocuses its single player and never buys a second session',async()=>{
  const starts=[],events=[];
  const api=createImprovShow({run:async args=>{starts.push(args);return {id:'s1',phase:'waiting',playerPath:'/director/player.html#s1.'+'x'.repeat(43)};}});
@@ -190,7 +202,7 @@ test('the player captions a shot with the host caption, never the Director promp
  post({action:'direction',state:'playing',version:3,text:'老板弯腰把礼盒推到小猫面前，近景',caption:'老板把礼盒推给小猫'});
  assert.equal(updates.at(-1).cue.text,'老板把礼盒推给小猫','a showrunner beat carries its own caption');
  post({action:'ended',reason:'time'});
- assert.deepEqual(stages.map(s=>s.stage),['first-frame','direction-played','direction-played','ended']);
+ assert.deepEqual(stages.map(s=>s.stage),['first-frame','direction-played','beat-played','ended']);
  assert.equal(stages[0].ms,13000);
  assert.deepEqual(ended,['time']);
  delete globalThis.window;delete globalThis.document;delete globalThis.location;
@@ -200,4 +212,17 @@ test('live arguments the tool does not have are dropped instead of refusing the 
  const {improvArguments}=await import('../realtime-direct-tools/improv-live.mjs');
  assert.deepEqual(improvArguments({action:'direct',shot:'下雨',image:'a1',mood:'',openingImage:'a1'}),{action:'direct',shot:'下雨'});
  assert.deepEqual(improvArguments({action:'start',shot:'开场',openingImage:'a1',imagePosition:0,extra:1}),{action:'start',shot:'开场',openingImage:'a1'});
+});
+
+test('the installed Makaron CLI is asked once which live options it has',async t=>{
+ const {mkdtempSync,writeFileSync,chmodSync,rmSync,readFileSync}=await import('node:fs');
+ const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const {directorCommand}=await import('../realtime-direct-tools/improv-live.mjs');
+ const dir=mkdtempSync(join(tmpdir(),'cli-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const bin=join(dir,'makaron'),count=join(dir,'count');
+ writeFileSync(bin,`#!${process.execPath}\nrequire('fs').appendFileSync(${JSON.stringify(count)},'x');\nif(process.argv.includes('--help'))console.log('makaron director start --prompt <scene> [--story]');\n`);chmodSync(bin,0o755);
+ const run=directorCommand({VOICE_MAKARON_DIRECTOR_CLI:bin,MAKARON_API_KEY:'test',MAKARON_DIRECTOR_URL:'http://127.0.0.1:1',PATH:process.env.PATH});
+ assert.deepEqual(await run.features(),{story:true,ready:false});
+ assert.deepEqual(await run.features(),{story:true,ready:false});
+ assert.equal(readFileSync(count,'utf8'),'x');
 });

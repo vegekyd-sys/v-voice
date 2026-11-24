@@ -994,7 +994,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if(pathname==='/api/improv-end')return json(res,200,{ended:await context.active.improv?.end(params.id,['time','failed','caller'].includes(params.reason)?params.reason:'')??false});
       // Player milestones carry no content: which stage, how long since the start receipt, and why it ended.
       if(pathname==='/api/improv-stage'){
-        const stage=['ice','offer','configured','first-frame','direction-played','ended','recorded','record-failed'].includes(params.stage)?params.stage:null;
+        const stage=['ice','offer','configured','first-frame','direction-played','beat-played','ended','recorded','record-failed'].includes(params.stage)?params.stage:null;
         if(stage&&context.active.improv)callControlAudit({type:'improv.stage',voiceSessionId:context.active.reservation.voiceSessionId,stage,
           ...(Number.isSafeInteger(params.ms)&&params.ms>=0&&params.ms<3_600_000?{ms:params.ms}:{}),
           ...(['time','failed','caller','call','provider'].includes(params.reason)?{reason:params.reason}:{}),
