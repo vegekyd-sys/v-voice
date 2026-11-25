@@ -99,12 +99,12 @@ function voiceStatus(state, now) {
 
 /**
  * Earlier turns stay quiet; the current turn starts at the latest caller words
- * said to V. Side talk V did not take up (notForV) stays inside V's turn, so a
+ * said to V. Side talk V did not take up (notForV, listenOnly) stays inside V's turn, so a
  * lesson keeps its place on screen instead of dropping into the quiet history.
  */
 export function splitTurns(snapshot) {
   const rows = orderedTranscriptRows(snapshot);
-  let start = rows.findLastIndex(row => row.role === 'user' && !row.notForV);
+  let start = rows.findLastIndex(row => row.role === 'user' && !row.notForV && !row.listenOnly);
   if (start < 0) start = rows.findLastIndex(row => row.role === 'user');
   if (start < 0) start = Math.max(0, rows.length - 1);
   while (start > 0 && rows[start - 1].role === 'user') start--;
