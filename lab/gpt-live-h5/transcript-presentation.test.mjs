@@ -199,3 +199,56 @@ test('speaker input labels bind to their own utterance and later names update ea
  assert.equal(p.snapshot().history[0].speaker,'天懿 · Speaker A','a later speaker must never relabel earlier turns');
  p.reset();p.consume({type:'speaker.utterance',turn},140);assert.equal(p.snapshot().history[0].speaker,'Speaker A');
 });
+
+test('side talk the floor judge heard as not said to V is marked on its own line, by turn ID first', () => {
+  const p = createTranscriptPresentation();
+  const user = (id, text, sourceTurnId) => p.consume({type: 'turn.done', turn: {id, role: 'user', transcript: text, ...(sourceTurnId ? {sourceTurnId} : {})}}, 100);
+  user('row-1', '好的', 'turn-1');
+  user('row-2', '好的', 'turn-2');
+  // The turn ID wins over identical words on a later line.
+  p.consume({type: 'input.speech.ignored', preservedResponseId: 'r1', reason: 'not-addressed', text: '好的', turnId: 'turn-1'});
+  assert.deepEqual(p.snapshot().history.map(row => row.notForV ?? false), [true, false]);
+});
+
+test('without a turn ID the latest finished caller line with the same words is marked', () => {
+  const p = createTranscriptPresentation();
+  p.consume({type: 'turn.done', turn: {id: 'a', role: 'user', transcript: '妈，我等会儿再吃。'}}, 100);
+  p.consume({type: 'turn.done', turn: {id: 'v', role: 'assistant', transcript: '接着看右边。'}}, 200);
+  p.consume({type: 'turn.done', turn: {id: 'b', role: 'user', transcript: '妈，我等会儿再吃。'}}, 300);
+  p.consume({type: 'input.speech.ignored', reason: 'not-addressed', text: ' 妈，我等会儿 再吃。'});
+  assert.deepEqual(p.snapshot().history.map(row => row.notForV ?? false), [false, false, true]);
+  // An unknown turn ID still falls back to words, but never onto a line owned by another turn.
+  const q = createTranscriptPresentation();
+  q.consume({type: 'turn.done', turn: {id: 'a', role: 'user', transcript: '嗯', sourceTurnId: 'turn-a'}}, 100);
+  q.consume({type: 'input.speech.ignored', reason: 'not-addressed', text: '嗯', turnId: 'turn-z'});
+  assert.equal(q.snapshot().history[0].notForV, undefined);
+});
+
+test('only a not-addressed judgement steps a line back; other ignored input and misses change nothing', () => {
+  const p = createTranscriptPresentation();
+  p.consume({type: 'turn.done', turn: {id: 'a', role: 'user', transcript: '你好', sourceTurnId: 'turn-1'}}, 100);
+  const before = p.snapshot();
+  assert.deepEqual(p.consume({type: 'input.speech.ignored', preservedResponseId: 'r1'}), before, 'a timed release or echo has no reason');
+  assert.deepEqual(p.consume({type: 'input.speech.ignored', reason: 'echo', text: '你好', turnId: 'turn-1'}), before);
+  assert.deepEqual(p.consume({type: 'input.speech.ignored', reason: 'not-addressed', text: '没出现过的话'}), before, 'no line: no-op');
+  assert.deepEqual(p.consume({type: 'input.speech.ignored', reason: 'not-addressed'}), before);
+});
+
+test('a judgement that arrives before its final line is applied when that turn finishes', () => {
+  const p = createTranscriptPresentation();
+  p.consume({type: 'input_transcript.delta', turn_id: 'row', delta: '妈，'}, 100);
+  p.consume({type: 'input.speech.ignored', reason: 'not-addressed', text: '妈，我不吃了。', turnId: 'turn-9'});
+  assert.equal(p.snapshot().current[0].notForV, undefined);
+  p.consume({type: 'turn.done', turn: {id: 'row', role: 'user', transcript: '妈，我不吃了。', sourceTurnId: 'turn-9'}}, 200);
+  assert.equal(p.snapshot().history[0].notForV, true);
+  p.reset();
+  p.consume({type: 'turn.done', turn: {id: 'x', role: 'user', transcript: '再说一次', sourceTurnId: 'turn-9'}}, 300);
+  assert.equal(p.snapshot().history[0].notForV, undefined, 'reset forgets waiting judgements');
+});
+
+test('speaker-routed rows keep their own listen-only state and are not matched by words', () => {
+  const p = createTranscriptPresentation();
+  p.consume({type: 'speaker.utterance', turn: {text: '我们先吃饭', speakerId: 0, startMs: 0, endMs: 900}}, 100);
+  p.consume({type: 'input.speech.ignored', reason: 'not-addressed', text: '我们先吃饭'});
+  assert.equal(p.snapshot().history[0].notForV, undefined);
+});

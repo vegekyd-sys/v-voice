@@ -114,9 +114,10 @@ function Turn({row, options, quiet}) {
   return (
     <article className={`turn ${row.role}`} data-key={row.key} data-streaming={String(!row.complete)}
       data-tone={row.speakerId ? row.speakerTone : undefined} data-listen-only={row.listenOnly ? 'true' : undefined}
-      data-document={row.document ? 'true' : undefined}>
+      data-not-for-v={row.notForV ? 'true' : undefined} data-document={row.document ? 'true' : undefined}>
       <span className="turn-who">{label}</span>
       <div className="turn-text" ref={text} />
+      {row.notForV && <span className="turn-aside"><span>没对 V 说</span></span>}
     </article>
   );
 }
