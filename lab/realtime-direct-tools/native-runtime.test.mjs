@@ -68,3 +68,20 @@ test('the App is told the web page\'s rule for a stalled uplink: shed microphone
   assert.deepEqual(runtime.descriptor.upload, UPLOAD_BACKPRESSURE);
   assert(UPLOAD_BACKPRESSURE.resumeBytes < UPLOAD_BACKPRESSURE.shedBytes && UPLOAD_BACKPRESSURE.stallMS >= 10_000);
 });
+
+test('a caller line the floor judge heard as not said to V becomes a listen-only row in the app',()=>{
+  const runtime=createNativeRuntime({voiceSessionId:'fixture',duplex:true,assisted:true});
+  const said=runtime.project({type:'transcript',role:'user',text:'可以啊。',final:true,turnId:'t1'}).effects.find(e=>e.op==='conversation.row').row;
+  assert.equal(said.listenOnly,undefined);assert.equal('turnId' in said,false,'the service turn ID stays on the server');
+  const effects=runtime.project({type:'input.speech.ignored',reason:'not-addressed',turnId:'t1',text:'可以啊。',preservedResponseId:'lesson'}).effects;
+  assert.deepEqual(effects[0],{op:'playback.release',responseId:'lesson'});
+  const row=effects.find(e=>e.op==='conversation.row').row;
+  assert.equal(row.id,said.id);assert.equal(row.listenOnly,true);assert.equal(row.speakerId,'caller');assert.equal(row.speakerLabel,'');
+  // A timed release or V's own echo carries no reason and marks nothing.
+  runtime.project({type:'transcript',role:'user',text:'讲慢一点',final:true,turnId:'t2'});
+  assert.equal(runtime.project({type:'input.speech.ignored',turnId:'t2',preservedResponseId:'lesson'}).effects.some(e=>e.op==='conversation.row'),false);
+  // The judgement can arrive before the caller's final words; the row is marked when they come.
+  assert.equal(runtime.project({type:'input.speech.ignored',reason:'not-addressed',turnId:'t3',text:'我也要'}).effects.some(e=>e.op==='conversation.row'),false);
+  const late=runtime.project({type:'transcript',role:'user',text:'我也要',final:true,turnId:'t3'}).effects.find(e=>e.op==='conversation.row').row;
+  assert.equal(late.listenOnly,true);
+});
