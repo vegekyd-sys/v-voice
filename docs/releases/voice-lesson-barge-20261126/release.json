@@ -21,8 +21,8 @@
   },
   "iosShellRevision": "87c2eae6cdf63983b030fcb33ea856e875782425f5124e330189031d8b26c7d0",
   "serviceConfiguration": [
-    "私有配置不变。打断判官直连 OpenAI Decisions，使用生产已有的 VOICE_GPT_LIVE_DECISIONS_API_KEY（/etc/openclaw-voice-gpt-live-11.env），没有新增密钥。",
-    "本次发布由 V 主导完成：合并、打包、校验与 release-fleet publish 在 Tianyi Mac 节点上执行（设备节点 SSH 当时只在 Mac 上）；发布后已为 V 配好设备节点专用 key 与私有 inventory，从 V 直接 inspect 两个节点均通过，下次可直接从 V 发布。"
+    "私有配置不变。打断判官直连 OpenAI Decisions，使用生产已有的 GPT Live 1.1 选工具用的 Decisions key，没有新增密钥。",
+    "本次发布由 V 主导完成：合并、打包、校验与 release-fleet publish 在 Owner 的另一台机器上执行（设备节点 SSH 当时只在那台机器上）；发布后已为 V 配好设备节点访问与私有 inventory，从 V 直接 inspect 两个节点均通过。"
   ],
   "fixes": [
     "讲解进行中有人开口时，由 OpenAI Decisions 判断这句话是不是对 V 说的（阈值 0.6，不认关键词）：旁聊、附和、道歉不再切断讲解；对 V 说的话约 1.5 秒切断讲解（原中位 3.6 秒）。",
@@ -34,7 +34,7 @@
     "外部用户确认卡后回到电话页可直接拨号；发作品、发别的群统一交给后台 V。"
   ],
   "acceptance": [
-    "39 个真实讲解插话用例：对 V 说的全部 ≥0.91，明显旁聊除“…OK，你听我说”(0.67) 外最高 0.11；判断中位 0.30 秒、最长 0.43 秒、无超时。",
+    "39 个讲解插话用例（来自真实通话，用例本身不入库）：对 V 说的全部 ≥0.91，明显旁聊除一句“…OK，你听我说”(0.67) 外最高 0.11；判断中位 0.30 秒、最长 0.43 秒、无超时。",
     "真实豆包回放：对 V 说 5/5 切断（1.2–1.5 秒），旁聊 0/5。",
     "两个运行节点的提交与 filesSha256 已核对，均已恢复接入；本次发布未重启 Gateway。",
     "npm test 1563/1563、test:speaker-native、check:ios-shell、release_fleet_test 和 main CI 均通过。"
