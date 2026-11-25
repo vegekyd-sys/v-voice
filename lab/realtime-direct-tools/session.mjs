@@ -106,7 +106,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,lessonRetell=false,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,lessonRetell=false,lessonSilentMs=6000,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -854,7 +854,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(ownResult){
-              if(script){result={material:(script.sentences??[script.say]).join('\n'),instruction:'讲解材料（已经查证，画面和图片已经在用户屏幕上）。现在用你自己的话讲给用户听，像当面讲给朋友：内容以材料为准，不照着念，不提“材料”“讲稿”，讲到屏幕上的哪样东西就说出它的名字，画面会跟着亮起来。'};tellShown(s,ownerBridge);}
+              if(script){result={material:(script.sentences??[script.say]).join('\n'),instruction:'讲解材料（已经查证，画面和图片已经在用户屏幕上）。现在用你自己的话讲给用户听，像当面讲给朋友：内容以材料为准，不照着念，不提“材料”“讲稿”，讲到屏幕上的哪样东西就说出它的名字，画面会跟着亮起来。'};tellShown(s,ownerBridge);
+                // A voice that said its short line in the same turn has at times not answered the result that followed
+                // (docs/task-progress-narration.md). Then the lesson is said as it was before, never lost.
+                const heard=s.lastAudioResponse,asked=s.latestUserTurn,handed=Date.now();
+                setTimeout(()=>{if(!current(s)||s.epoch!==epoch||s.ending||s.lastAudioResponse!==heard||(s.lastAudioAt??0)>handed+2000||s.latestUserTurn!==asked||ownerBridge!==s.bridge)return;
+                  audit({type:'lesson.retell-unanswered',voiceSessionId:s.id,callId:call.callId});ownerBridge.speakProgress?.(script.say,{caption:true});},lessonSilentMs).unref?.();}
               else{s.lessonFailedFor=s.lessonFor;audit({type:'lesson.unavailable',voiceSessionId:s.id,callId:call.callId});result={lessonUnavailable:true,instruction:'讲解材料这次没有准备好。请你现在自己直接把这个问题讲清楚，不要再调用本工具，也不要提画面。'};}
             }else if(current(s)&&s.epoch===epoch){
               if(script){ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true,...(traitsOf(s).retells?{retell:{points:script.sentences??[]}}:{})});if(traitsOf(s).retells)tellShown(s,ownerBridge);}
@@ -959,7 +964,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
-      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
+      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}s.lastAudioResponse=metadata?.responseId??s.lastAudioResponse;s.lastAudioAt=Date.now();deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source,metadata={})=>{
         if(!current(s))return;
         // V's own voice heard again (playback-echo.mjs): kept in the log, never a turn of the caller's.
