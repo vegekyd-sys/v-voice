@@ -394,7 +394,7 @@ export class GptLiveBridge {
           if(id===this.turnId){this.afterReply(transcript);}
         }
         this.heldBack=false;
-        if(id===this.turnId){this.turnOpen=false;this.turnDoneAt=this.now();}
+        if(id===this.turnId){this.turnOpen=false;this.turnDoneAt=this.now();if(this.pendingRetell){const [text,material,target]=this.pendingRetell;this.pendingRetell=null;this.retellLesson(text,material,target);}}
         this.replyText='';
         // The last of the voice arrives after the text is complete. The reply is reported finished once
         // that tail has passed: audio after "finished" would be taken for a new reply that never ends,
@@ -444,6 +444,9 @@ export class GptLiveBridge {
   // order, which V names as it comes to them (the page waits for each name). No script is set, so the
   // captions are V's own words. (VOICE_GPT_LIVE_LESSON_NOTES: reading a script out sounded recited.)
   retellLesson(text,{names=[],points=[]}={},target={}){
+    // Not while V is speaking: an append then is taken for the caller cutting in, and V's words are dropped
+    // (candidate, 11/25: the material cleared what V had begun and nothing was said of it). It follows V's turn.
+    if(this.turnOpen){this.pendingRetell=[text,{names,points},target];return;}
     const shown=(Array.isArray(names)?names:[]).map(name=>gptLiveText(name)).filter(Boolean).slice(0,6);
     const material=(Array.isArray(points)&&points.length?points.map(point=>String(point)).join('\n'):String(text));
     this.append(`讲解材料到了。${shown.length&&this.display!==false?onScreen(shown):''}接着你正在讲的往下讲：已经讲过的不重复，不重新开头，用下面的材料补上具体内容，和你刚才说的不一样时以材料为准、自然地改口。还没开讲的话，就从头用自己的话讲：\n${bound(material,SCRIPT_MAX_CHARS)}`,{...target,channel:'speakable',whole:true});
