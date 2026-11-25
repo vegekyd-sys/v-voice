@@ -54,6 +54,9 @@ test('the decision judge sends the utterance, what V is saying around it and who
   const questions = floorDecisionQuestions();
   assert.equal(questions.addressedNow.type, 'noul');
   assert(questions.addressedNow.instructions.includes('没叫 V 的名字'));
+  // A recognised line can join talk to several people: who it opens to is asked about, by meaning.
+  assert(questions.addressedNow.instructions.includes('连成一句'));
+  assert(questions.addressedNow.instructions.includes('冲谁开的口'));
 });
 
 test('the env judge is absent without the router key and can be turned off', async () => {

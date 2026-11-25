@@ -53,10 +53,11 @@ export function createFloorJudge({complete, timeoutMs = 2500, now = () => perfor
 }
 
 /** The predicate for the Decisions API: one question, answered with a probability. */
-export const FLOOR_DECISION_INSTRUCTIONS = `state.heard 是房间里有人说的原话（语音识别，可能有错字）。state.speaker 是已知的说话人，未知时为 null；state.saidNow 是 V 正在讲的一句，state.saidAhead 是 V 接下来要讲的一句；state.recent 是通话里前面的几句。
+export const FLOOR_DECISION_INSTRUCTIONS = `state.heard 是房间里有人说的原话（语音识别，可能有错字）。一个人连着说了十几秒、中间停顿或换了说话对象，也会被连成一句。state.speaker 是已知的说话人，未知时为 null；state.saidNow 是 V 正在讲的一句，state.saidAhead 是 V 接下来要讲的一句；state.recent 是通话里前面的几句，最后一句通常就是请 V 讲这段内容的话。
 判断：这句话是不是在对 V 说，并且要 V 现在就停下来或改变正在讲的内容，或者回答它？
-是：向 V 提问、请求、纠正 V；让 V 换个讲法、讲简单点、讲慢点、重来、停下或先别讲；插话补充新的要求或话题；听众说没听懂、问自己能不能听懂、问 V 为什么这样讲；直接用“你”对正在讲话的人提要求，即使没叫 V 的名字。
+是：向 V 提问、请求、纠正 V；让 V 换个讲法、讲简单点、讲慢点、重来、停下或先别讲；插话补充新的要求或话题；跟 V 商量或提议接下来怎么讲、怎么一起做；听众说没听懂、问自己能不能听懂、问 V 为什么这样讲、怎么了、为什么停住或不说话（听的人那边可能卡住了）；直接用“你”对正在讲话的人提要求，即使没叫 V 的名字。
 否：在场的人互相说话、回应或附和别人、向别人道歉或解释、议论 V、感叹、自言自语；一句话夹着闲聊时，只看其中有没有对 V 的要求，没有就是否。
+先看这句话是冲谁开的口。开头用称呼叫了在场的另一个人，那么后面的话通常也是对那个人说的；夹在里面、没说明问谁的问题，是在问那个人，哪怕问的事和 V 讲到的内容沾边。但只要其中有一段明显转过来对 V 说（叫 V，或用“你”让 V 讲、说、查、规划、做什么），就是对 V 说；开头的“好的、知道了、嗯”是在回应 V，不算对别人开口。V 没有问过、也没有说过可争的话时，像在回答别人、跟别人争论或要别人先听自己说的话，是对别人说的。
 拿不准时，看这句话是不是在对 V 讲话、要 V 有回应。`;
 
 /** What the decision model sees: the judgement task, the utterance, and what V is saying around it. */
