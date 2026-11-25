@@ -23,7 +23,7 @@ import {SEEDUPLEX_VOICE,SEEDUPLEX_VOICE_CHOICES,seeduplexVoice,SeeduplexRealtime
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_DELEGATE_TOOL,LOCATION_CONTROL_TOOL,createToolExecutor,validateTool,processExited,withExecutionLines} from './tools.mjs';
-import {LESSON_ROUTING,LESSON_TOOL,LESSON_RETELL_ROUTING,LESSON_RETELL_TOOL,PARALLEL_ROUTING,asksForLesson,lessonResearch} from './tools.mjs';
+import {LESSON_ROUTING,LESSON_TOOL,PARALLEL_ROUTING,asksForLesson,lessonResearch} from './tools.mjs';
 import {GrokVoiceBridge,GROK_VOICE_MODEL,GROK_VOICES,grokVoice,grokVoiceModel,grokVoiceLabel,grokVoiceSpeed} from './grok-provider.mjs';
 import {GptLiveBridge,GPT_LIVE_MODEL,GPT_LIVE_LABEL,GPT_LIVE_VOICE,GPT_LIVE_VOICE_CHOICES,GPT_LIVE_IDENTITY,gptLiveVoice} from './gpt-live-provider.mjs';
 import {createDelegationRouter} from './gpt-live-router.mjs';
@@ -57,8 +57,8 @@ export const SELF_START_NOTICE='\n语音查询接话规则：仅对明确向 V �
 // function-tool model reads it in its instructions; a delegation model's router, which makes that choice
 // for it, reads the same text (capabilities.mjs). One edit here reaches both.
 /** What a delegation model's router is told besides its own mechanics: the policy every model has. */
-export function routerNotes({sessionBound=false,publicVoice=false,lessons=false,retell=false,media=''}={}){
-  return [toolChoicePolicy({sessionBound,publicVoice}),lessons?(retell?LESSON_RETELL_ROUTING:LESSON_ROUTING):'',media].filter(Boolean).join('\n');
+export function routerNotes({sessionBound=false,publicVoice=false,lessons=false,media=''}={}){
+  return [toolChoicePolicy({sessionBound,publicVoice}),lessons?LESSON_ROUTING:'',media].filter(Boolean).join('\n');
 }
 export function toolChoicePolicy({sessionBound=false,publicVoice=false}={}){
   if(publicVoice)return VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY;
@@ -106,7 +106,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,lessonRetell=false,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -342,13 +342,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // is what it sounded like, read out. (Its scripts can be brought back for comparison with `scriptedLessons`.)
   // (`lessonNotes`, experiment: the lesson pipeline researches and draws as for any model, and GPT Live tells
   // the lesson in its own words while the page waits for each thing's name.)
-  // (`lessonRetell`, experiment for every model: a lesson is material the model tells in its own words, not a script.)
-  const traitsOf=s=>s.model==='gpt-live-11'&&(gptLive?.scriptedLessons===true||gptLive?.lessonNotes===true||lessonRetell)?{...modelTraits(s.model),explains:'lesson',retells:gptLive?.lessonNotes===true||lessonRetell}:lessonRetell?{...modelTraits(s.model),retells:true}:modelTraits(s.model);
+  const traitsOf=s=>s.model==='gpt-live-11'&&(gptLive?.scriptedLessons===true||gptLive?.lessonNotes===true)?{...modelTraits(s.model),explains:'lesson',retells:gptLive?.lessonNotes===true}:modelTraits(s.model);
   // A retold lesson is handed over the moment it is written; its page is still being drawn then (the
   // illustrator takes several seconds more), and the names on it follow when it is (`lessonShown`).
   // (Waiting for the page first kept the caller waiting 10 to 14 s, the writing itself taking 2 to 4.)
   const tellShown=(s,bridge)=>{void Promise.resolve(lesson?.shown?.(s.id)).then(names=>{if(current(s)&&Array.isArray(names)&&names.length)bridge?.lessonShown?.(names);}).catch(()=>{});};
-  const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&traitsOf(s).explains==='lesson'&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[traitsOf(s).retells?LESSON_RETELL_TOOL:LESSON_TOOL]:[];
+  const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&traitsOf(s).explains==='lesson'&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
   const sessionTools=s=>[...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
@@ -819,10 +818,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(s.lessonFor&&s.lessonFor===(s.latestUserTurn??s)){audit({type:'lesson.duplicate',voiceSessionId:s.id,callId:call.callId});result=s.lessonFailedFor===s.lessonFor?{lessonUnavailable:true,instruction:'讲稿这次没有准备好。请你现在自己直接把这个问题讲清楚，不要再调用本工具，也不要提讲稿或画面。'}:{alreadyExplaining:true,instruction:'这段讲解已经在准备或正在讲。不要再调用，也不要自己再讲一遍。'};}
           else{
             s.lessonFor=s.latestUserTurn??s;
-            // A function-tool model that tells the lesson itself is answered by this call's result, as for any tool:
-            // the reply that follows is its own (Doubao takes no typed turn, so a background hand-over could only be read out for it).
-            const ownResult=traitsOf(s).retells&&traitsOf(s).tools==='function';
-            if(!ownResult){ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;}
+            ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
             // The pictures V has just promised ("配上图"，"画面版") are this lesson's: without this the
             // unfulfilled-promise check told the model to start a creation as the script began.
             s.mediaRecovery?.started();
@@ -853,10 +849,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               if(script&&!traitsOf(s).retells)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
-            if(ownResult){
-              if(script){result={material:(script.sentences??[script.say]).join('\n'),instruction:'讲解材料（已经查证，画面和图片已经在用户屏幕上）。现在用你自己的话讲给用户听，像当面讲给朋友：内容以材料为准，不照着念，不提“材料”“讲稿”，讲到屏幕上的哪样东西就说出它的名字，画面会跟着亮起来。'};tellShown(s,ownerBridge);}
-              else{s.lessonFailedFor=s.lessonFor;audit({type:'lesson.unavailable',voiceSessionId:s.id,callId:call.callId});result={lessonUnavailable:true,instruction:'讲解材料这次没有准备好。请你现在自己直接把这个问题讲清楚，不要再调用本工具，也不要提画面。'};}
-            }else if(current(s)&&s.epoch===epoch){
+            if(current(s)&&s.epoch===epoch){
               if(script){ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true,...(traitsOf(s).retells?{retell:{points:script.sentences??[]}}:{})});if(traitsOf(s).retells)tellShown(s,ownerBridge);}
               else{
                 // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
@@ -866,7 +859,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
                 ownerBridge.sendUserMessage?.(`（讲解工具这次没有准备好讲稿。请你现在自己直接回答我刚才的问题，讲清楚，不要再调用讲解工具，也不要提讲稿或画面：${String(s.latestUserTurn?.text??call.args.topic).slice(-200)}）`);
               }
             }
-            if(!ownResult)result={lessonDelivered:Boolean(script)};
+            result={lessonDelivered:Boolean(script)};
             }
           }
         }
@@ -899,8 +892,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           // The result is in hand while its script is written: a voice that answers by itself is told so,
           // or it answers "still looking" in those seconds.
           target.backgroundResultReady?.(call.callId);
-          try{const script=await lesson.prepare({...(traitsOf(s).retells&&traitsOf(s).tools==='delegation'?{retell:true}:{}),result:true,quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.question??'',ask:s.latestUserTurn?.text,reference:String(presentation.text),signal:AbortSignal.timeout(9000)});
-            if(script?.say){spokenText=script.say;told=traitsOf(s).retells&&traitsOf(s).tools==='delegation'?{points:script.sentences??[]}:true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
+          try{const script=await lesson.prepare({...(traitsOf(s).retells?{retell:true}:{}),result:true,quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.question??'',ask:s.latestUserTurn?.text,reference:String(presentation.text),signal:AbortSignal.timeout(9000)});
+            if(script?.say){spokenText=script.say;told=traitsOf(s).retells?{points:script.sentences??[]}:true;audit({type:'backend.result-lesson',voiceSessionId:s.id,callId:call.callId});}}
           catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
           if(!current(s)||s.epoch!==epoch)return;
         }
@@ -954,7 +947,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+toolChoicePolicy({publicVoice:true})+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:s.model==='seeduplex'?s.voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(traitsOf(s).tools==='delegation'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+(traitsOf(s).retells?LESSON_RETELL_ROUTING:LESSON_ROUTING):lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(traitsOf(s).tools==='delegation'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
@@ -1014,7 +1007,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const owned={...request,instructions};
       for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
       if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,judge:gptLive.judge??null,resume:s.resume??null,
-        notes:routerNotes({sessionBound:s.sessionBound,publicVoice:s.publicVoice,lessons:voiceTools.some(tool=>tool.name===LESSON_TOOL.name),retell:traitsOf(s).retells===true,media:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):''}),
+        notes:routerNotes({sessionBound:s.sessionBound,publicVoice:s.publicVoice,lessons:voiceTools.some(tool=>tool.name===LESSON_TOOL.name),media:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):''}),
         retell:traitsOf(s).retells===true,
         route:createDelegationRouter({complete:gptLive.complete??null,choose:gptLive.choose??null,audit:event=>audit({...event,voiceSessionId:s.id})})});
       return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
