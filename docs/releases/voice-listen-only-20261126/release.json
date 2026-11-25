@@ -1,0 +1,41 @@
+{
+  "version": "voice-listen-only.20261126.1",
+  "verifiedAt": "2026-11-26T01:54:00+08:00",
+  "sourceCommit": "279fc3c2e28cdfaed3d3d0c11e3ec62527fc52c9",
+  "mergePRs": [
+    277,
+    279
+  ],
+  "previousRunningCommit": "1c372a1207069852a485fb8d14f9584f757c6f49",
+  "filesSha256": "ff005799f99c7bd167b8bd79db8f56a4c0f7e7af8ae27a26c5835fcf3cc6e75e",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45668037909",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "91d851fc8b36d8466bcc1e7720a6cae5d8b46ab92026459ec93c91ed1575cbb8",
+  "serviceConfiguration": [
+    "私有配置不变。第一次完全从 V 本机发布（inventory 在 V，设备节点经 V 专用 key 直连）。"
+  ],
+  "fixes": [
+    "判为没对 V 说的那句，网页和 iOS App 统一显示「你 · 仅倾听」并变淡；iOS 通过服务端 native-runtime 把该行标为只听不答，App 不用更新。",
+    "首页更新日志补上 11/26 两次更新。"
+  ],
+  "acceptance": [
+    "npm test 1564/1564、test:speaker-native、check:ios-shell、release_fleet_test、main CI 通过。",
+    "两节点提交与 filesSha256 一致、均已恢复接入；Gateway 未重启。"
+  ],
+  "incident": [
+    "首次发布在 V 上打包时 shell umask 为 077，产物文件为 0600：web 新版本未就绪、自动回滚，期间旧版继续服务；devices 新版本 01:50–01:51 循环重启约 1 分钟起不来，随后又在发布保护中约 2 分钟不接新通话（至 01:53:15 自动到期）。修复：在两节点给新版本目录补可读权限、重跑发布；工具层修复见 PR #280（package.mjs / verify-package.mjs）。"
+  ],
+  "notVerified": [
+    "iPhone 真机上「仅倾听」显示由 Owner 验收。"
+  ]
+}
