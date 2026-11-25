@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createPlaybackText,interruptsLesson,playbackBackchannelLike,playbackEchoLike} from './playback-echo.mjs';
+import {createPlaybackText,playbackEchoLike} from './playback-echo.mjs';
 
 // Invented replies and utterances; no words from real calls.
 const reply = '海边的灯塔晚上会一闪一闪地亮，给远处的船指路。';
@@ -29,29 +29,6 @@ test('Latin words are compared as words, not letters', () => {
   const english = 'The lighthouse blinks at night to guide the ships.';
   assert.equal(playbackEchoLike('guide the ships', english), true);
   assert.equal(playbackEchoLike('play some music', english), false);
-});
-
-test('a bare acknowledgement while V speaks is a backchannel, whatever V is saying', () => {
-  for (const heard of ['嗯', '嗯嗯。', '对对对', '好的好的', '可以啊。', '是呀', '没错', '哈哈哈', '继续', 'OK.', 'yeah yeah'])
-    assert.equal(playbackBackchannelLike(heard), true, heard);
-});
-
-test('a question, a request, a refusal or a stop is never a backchannel', () => {
-  for (const heard of ['可以吗？', '是吗', '啊？', '好了好了', '行了', '知道了', '不对', '不是', '停', '等一下', '对不起',
-    '还有一个', '为什么', '换一个', '我也要我也要', '灯塔是谁修的', '嗯嗯嗯嗯嗯嗯嗯', '', '  。'])
-    assert.equal(playbackBackchannelLike(heard), false, heard);
-});
-
-test('lesson guard: a stop word or speech that addresses V may interrupt a lesson', () => {
-  for (const heard of ['等一下', '停', '不对，不是这个', '别讲了，听我说', '先别说', 'V，再讲一遍', '好的 v，现在呢', '小V你说呢', '阿V', '艾维，换个话题',
-    '哎，艾薇，你听得见吗', '维，你说', 'B， 我跟朋友在一起', 'LV，我住哪个酒店', 'stop'])
-    assert.equal(interruptsLesson(heard), true, heard);
-});
-
-test('lesson guard: side talk, a remark about V or an acknowledgement does not interrupt a lesson', () => {
-  for (const heard of ['他们家的咖啡还挺好喝的', '但是他不知道这是怎么做的', '不好意思，打断你了，你重新说', '可以啊。', '我也要我也要',
-    '看B站上的视频', '维生素要每天吃', '思维导图', '把TV打开', 'Vlog拍得不错', ''])
-    assert.equal(interruptsLesson(heard), false, heard);
 });
 
 test('what V is saying now follows a streamed reply and a lesson caption', () => {

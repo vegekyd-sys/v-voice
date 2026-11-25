@@ -6,7 +6,6 @@ import {mediaAccountScope} from './media-accounts.mjs';
 import {mediaArgv} from './media-cli.mjs';
 import {scriptOf,withScript} from './media-script.mjs';
 import {createMediaTurnRecovery} from './media-turn-recovery.mjs';
-import {createLessonPromiseRecovery} from './lesson-promise-recovery.mjs';
 import {createLocalExecutions,LOCAL_EXECUTION_POLICY,executionFinishedLine,executionResultFacts} from './local-executions.mjs';
 import {VOICE_OPERATION_CONSENT_POLICY,VOICE_CALENDAR_SERVICE_POLICY} from '../../lib/voice-operation-policy.mjs';
 import {hasTvControls,writePolicy,tvControlTool} from './tv-control-policy.mjs';
@@ -41,7 +40,7 @@ import {NATIVE_DUPLEX_POLICY} from './native-duplex-policy.mjs';
 import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics,searchResultText,datedQuery,shanghaiDate} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
-import {createPlaybackText,interruptsLesson,playbackBackchannelLike,playbackEchoLike} from './playback-echo.mjs';
+import {createPlaybackText,playbackEchoLike} from './playback-echo.mjs';
 import {IDLE_FAREWELL,IDLE_HANGUP_DEFAULTS,idleHangupDue,idleHangupExempt} from './idle-hangup.mjs';
 
 // The one line between what the voice model does itself and what goes to V's backend, for every kind
@@ -104,7 +103,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,lessonGuard=false,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -200,7 +199,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     if(s.responseActive&&!s.pending.size&&Date.now()-(s.responseActivityAt??0)>NARRATION.abandonedResponseMs)s.responseActive=false;
     s.lookup?.tick();
     s.mediaRecovery?.tick();
-    s.lessonRecovery?.tick();
     if(s.heldResult)contextHeld(s);
     if(s.backendResult&&s.backgroundBridge&&s.backgroundBridge!==s.bridge){
       // A persona being connected may still turn out to be the requester again.
@@ -340,9 +338,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // it says: a script written by another model and read out is what it sounded like, read out. (Its
   // scripts can be brought back for comparison with `scriptedLessons`.)
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&!(s.model==='gpt-live-11'&&gptLive?.scriptedLessons!==true)&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
-  // VOICE_LESSON_GUARD: an explain_on_board lesson is still the speech the phone is playing.
-  // It ends when the phone reports playback stopped or another response takes the speech over.
-  const lessonPlaying=s=>lessonGuard&&s.nativeDuplex&&s.surface==='phone'&&s.lessonGuardId!=null&&s.playing===true&&s.bridge?.audioResponseId===s.lessonGuardId;
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
   const sessionTools=s=>[...(s.improv?[IMPROV_TOOL]:[]),...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
@@ -741,14 +736,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // and a word from them starts it. Call of 11/22 01:53: "刚启动，正在生成", and nothing had been.)
       resume:text=>s.model==='seeduplex'?s.bridge?.speakProgress('刚才那个我其实还没开始做。你说一声“开始做”，我马上动手。',{caption:true}):s.bridge?.sendUserMessage(text),audit:event=>audit({...event,voiceSessionId:s.id}),
     });
-    // "好，我讲讲。" said and no lesson asked for (lesson-promise-recovery.mjs): the service starts it.
-    // (Doubao only: GPT Live has its own recovery, see `speculate` in gpt-live-provider.mjs.)
-    if(s.model==='seeduplex'&&lessonTools(s).length)s.lessonRecovery=createLessonPromiseRecovery({
-      state:()=>({current:current(s),ending:Boolean(s.ending),routed:s.speakerRouting,offered:lessonTools(s).length>0,
-        explaining:Boolean(s.lessonPending)||Boolean(s.lessonFor&&s.lessonFor===s.latestUserTurn),userSpeaking:s.userSpeaking}),
-      start:text=>void onToolCall({callId:`host-lesson-${randomUUID()}`,name:'explain_on_board',args:{topic:text.slice(-200)},host:true}),
-      audit:event=>audit({...event,voiceSessionId:s.id}),
-    });
     s.lookup=createLookupRecovery({...lookupRecovery,
       state:()=>({pending:s.pending.size,background:Boolean(s.backend.snapshot()),ending:Boolean(s.ending),
         playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking,lastUserAt:s.lastUserAt,
@@ -759,8 +746,6 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       audit:event=>audit({...event,voiceSessionId:s.id})});
     const onToolCall=async call=>{
       if(!current(s))return;
-      // Any tool called in this turn keeps the promised-lesson check out of it.
-      s.lessonRecovery?.started();
       // Asked to explain, the voice model sometimes hands the question to the
       // backend (a minute's wait, no picture). The caller's words decide.
       // The caller's words decide. Sometimes the model searches, asks its memory, hands the
@@ -840,8 +825,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           if(s.lessonFor&&s.lessonFor===(s.latestUserTurn??s)){audit({type:'lesson.duplicate',voiceSessionId:s.id,callId:call.callId});result=s.lessonFailedFor===s.lessonFor?{lessonUnavailable:true,instruction:'讲稿这次没有准备好。请你现在自己直接把这个问题讲清楚，不要再调用本工具，也不要提讲稿或画面。'}:{alreadyExplaining:true,instruction:'这段讲解已经在准备或正在讲。不要再调用，也不要自己再讲一遍。'};}
           else{
             s.lessonFor=s.latestUserTurn??s;
-            // (A lesson the service started itself has no native call to answer: it is only taken over.)
-            if(call.host)ownerBridge.adoptBackgroundTool(call.callId,call.args.topic);else ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
+            ownerBridge.beginBackgroundTool(call.callId,call.args.topic);lessonHandled=true;
             // The pictures V has just promised ("配上图"，"画面版") are this lesson's: without this the
             // unfulfilled-promise check told the model to start a creation as the script began.
             s.mediaRecovery?.started();
@@ -872,7 +856,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(current(s)&&s.epoch===epoch){
-              if(script){if(lessonGuard&&typeof script.say==='string')s.lessonGuardText=script.say;ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});}
+              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});
               else{
                 // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
                 // and the caller had to ask again: call 83315f5d). The page is drawn from what it then says.
@@ -938,8 +922,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           target.completeBackgroundTool(call.callId,payload,options);
         }
       }else if(lessonHandled){/* already answered through the background hand-over */}
-      else if(ownerBridge===s.bridge&&!call.host)ownerBridge.submitToolResult(call.callId,result);}
-      catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge&&!call.host)ownerBridge.submitToolResult(call.callId,result);}
+      else if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
+      catch {result={error:'工具结果过大或无法续传，请缩小范围并分页读取。'};if(ownerBridge===s.bridge)ownerBridge.submitToolResult(call.callId,result);}
       audit({type:'tool.delivered',voiceSessionId:s.id,callId:call.callId,name:call.name,...(call.name==='get_current_location'?{ok:result?.ok===true,reason:result?.reason}:{result})});
       if(call.name!=='delegate_to_v')s.nativeResultAt=Date.now();
       const executionId=call.args?.sessionId??result?.sessionId,execution=s.localExecutions?.metadata(executionId);
@@ -970,11 +954,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
       instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播意图由你结合对话判断。实际开播、调整下一幕、收播都调用 improv_live，先取得回执再回应。收播后继续这通电话。你能看到提交状态，无法观察直播帧。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(s.model==='gpt-live-11'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
-      // V's own voice heard back, or a bare "嗯/对/可以啊" while V still speaks: the playing reply or lesson goes on.
-      // With VOICE_LESSON_GUARD, a lesson still playing also keeps going through side talk (playback-echo.mjs).
-      isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&(playbackEchoLike(text,s.playbackText.text)?'echo':playbackBackchannelLike(text)?'backchannel':false)||(lessonPlaying(s)&&!interruptsLesson(text)?'lesson-guard':false),
-      // (A lesson still playing is not paused for whoever starts talking; see lessonPlaying.)
-      onInputSpeech:(active,detail)=>{if(active&&lessonPlaying(s))return;emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})});},
+      isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
+      onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
       onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
       onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
       onTranscript:(role,text,final,source,metadata={})=>{
@@ -983,14 +964,12 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='user'&&metadata.playbackEcho){s.userSpeaking=false;audit({type:'transcript',voiceSessionId:s.id,role,text,final,playbackEcho:true,turnId:metadata.turnId});return;}
         s.activityAt=Date.now();
         if(role==='assistant')s.playbackText.observe(text,{final,source,responseId:metadata.responseId});
-        // The lesson's caption arrives with its first audio: from here its speech is what plays.
-        if(role==='assistant'&&final&&source&&s.lessonGuardText!==undefined&&text===s.lessonGuardText){s.lessonGuardId=s.bridge?.audioResponseId;s.lessonGuardText=undefined;}
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         const deliver=()=>{
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
-        if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.lessonRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
-        if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();s.lessonRecovery?.user(text);}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim()){s.latestUserTurn=Object.freeze({text,id:metadata.turnId,receivedAt:new Date().toISOString()});}s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
+        if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
+        if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim()){s.latestUserTurn=Object.freeze({text,id:metadata.turnId,receivedAt:new Date().toISOString()});}s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}
         // Speech from the caller while the call is being hung up is a change of mind, unless the voice path
         // can tell that it is only their own goodbye (a judgement it makes, never a list of words).
         if(role==='user'&&final&&s.ending){
@@ -1012,7 +991,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.responseActivityAt=Date.now();s.replyDelivery?.begin(e.responseId);}
         if(e.type==='native.listening-aside')s.replyDelivery?.ignore(e.responseId);
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
-        if(e.type==='native.playback-echo'){emit(s,{type:'input.speech.ignored',preservedResponseId:e.preservedResponseId??s.bridge?.audioResponseId??null});audit({type:'input.playback-echo',voiceSessionId:s.id,...(e.preservedResponseId?{responseId:e.preservedResponseId}:{}),...(typeof e.reason==='string'?{reason:e.reason}:{})});return;}
+        if(e.type==='native.playback-echo'){emit(s,{type:'input.speech.ignored',preservedResponseId:e.preservedResponseId??s.bridge?.audioResponseId??null});audit({type:'input.playback-echo',voiceSessionId:s.id,...(e.preservedResponseId?{responseId:e.preservedResponseId}:{})});return;}
         if(e.type==='native.playback-echo-reply'){s.replyDelivery?.ignore(e.responseId);audit({type:'input.playback-echo-reply',voiceSessionId:s.id,responseId:e.responseId});return;}
         if(['input_audio_buffer.speech_started','conversation.item.input_audio_transcription.started'].includes(e.type)){s.replyDelivery?.inputStarted();s.userSpeaking=true;s.lastUserAt=Date.now();}
         if(e.type==='input_audio_buffer.speech_stopped'){s.userSpeaking=false;s.lastUserAt=Date.now();}
