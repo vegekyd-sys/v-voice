@@ -408,7 +408,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const floor=s.floor;if(!floor||floor.state!=='heard')return;
     floor.state='judging';clearTimeout(floor.timer);floor.heard=heard;floor.turnId=turnId;
     const {said,ahead}=splitSpoken(s.playbackText.text,floor.position.playedMs,floor.position.totalMs);
-    const recent=s.latestUserTurn?.text?[{role:'user',text:s.latestUserTurn.text}]:[];
+    // Before it: the request this speech answers, then what was said over it and judged not for V (the
+    // caller's latest turn would be the last such line, standing in for the request; one asking again
+    // after being passed over is likely asking V).
+    const asked=s.floorAsked?.responseId===floor.responseId?s.floorAsked:(s.floorAsked={responseId:floor.responseId,request:s.latestUserTurn?.text??'',passed:[]});
+    const recent=[asked.request,...asked.passed].filter(Boolean).slice(-4).map(text=>({role:'user',text}));
     // A judge that does not answer in time is no judgement: the model's answer goes through.
     let timer;const late=new Promise(resolve=>{timer=setTimeout(resolve,speechYield?.judgeMs??3000,null);timer.unref?.();});
     void Promise.race([Promise.resolve().then(()=>floorJudge({said,ahead,heard,recent})).catch(()=>null),late]).then(verdict=>{clearTimeout(timer);
@@ -420,7 +424,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       if(outcome==='stale')return;
       if(outcome==='cut'){stopSpeech(s,floor.responseId);openFloor(s);return;}
       if(outcome==='fallback'){openFloor(s);if(s.yieldWait)armYield(s,speechYield?.addressedMs);return;}
-      dropFloor(s);
+      asked.passed=[...asked.passed,heard].slice(-3);dropFloor(s);
     });
   };
   // Not said to V (judged so, or V's own voice heard back): dropped, and the phone plays on.
@@ -433,6 +437,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     emit(s,{type:'input.speech.ignored',preservedResponseId:floor.responseId,...(floor.heard?{reason:'not-addressed',text:floor.heard,...(floor.turnId?{turnId:floor.turnId}:{})}:{})});
   };
   // `responseId`: whose output this is (the speech still playing passes straight through).
+  // Whether floorGate would hold or drop output of `responseId` now.
+  const floorHolds=(s,responseId)=>Boolean(responseId!=null&&s.droppedReplies?.has(responseId)||s.floor&&!(responseId!=null&&responseId===s.floor.responseId));
   const floorGate=(s,kind,responseId,deliver,call)=>{
     const floor=s.floor,dropped=responseId!=null&&s.droppedReplies?.has(responseId);
     if(!dropped&&(!floor||responseId!=null&&responseId===floor.responseId))return deliver();
@@ -1069,11 +1075,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // V's own voice heard again (playback-echo.mjs): kept in the log, never a turn of the caller's.
         if(role==='user'&&metadata.playbackEcho){s.userSpeaking=false;dropFloor(s);audit({type:'transcript',voiceSessionId:s.id,role,text,final,playbackEcho:true,turnId:metadata.turnId});return;}
         s.activityAt=Date.now();
-        if(role==='assistant')s.playbackText.observe(text,{final,source,responseId:metadata.responseId});
+        // What the phone plays: an answer the floor holds is not playing (and once dropped never will),
+        // so its words wait with it; otherwise they would stand in for the lesson the judge is told of.
+        let observed=false;const observe=()=>{if(role==='assistant'&&!observed){observed=true;s.playbackText.observe(text,{final,source,responseId:metadata.responseId});}};
+        if(source||!floorHolds(s,metadata.responseId))observe();
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
         if(role==='user'&&final&&text.trim())judgeFloor(s,text,metadata.turnId);
         const deliver=()=>{
+        observe();
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
         if(role==='user'){if(final){s.lookup.answered();s.mediaRecovery?.user();}if(final)s.replyDelivery?.user(text,{turnId:metadata.turnId});if(final&&text.trim()){s.latestUserTurn=Object.freeze({text,id:metadata.turnId,receivedAt:new Date().toISOString()});}s.lastUserAt=Date.now();s.userSpeaking=!final;if(final&&s.delivery.observeUser(text))void s.delivery.subscribe().catch(error=>audit({type:'task.delivery-failed',voiceSessionId:s.id,error:error.message}));}

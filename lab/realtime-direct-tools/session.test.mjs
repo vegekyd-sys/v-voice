@@ -2253,6 +2253,11 @@ test('speech over V judged not said to V: the answer is dropped and the speech p
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你为什么这样讲'});
  await delay(20);
  assert.deepEqual(audio().map(e=>e.responseId),['lesson']);
+ // The judge is told of the lesson, not of the dropped answer's words (11/25: they stood in for it),
+ // and before it of the request and of the line passed over, not of that line alone.
+ assert.equal(asked.length,2);assert.match(asked[1].said+asked[1].ahead,/海豚/u);assert.doesNotMatch(asked[1].said+asked[1].ahead,/一起听/u);
+ assert.deepEqual(asked[0].recent.map(turn=>turn.text),['讲讲海豚怎么找鱼']);
+ assert.deepEqual(asked[1].recent.map(turn=>turn.text),['讲讲海豚怎么找鱼','我也要我也要']);
  // Once the speech has played out, the model is heard again.
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
  f.event({type:'response.created',response:{id:'later'}});f.event({type:'response.output_audio.started',response_id:'later'});
