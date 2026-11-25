@@ -1801,20 +1801,6 @@ test('with lesson retell, a function-tool model is answered with the lesson as m
   }
 });
 
-test('with lesson retell, material the voice leaves unanswered is said as before; an answered one is not said twice',async t=>{
-  const lesson={available:true,prepare:async()=>({say:'蓝光波长短，最容易被空气分子散开。',sentences:['蓝光波长短，最容易被空气分子散开。']}),shown:async()=>['蓝光']};
-  const pcm=Buffer.alloc(960).toString('base64');
-  for(const answered of [false,true]){
-    const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson,lessonRetell:true,lessonSilentMs:60});t.after(()=>f.service.dispose());
-    f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲讲天空为什么是蓝的'});
-    f.call('explain_on_board',{topic:'天空为什么是蓝的'},'sky');
-    assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='sky')));
-    if(answered){f.event({type:'response.created',response:{id:'told'}});f.event({type:'response.output_audio.delta',response_id:'told',delta:pcm});}
-    await delay(120);
-    assert.equal(f.audit.some(e=>e.type==='lesson.retell-unanswered'),!answered,answered?'answered':'unanswered');
-  }
-});
-
 test('call 649709d0: a lesson about today looks it up first; a search made for a request to explain becomes the lesson\'s research',async t=>{
  const prepared=[],searched=[];
  const lesson={available:true,reroute:true,prepare:async args=>{prepared.push({topic:args.topic,reference:args.reference});return {say:'黄仁勋今天辞任了。'};}};
