@@ -2335,3 +2335,17 @@ test('V\'s own voice heard back over a lesson is not judged, and nothing the mod
  assert(!f.client.sent.some(e=>e.type==='tool.call'&&e.name==='web_search'));
  assert(f.upstream.sent.some(e=>JSON.stringify(e).includes('echo-call')&&JSON.stringify(e).includes('ignored')),'answered as ignored at once, not left to go through later');
 });
+
+test('VOICE_LESSON_STREAM: Doubao begins a lesson at its first written line and is never given the whole script to speak again',async t=>{
+ const lesson={available:true,prepare:async args=>{args.onLines(['灯塔每晚把光扫过海面。']);await delay(30);args.onLines(['船看到光就知道离岸多远。']);return {say:'灯塔每晚把光扫过海面。船看到光就知道离岸多远。',sentences:['灯塔每晚把光扫过海面。','船看到光就知道离岸多远。']};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{lesson,lessonStream:true});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'给我讲讲灯塔'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'lesson',name:'explain_on_board',arguments:JSON.stringify({topic:'灯塔'})}]});
+ const commits=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ f.event({type:'response.done',response_id:'ack'});assert(await until(()=>commits().includes('灯塔每晚把光扫过海面。'),12000),'the first line is spoken once it is written');
+ assert(await until(()=>f.audit.some(e=>e.type==='lesson.stream-start'&&e.ok===true)));
+ assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='lesson')));
+ f.event({type:'response.output_audio.started',response_id:'l1',tts_type:'chat_tts_text'});f.event({type:'response.output_audio.done',response_id:'l1'});
+ assert(await until(()=>commits().includes('船看到光就知道离岸多远。')),'the next line after the first has been generated');
+ assert(!commits().some(text=>text.includes('灯塔每晚把光扫过海面。船看到光')),'the whole script is not read again');
+});
