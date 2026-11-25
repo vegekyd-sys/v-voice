@@ -96,10 +96,14 @@ test('with lesson notes, a lesson comes back as material GPT Live tells in its o
   assert.match(gptLiveDelegationPolicy(new Set(['explain_on_board']),{retell:true}),/用你自己的话讲/u);assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['explain_on_board']),{retell:true}),/原样念完/u);
   say(f,idOf(3),'给我讲讲罗马怎么玩');await new Promise(r=>setTimeout(r,5));
   f.bridge.beginBackgroundTool(idOf(3),'罗马');
+  // V starts at once in its own words; the material carries it on (silence until it came cost 5 s against production).
+  assert.equal(appends(f).at(-1).channel,'speakable');assert.match(appends(f).at(-1).content[0].text,/现在就用自己的话开讲/u);
+  const begun=appends(f).length;
   const script='罗马景点散，先按三天排。第一天从斗兽场开始。第二天去万神殿。';
   f.bridge.completeBackgroundTool(idOf(3),{result:script},{spokenText:script,displayedFullResult:true,retell:{names:['斗兽场','万神殿'],points:['罗马景点散，先按三天排。','第一天从斗兽场开始。','第二天去万神殿。']}});
-  const spoken=appends(f).filter(e=>e.channel==='speakable').map(e=>e.content[0].text).join('');
-  assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*用你自己的话讲给用户听/u);assert.match(spoken,/第二天去万神殿。$/u);
+  const material=appends(f).slice(begun);assert.equal(material.at(-1).channel,'speakable');
+  const spoken=material.map(e=>e.content[0].text).join('');
+  assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*接着你正在讲的往下讲[^\n]*不重新开头/u);assert.match(spoken,/第二天去万神殿。$/u);
   assert.doesNotMatch(spoken,/<say>|原样念/u);
   assert(!f.bridge.script); // no script: the captions are V's own words
   // The page is drawn after the material is handed over: its names follow as a note, never a turn of their own.
