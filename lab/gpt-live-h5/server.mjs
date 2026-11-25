@@ -42,6 +42,7 @@ import {gptLiveVoice} from '../realtime-direct-tools/gpt-live-provider.mjs';
 import {seeduplexVoice} from '../seeduplex-realtime-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
+import {createFloorJudge} from '../realtime-direct-tools/floor-judge.mjs';
 import {createPhotoFinder,createPhotoGallery} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
@@ -1449,7 +1450,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
     // (VOICE_MATERIAL_CHECK=0: nothing is looked at before a creation is submitted.)
     const materialCheck=assets&&process.env.VOICE_MATERIAL_CHECK!=='0'?createMaterialCheck({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'120'}),audit:event=>board.log?.(event)}):null;
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
+    // Whether speech over a lesson still playing is said to V: judged by the board's text model (floor-judge.mjs). VOICE_FLOOR_JUDGE=0 leaves it to the voice model.
+    const floorCompletion=process.env.VOICE_FLOOR_JUDGE==='0'?null:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'8'}),floorJudge=floorCompletion?createFloorJudge({complete:floorCompletion}):null;
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,floorJudge,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({accounts:createMediaAccounts(

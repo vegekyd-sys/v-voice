@@ -41,6 +41,7 @@ import {createLookupRecovery} from './lookup-recovery.mjs';
 import {compactSearchResult,isSearchTool,searchMetrics,searchResultText,datedQuery,shanghaiDate} from './search-result.mjs';
 import {createAudioDeliveryMetrics} from './audio-delivery-metrics.mjs';
 import {createPlaybackText,playbackEchoLike} from './playback-echo.mjs';
+import {createPlaybackPosition,splitSpoken} from './playback-position.mjs';
 import {IDLE_FAREWELL,IDLE_HANGUP_DEFAULTS,idleHangupDue,idleHangupExempt} from './idle-hangup.mjs';
 
 // The one line between what the voice model does itself and what goes to V's backend, for every kind
@@ -103,7 +104,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -334,6 +335,107 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // Everyone with a screen, where the board is open to everyone (`lesson.audience`); otherwise the owner's own calls.
   // Resolves when V is not speaking (nothing being generated or played), or after `maxMs`.
   const quiet=async(s,maxMs)=>{const until=Date.now()+maxMs,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));await pause(150);while(current(s)&&(s.responseActive||s.playing)&&Date.now()<until)await pause(100);};
+  // Someone speaks while the phone still plays what V reads out (playback-position.mjs: upstream made it
+  // two to three times faster than it plays, and believes V has finished). The page softens playback
+  // instead of stopping it (iOS still holds it). An answer replaces the speech (response-replaced); when
+  // none comes, the phone is released and plays on. It used to wait, with no limit, for an answer the
+  // model nearly always gave (11/24–25: of ten lessons cut, three by side talk and one by a backchannel).
+  // (Speech read out from a script, a lesson above all: what was measured, and what runs furthest ahead.)
+  const stillPlaying=s=>{const position=s.playing?s.playback.snapshot({chars:Array.from(s.playbackText.text).length}):null;return position?.scripted&&position.remainingMs>=(speechYield?.minRemainingMs??2000)?position:null;};
+  const yieldSpeech=(s,active,detail)=>{
+    if(!s.nativeDuplex)return;
+    if(active){
+      endYield(s);
+      const position=stillPlaying(s);
+      if(!position||!speechYield)return;
+      s.yieldWait={responseId:position.responseId,timer:null};
+      if(nativePlaybackPolicy==='assisted')s.playback.paused(true);
+      return;
+    }
+    if(!s.yieldWait)return;
+    // Nothing recognised: the phone's own short hold runs out by itself.
+    if(detail?.recognized!==true){endYield(s);s.playback.paused(false);return;}
+    armYield(s);
+  };
+  const armYield=(s,ms)=>{
+    const wait=s.yieldWait;if(!wait)return;
+    clearTimeout(wait.timer);if(ms)wait.ms=ms;
+    wait.timer=setTimeout(()=>{
+      if(s.yieldWait!==wait||!current(s))return;
+      s.yieldWait=null;s.playback.paused(false);
+      const position=s.playback.snapshot();
+      if(!position||position.responseId!==wait.responseId)return;
+      emit(s,{type:'input.speech.ignored',preservedResponseId:wait.responseId});
+      audit({type:'input.speech.release',voiceSessionId:s.id,responseId:wait.responseId,remainingMs:position.remainingMs});
+    },wait.ms??speechYield.decisionMs??3000);
+    wait.timer.unref?.();
+  };
+  const endYield=(s,retiredResponseId)=>{
+    const wait=s.yieldWait;if(!wait||retiredResponseId&&retiredResponseId!==wait.responseId)return;
+    clearTimeout(wait.timer);s.yieldWait=null;
+  };
+  // The voice model cannot tell, while the phone still plays V's speech, whether what it hears is
+  // said to V (it believes V has finished, and answers side talk, backchannels and apologies). With a
+  // `floorJudge` (floor-judge.mjs: a fast text model's judgement of meaning), what the voice model says,
+  // shows or calls for the utterance waits here until the judge has heard it. Said to V, or no
+  // judgement in time: it goes on as before, the answer replacing the speech. Not said to V: it is
+  // dropped, the phone is released and plays on, and the model's answer to it stays dropped until
+  // someone speaks again or the speech has played out. The speech's own audio never waits.
+  const IGNORED_TURN={ignored:true,instruction:'刚才那句话不是对你说的，这次没有执行。保持安静，不要回应，你正在讲的内容会继续播完。'};
+  const floorSpeech=(s,active,detail)=>{
+    if(!floorJudge||!s.nativeDuplex||s.speakerRouting)return;
+    if(active){
+      if(s.floor&&s.floor.state!=='dropped')return;
+      const position=stillPlaying(s);
+      s.floor=position?{state:'heard',responseId:position.responseId,position,held:[],calls:[],timer:null}:null;
+      return;
+    }
+    const floor=s.floor;if(!floor||floor.state!=='heard')return;
+    if(detail?.recognized!==true)return void openFloor(s);
+    // The words come with the end of speech; nothing waits long for words that do not come.
+    floor.timer=setTimeout(()=>{if(s.floor===floor&&floor.state==='heard')openFloor(s);},2500);floor.timer.unref?.();
+  };
+  const openFloor=s=>{const floor=s.floor;if(!floor)return;s.floor=null;clearTimeout(floor.timer);for(const item of floor.held)item.deliver();};
+  // An answer once dropped stays dropped, even what of it arrives after someone speaks again.
+  const dropReply=(s,responseId)=>{(s.droppedReplies??=new Set()).add(responseId);if(s.droppedReplies.size>8)s.droppedReplies.delete(s.droppedReplies.values().next().value);};
+  const stopSpeech=(s,responseId)=>{
+    endYield(s);s.playback.cleared(responseId);dropReply(s,responseId);s.replyDelivery?.interrupt(responseId);
+    audit({type:'audio.clear',voiceSessionId:s.id,reason:'addressed',retiredResponseId:responseId});
+    emit(s,{type:'audio.clear',reason:'addressed',retiredResponseId:responseId});
+  };
+  const ignoreCall=(s,call)=>{try{s.bridge.submitToolResult(call.callId,IGNORED_TURN);}catch{}};
+  const judgeFloor=(s,heard)=>{
+    const floor=s.floor;if(!floor||floor.state!=='heard')return;
+    floor.state='judging';clearTimeout(floor.timer);
+    const {said,ahead}=splitSpoken(s.playbackText.text,floor.position.playedMs,floor.position.totalMs);
+    const recent=s.latestUserTurn?.text?[{role:'user',text:s.latestUserTurn.text}]:[];
+    // A judge that does not answer in time is no judgement: the model's answer goes through.
+    let timer;const late=new Promise(resolve=>{timer=setTimeout(resolve,speechYield?.judgeMs??3000,null);timer.unref?.();});
+    void Promise.race([Promise.resolve().then(()=>floorJudge({said,ahead,heard,recent})).catch(()=>null),late]).then(verdict=>{clearTimeout(timer);
+      audit({type:'floor.judged',voiceSessionId:s.id,responseId:floor.responseId,toV:verdict?.toV??null,ms:verdict?.ms??null,held:floor.held.length});
+      if(!current(s)||s.floor!==floor)return;
+      // Said to V: the speech stops now, not once the model has finished looking things up (it often
+      // calls a tool or two first: 4–10 s on the 11/24–25 requests). No judgement: as before.
+      if(verdict?.toV===true){stopSpeech(s,floor.responseId);openFloor(s);return;}
+      if(verdict?.toV!==false){openFloor(s);if(s.yieldWait)armYield(s,speechYield?.addressedMs);return;}
+      dropFloor(s);
+    });
+  };
+  // Not said to V (judged so, or V's own voice heard back): dropped, and the phone plays on.
+  const dropFloor=s=>{
+    const floor=s.floor;if(!floor||floor.state==='dropped')return;
+    floor.state='dropped';clearTimeout(floor.timer);for(const item of floor.held)if(item.responseId!=null)dropReply(s,item.responseId);floor.held=[];
+    for(const call of floor.calls)ignoreCall(s,call);
+    endYield(s);s.playback.paused(false);
+    emit(s,{type:'input.speech.ignored',preservedResponseId:floor.responseId});
+  };
+  // `responseId`: whose output this is (the speech still playing passes straight through).
+  const floorGate=(s,kind,responseId,deliver,call)=>{
+    const floor=s.floor,dropped=responseId!=null&&s.droppedReplies?.has(responseId);
+    if(!dropped&&(!floor||responseId!=null&&responseId===floor.responseId))return deliver();
+    if(dropped||floor.state==='dropped'){if(call)ignoreCall(s,call);if(responseId!=null)dropReply(s,responseId);audit({type:'floor.dropped',voiceSessionId:s.id,kind,responseId:responseId??null});return;}
+    floor.held.push({deliver,responseId});if(call)floor.calls.push(call);
+  };
   // GPT Live explains and tells stories in its own voice and words, and the page draws along with what
   // it says: a script written by another model and read out is what it sounded like, read out. (Its
   // scripts can be brought back for comparison with `scriptedLessons`.)
@@ -448,6 +550,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // Worker-owned IDs live in a different native registry. Their exact Worker
     // controller is responsible for cleanup; Gateway process is never fallback.
     s.playbackText=createPlaybackText();
+    s.playback=createPlaybackPosition();
     s.replyDelivery=createConversationReplyDelivery({gateway:callGateway,target:replyTarget,ownerId:s.id,audit,callReport:callReportFactory?.(s.id),onStatus:value=>emit(s,{type:'reply.sync',...value})});
     s.delivery=createTaskDelivery({gateway:callGateway,sessionKey,ownerId:s.id,replyDelivery:s.replyDelivery,audit});
     s.backend=createBackendDelegation({gateway:callGateway,sessionKey,sessionBound,ownerId:s.id,publicVoice:s.publicVoice,audit,taskDelivery:s.delivery,pollMs:backendPollMs,onProgress:p=>{if(current(s)){s.progress=p;emit(s,{type:'tool.progress',callId:p.callId,name:'delegate_to_v'});}},
@@ -481,7 +584,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       s.preparation=prepareConnectionEnvironment(s,adopted);
       if(adopted)recordConnectionStage(s,'admitted');
     }
-    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(deviceActions?{nativeDeviceActions:{version:1,capabilities:s.terminalContext().capabilities},terminalContext:s.terminalContext()}:{}),...(nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(s.nativeRuntime?{nativeRuntime:s.nativeRuntime.descriptor}:{}),...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy}:{}),...route?{speakerRouting:route}:{}};
+    return {voiceSessionId:s.id,model:spec.model,provider:model,voice:s.voice,transport:'gateway-relay',relayTicket:s.ticket,...(deviceActions?{nativeDeviceActions:{version:1,capabilities:s.terminalContext().capabilities},terminalContext:s.terminalContext()}:{}),...(nativeLocationVersion===1?{nativeLocationVersion:1}:{}),...(s.nativeRuntime?{nativeRuntime:s.nativeRuntime.descriptor}:{}),...(s.nativeDuplex?{nativeDuplex:true,nativePlaybackPolicy,...(speechYield?{nativeSpeechYield:'duck'}:{})}:{}),...route?{speakerRouting:route}:{}};
   }
   function attachClient(s,client){
     client.on('error',()=>void close(s.id,'client-error').catch(()=>{}));
@@ -590,7 +693,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // (The waiting lines were recorded in the default voice: a call in another voice waits quietly instead of hearing a second voice.)
     const noticeClips=s.model==='seeduplex'?loadToolStartClips():null,progressClips=s.model==='seeduplex'&&s.voice===SEEDUPLEX_VOICE?toolProgressClips??loadToolProgressClips():[];
     s.audioDelivery=createAudioDeliveryMetrics({report:event=>audit({...event,voiceSessionId:s.id})});
-    const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);s.audioDelivery.packet(audio.length,metadata.responseId);audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
+    const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);s.audioDelivery.packet(audio.length,metadata.responseId);s.playback.sent(metadata.responseId,audio.length,{scripted:metadata.source==='injected-speech'});audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
     // A slow native lookup gets a cached "still looking" line, delivered like the
     // start notice: never upstream TTS, which can cost the pending function its turn.
     s.progressNotice=index=>{
@@ -952,20 +1055,21 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:s.model==='seeduplex'?s.voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播意图由你结合对话判断。实际开播、调整下一幕、收播都调用 improv_live，先取得回执再回应。收播后继续这通电话。你能看到提交状态，无法观察直播帧。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(s.model==='gpt-live-11'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播意图由你结合对话判断。实际开播、调整下一幕、收播都调用 improv_live，先取得回执再回应。收播后继续这通电话。你能看到提交状态，无法观察直播帧。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(s.model==='gpt-live-11'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,yieldToModel:Boolean(speechYield),
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
-      onInputSpeech:(active,detail)=>emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})}),
-      onToolCall:call=>routeOutput('tool',call,()=>void onToolCall(call)),
-      onAudio:(audio,metadata)=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);}),
+      onInputSpeech:(active,detail)=>{floorSpeech(s,active,detail);yieldSpeech(s,active,detail);emit(s,{type:active?'input.speech.started':'input.speech.stopped',...(!active?{recognized:detail?.recognized===true}:{})});},
+      onToolCall:call=>floorGate(s,'tool',null,()=>{if(s.yieldWait?.timer)armYield(s);routeOutput('tool',call,()=>void onToolCall(call));},call),
+      onAudio:(audio,metadata)=>floorGate(s,'audio',metadata?.responseId,()=>routeOutput('audio',audio,()=>{s.lookup.answered();s.responseActive=true;s.responseActivityAt=Date.now();s.narrationBusyUntil=0;if(s.ending&&(!s.nativeDuplex||metadata?.responseId&&metadata.responseId!==s.ending.priorResponseId)){s.ending.hasAudio=true;s.ending.responseId=metadata?.responseId;clearTimeout(s.ending.fallbackTimer);clearTimeout(s.ending.noAudioTimer);}deliverAudio(audio,metadata);})),
       onTranscript:(role,text,final,source,metadata={})=>{
         if(!current(s))return;
         // V's own voice heard again (playback-echo.mjs): kept in the log, never a turn of the caller's.
-        if(role==='user'&&metadata.playbackEcho){s.userSpeaking=false;audit({type:'transcript',voiceSessionId:s.id,role,text,final,playbackEcho:true,turnId:metadata.turnId});return;}
+        if(role==='user'&&metadata.playbackEcho){s.userSpeaking=false;dropFloor(s);audit({type:'transcript',voiceSessionId:s.id,role,text,final,playbackEcho:true,turnId:metadata.turnId});return;}
         s.activityAt=Date.now();
         if(role==='assistant')s.playbackText.observe(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
+        if(role==='user'&&final&&text.trim())judgeFloor(s,text);
         const deliver=()=>{
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
@@ -979,15 +1083,15 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         }
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
-        if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
+        if(role==='assistant'&&!source)floorGate(s,'transcript',metadata.responseId,()=>routeOutput('transcript',{role,text,final,source},deliver));else if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
-      onClearAudio:(reason,metadata)=>routeOutput('clear',null,()=>{s.audioDelivery?.finish('clear');s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});}),
+      onClearAudio:(reason,metadata)=>floorGate(s,'clear',null,()=>routeOutput('clear',null,()=>{s.audioDelivery?.finish('clear');s.playback.cleared(metadata?.retiredResponseId);endYield(s,metadata?.retiredResponseId);s.replyDelivery?.interrupt(metadata?.retiredResponseId);audit({type:'audio.clear',voiceSessionId:s.id,reason,...(metadata??{})});s.responseActive=false;if(s.ending&&reason!=='response-replaced'){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}emit(s,{type:'audio.clear',reason,...(typeof metadata?.retiredResponseId==='string'?{retiredResponseId:metadata.retiredResponseId}:{})});})),
       onAudioSegmentDone:()=>routeOutput('done',null,()=>{s.audioDelivery?.finish('segment-done');s.responseActive=false;}),
-      onResponseDone:e=>routeOutput('done',e,()=>{s.audioDelivery?.finish('done');void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){
+      onResponseDone:e=>floorGate(s,'done',e?.responseId,()=>routeOutput('done',e,()=>{s.audioDelivery?.finish('done');if(e.status==='completed')s.playback.generated(e.responseId);void s.replyDelivery?.finish(e);s.responseActive=false;s.narrationBusyUntil=0;if(e.status==='completed')emit(s,{type:'audio.done',...(e.responseId?{responseId:e.responseId}:{})});audit({type:'response.done',voiceSessionId:s.id,...e});if(s.ending?.hasAudio&&e.status==='completed'&&(!s.ending.responseId||!e.responseId||e.responseId===s.ending.responseId)){
         // (A voice path that hears the caller still speaking is waited for: what they are saying may undo the hang-up.)
         const ending=s.ending,after=()=>{if(!current(s)||s.ending!==ending)return;ending.completed=true;emit(s,{type:'end.after-playback',callId:ending.callId});};
         const held=s.bridge?.endingHeld?.();if(typeof held?.then==='function')void held.then(after,after);else after();
-      }}),
+      }})),
       onEvent:e=>{if(e.type==='response.created'){s.responseActive=true;s.responseActivityAt=Date.now();s.replyDelivery?.begin(e.responseId);}
         if(e.type==='native.listening-aside')s.replyDelivery?.ignore(e.responseId);
         if(s.nativeDuplex&&e.type==='native.listening-aside')emit(s,{type:'input.speech.ignored',preservedResponseId:s.bridge?.audioResponseId??null});
@@ -1060,12 +1164,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
         s.bridge.handleBargeIn({confirmed});audit({type:'client.barge-in',voiceSessionId:s.id,...(device?{deviceId:device,confirmed}:{})});}
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
-      else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
+      else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;if(!e.speaking){s.playback.drained();if(s.floor?.state==='dropped')s.floor=null;}audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
         const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','stretchedMs','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','droppedInputFrames','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         for(const key of ['dialToReadyMs','dialToFirstPcmMs','dialToFirstRenderObservedMs'])if(Number.isFinite(e[key])&&e[key]>=0&&e[key]<=120000)stats[key]=Math.round(e[key]);
         for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof e[key]==='boolean')stats[key]=e[key];
         if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;
+        if(Number.isFinite(stats.queuedOutputBytes))s.playback.queued(stats.queuedOutputBytes);
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
       else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){audit({type:'speaker.end-played',voiceSessionId:s.id});void close(s.id,'end-played').catch(()=>{});}

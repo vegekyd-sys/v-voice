@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {build} from 'esbuild';
 import {GrokVoiceBridge} from '../realtime-direct-tools/grok-provider.mjs';
-import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause,observeAudioMeters} from './relay-audio.mjs';
+import {createRelayAudio,PcmPlaybackQueue,relayWorkletSource,NativeSpeechPause,observeAudioMeters,DUCK_GAIN} from './relay-audio.mjs';
 
 function queue(rate=48000,ms=120){return new PcmPlaybackQueue(rate,ms)}
 test('visual meters read actual nodes, publish silence when suspended and detach only their taps',t=>{
@@ -528,4 +528,32 @@ test('a congested uplink sheds microphone frames and only a stuck one ends the c
  sock.bufferedAmount=30000;frame();assert.equal(f.relay.stats.droppedInputFrames,3);
  sock.bufferedAmount=1000;frame();assert.equal(f.relay.stats.droppedInputFrames,3);assert.deepEqual(f.errors,[]);
  sock.bufferedAmount=96001;frame();clock+=31000;frame();assert.deepEqual(f.errors,['音频上传积压，请重新拨号']);assert(f.events.some(e=>e.type==='upload.backpressure'));
+});
+
+test('when the service asks for it, speech over V softens V instead of stopping it, and comes back when V goes on',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true,nativeSpeechYield:'duck'}});
+ f.event({type:'audio',responseId:'lesson',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(48000,8192).buffer).toString('base64')});
+ assert(f.pump(9600).some(x=>x===.25),'full volume before anyone speaks');
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');
+ for(let i=0;i<7;i++)mic.port.onmessage({data:voiceFrame()});
+ f.event({type:'input.speech.started'});
+ assert.equal(f.relay.stats.nativePauses,1);assert(f.events.some(e=>e.type==='playback.duplex-paused'&&e.mode==='duck'));
+ const before=f.speaker.processor.queue.frames,ducked=f.pump(9600);
+ assert(f.speaker.processor.queue.frames<before,'the speech keeps playing');
+ assert(Math.abs(ducked.at(-1)-.25*DUCK_GAIN)<1e-3,'at a quarter of its volume');assert(ducked.every(x=>x>0),'never silent, never a click');
+ f.event({type:'input.speech.stopped',recognized:true});
+ f.event({type:'input.speech.ignored',preservedResponseId:'lesson'});
+ const after=f.pump(9600);assert(Math.abs(after.at(-1)-.25)<1e-3,'back to full volume');
+ assert.equal(f.relay.stats.clears,0);
+ // V does answer: the answer replaces the speech, at full volume.
+ for(let i=0;i<7;i++)mic.port.onmessage({data:voiceFrame()});
+ f.event({type:'input.speech.started'});f.event({type:'input.speech.stopped',recognized:true});
+ f.event({type:'audio',responseId:'answer',sequence:2,sampleRate:24000,audio:Buffer.from(pcm(4800,-8192).buffer).toString('base64')});
+ const answer=f.pump(9600).filter(x=>x!==0);assert.equal(f.relay.stats.clears,1);assert(answer.length>0&&answer.every(x=>x<0));assert(Math.abs(answer.at(-1)+.25)<1e-3);
+});
+test('without the service asking, speech over V still pauses it (iOS and older pages unchanged)',async t=>{
+ const f=await fixture(t,'seeduplex',false,{reservation:{nativeDuplex:true}});
+ f.event({type:'audio',responseId:'lesson',sequence:1,sampleRate:24000,audio:Buffer.from(pcm(24000,8192).buffer).toString('base64')});
+ const mic=f.nodes.find(n=>n.name==='v-direct-mic');for(let i=0;i<7;i++)mic.port.onmessage({data:voiceFrame()});
+ assert(f.events.some(e=>e.type==='playback.duplex-paused'&&e.mode==='pause'));assert(f.pump(4800).every(x=>x===0));
 });
