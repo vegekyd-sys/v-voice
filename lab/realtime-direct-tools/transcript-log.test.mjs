@@ -253,12 +253,12 @@ test('uplink stalls and recognised playback echo keep only their timings, flags 
 
 test('floor judgements keep the heard line, probability, timing and outcome, nothing else',async t=>{
  const f=await fixture(t);f.created();
- assert(f.log.audit({type:'floor.judged',voiceSessionId:'v1',responseId:'lesson',turnId:'turn',heard:'师傅，开个窗',toV:false,probability:0.07,ms:512,outcome:'dropped',held:2,said:'SECRET'}));
+ assert(f.log.audit({type:'floor.judged',voiceSessionId:'v1',responseId:'lesson',turnId:'turn',heard:'阿姨，帮我开下灯',toV:false,probability:0.07,ms:512,outcome:'dropped',held:2,said:'SECRET'}));
  assert(f.log.audit({type:'floor.judged',voiceSessionId:'v1',responseId:'lesson',heard:'你为什么这样讲',toV:null,probability:null,ms:null,outcome:'fallback'}));
  assert.equal(f.log.audit({type:'floor.judged',voiceSessionId:'v1',outcome:'SECRET'}),false);
  await f.log.close();const rows=await f.rows();
  assert(!JSON.stringify(rows).includes('SECRET'));
  assert.deepEqual({...rows[1],schema:undefined,captureId:undefined,sequence:undefined,at:undefined,sessionKey:undefined,provider:undefined,model:undefined,modelSource:undefined,voiceSessionId:undefined},
-  {schema:undefined,captureId:undefined,sequence:undefined,at:undefined,sessionKey:undefined,provider:undefined,model:undefined,modelSource:undefined,voiceSessionId:undefined,type:'floor.judged',outcome:'dropped',toV:false,probability:0.07,ms:512,heard:'师傅，开个窗',turnId:'turn',responseId:'lesson'});
+  {schema:undefined,captureId:undefined,sequence:undefined,at:undefined,sessionKey:undefined,provider:undefined,model:undefined,modelSource:undefined,voiceSessionId:undefined,type:'floor.judged',outcome:'dropped',toV:false,probability:0.07,ms:512,heard:'阿姨，帮我开下灯',turnId:'turn',responseId:'lesson'});
  assert.equal(rows[2].outcome,'fallback');assert.equal(rows[2].toV,null);assert.equal(rows[2].probability,null);assert.equal(rows[2].ms,undefined);
 });

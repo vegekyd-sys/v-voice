@@ -32,7 +32,7 @@ test('the decision judge turns one probability into 是/否 at the threshold', a
   assert.equal((await createDecisionJudge({evaluate: decision(0.07), threshold: 0.5})({heard: '可以啊'})).probability, 0.07);
   assert.equal((await createDecisionJudge({evaluate: decision(0.07)})({heard: '可以啊'})).toV, false);
   assert.equal((await createDecisionJudge({evaluate: decision(0.6)})({heard: '嗯'})).toV, true, 'the threshold itself counts as 是');
-  assert.equal((await createDecisionJudge({evaluate: decision(0.54)})({heard: '好啦，12 你不要过来。'})).toV, false, 'the default threshold is 0.6');
+  assert.equal((await createDecisionJudge({evaluate: decision(0.54)})({heard: '好啦，你先别过来。'})).toV, false, 'the default threshold is 0.6');
 });
 
 test('a missing, invalid or aborted decision is no judgement', async () => {
