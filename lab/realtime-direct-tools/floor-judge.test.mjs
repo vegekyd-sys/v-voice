@@ -66,3 +66,25 @@ test('the env judge is absent without the router key and can be turned off', asy
   const judge = floorJudgeFromEnv({OPENROUTER_API_KEY: 'x'}, {evaluate: decision(0.9)});
   assert.equal((await judge({heard: '你重新说'})).toV, true);
 });
+
+test('with our OpenAI key the judge calls the Decisions API directly, before OpenRouter', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({url, init, body: JSON.parse(init.body)});
+    return {ok: true, json: async () => ({answers: [{name: 'addressedNow', type: 'predicate', probability: 0.83}]})};
+  };
+  const judge = floorJudgeFromEnv({OPENAI_API_KEY: 'k', OPENROUTER_API_KEY: 'r'}, {fetchImpl});
+  assert.equal(judge.route, 'openai');
+  const verdict = await judge({said: '广州塔高六百米', heard: '你讲慢一点', recent: [{role: 'user', text: '讲讲广州塔'}]});
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.openai.com/v1/decisions');
+  assert.equal(calls[0].init.headers.authorization, 'Bearer k');
+  assert.equal(calls[0].body.model, 'gpt-6-luna');
+  assert.equal(calls[0].body.questions[0].type, 'predicate');
+  assert.match(calls[0].body.input[0].content[0].text, /先看这句话是冲谁开的口/, 'the guidance goes in as developer text');
+  assert.match(calls[0].body.input[1].content[0].text, /你讲慢一点/);
+  assert.deepEqual([verdict.toV, verdict.probability], [true, 0.83]);
+  const failing = floorJudgeFromEnv({OPENAI_API_KEY: 'k'}, {fetchImpl: async () => ({ok: false, status: 500})});
+  assert.equal((await failing({heard: '可以啊'})).toV, null, 'a failed call leaves it to the voice model');
+  assert.equal(floorJudgeFromEnv({OPENAI_API_KEY: 'k', VOICE_FLOOR_JUDGE_MODEL: 'gpt-x'}, {fetchImpl}).route, 'openai');
+});

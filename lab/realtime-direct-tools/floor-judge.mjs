@@ -60,6 +60,9 @@ export const FLOOR_DECISION_INSTRUCTIONS = `state.heard 是房间里有人说的
 先看这句话是冲谁开的口。开头用称呼叫了在场的另一个人，那么后面的话通常也是对那个人说的；夹在里面、没说明问谁的问题，是在问那个人，哪怕问的事和 V 讲到的内容沾边。但只要其中有一段明显转过来对 V 说（叫 V，或用“你”让 V 讲、说、查、规划、做什么），就是对 V 说；开头的“好的、知道了、嗯”是在回应 V，不算对别人开口。V 没有问过、也没有说过可争的话时，像在回答别人、跟别人争论或要别人先听自己说的话，是对别人说的。
 拿不准时，看这句话是不是在对 V 讲话、要 V 有回应。`;
 
+/** The one question asked of OpenAI's Decisions API directly; the guidance above goes in as developer text. */
+export const FLOOR_DECISION_PREDICATE = '这句话是不是在对 V 说，并且要 V 现在就停下来或改变正在讲的内容，或者回答它？';
+
 /** What the decision model sees: the judgement task, the utterance, and what V is saying around it. */
 export function floorDecisionState({said = '', ahead = '', heard, recent = [], speaker = null} = {}) {
   return {
@@ -96,16 +99,48 @@ export function createDecisionJudge({evaluate, threshold = 0.6, timeoutMs = 1200
   };
 }
 
+const OPENAI_DECISIONS_URL = 'https://api.openai.com/v1/decisions';
+
 /**
- * The judge the service uses: the Decisions API when the router's credentials are present
- * (VOICE_JEV_API_KEY, else OPENROUTER_API_KEY; model VOICE_OPENAI_DECISIONS_MODEL), null when
- * VOICE_FLOOR_JUDGE=0 or when neither is configured. Callers fall back to createFloorJudge.
+ * OpenAI's Decisions API called directly with our own key (~0.3 s, against ~0.65 s through
+ * OpenRouter). Same state and predicate as the OpenRouter route; the answer is reshaped to the
+ * `{answers: {addressedNow: {type: 'noul', noul}}}` that createDecisionJudge reads.
+ */
+export function createOpenAIDecisionEvaluator({apiKey, model = 'gpt-6-luna', fetchImpl = fetch} = {}) {
+  if (!apiKey) throw Error('an OpenAI key is required');
+  return async (state, questions, signal) => {
+    const [[name, question]] = Object.entries(questions);
+    const response = await fetchImpl(OPENAI_DECISIONS_URL, {method: 'POST', signal, headers: {authorization: `Bearer ${apiKey}`, 'content-type': 'application/json'},
+      // The judgement guidance goes in as developer text and the predicate stays one short question:
+      // on the 39 replay cases this separates requests (min 0.91) from side talk better than putting
+      // the whole guidance in the predicate (min 0.69, and "你说一句英语" fell to 0.38).
+      body: JSON.stringify({model, input: [{role: 'developer', content: [{type: 'input_text', text: question.instructions}]}, {role: 'user', content: [{type: 'input_text', text: JSON.stringify(state)}]}],
+        questions: [{type: 'predicate', name, instructions: FLOOR_DECISION_PREDICATE}]})});
+    // Do not expose response bodies: they may echo what was said in the room.
+    if (!response.ok) throw Error(`decisions HTTP ${response.status}`);
+    const answer = (await response.json())?.answers?.find(item => item?.name === name && item.type === 'predicate');
+    const noul = Number(answer?.probability);
+    return {answers: {[name]: {type: 'noul', noul: Number.isFinite(noul) ? noul : NaN}}};
+  };
+}
+
+/**
+ * The judge the service uses: OpenAI's Decisions API directly when our key is present
+ * (VOICE_GPT_LIVE_DECISIONS_API_KEY, else OPENAI_API_KEY; model VOICE_FLOOR_JUDGE_MODEL, else
+ * VOICE_GPT_LIVE_DECISIONS_MODEL, else gpt-6-luna); otherwise the same API through OpenRouter
+ * (VOICE_JEV_API_KEY, else OPENROUTER_API_KEY; model VOICE_OPENAI_DECISIONS_MODEL); null when
+ * VOICE_FLOOR_JUDGE=0 or when none is configured. Callers fall back to createFloorJudge.
  */
 export function floorJudgeFromEnv(env = process.env, {evaluate = null, fetchImpl = null} = {}) {
   if (env.VOICE_FLOOR_JUDGE === '0') return null;
   const timeoutMs = Number(env.VOICE_FLOOR_JUDGE_TIMEOUT_MS ?? 1200);
   const threshold = Number(env.VOICE_FLOOR_JUDGE_THRESHOLD ?? 0.6);
   if (evaluate) return createDecisionJudge({evaluate, threshold, timeoutMs});
+  const openaiKey = env.VOICE_GPT_LIVE_DECISIONS_API_KEY || env.OPENAI_API_KEY;
+  if (openaiKey) {
+    const model = env.VOICE_FLOOR_JUDGE_MODEL || env.VOICE_GPT_LIVE_DECISIONS_MODEL || 'gpt-6-luna';
+    return Object.assign(createDecisionJudge({evaluate: createOpenAIDecisionEvaluator({apiKey: openaiKey, model, ...(fetchImpl ? {fetchImpl} : {})}), threshold, timeoutMs}), {route: 'openai'});
+  }
   const apiKey = env.VOICE_JEV_API_KEY ?? env.OPENROUTER_API_KEY;
   if (!apiKey) return null;
   return createDecisionJudge({
