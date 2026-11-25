@@ -97,7 +97,7 @@ test('with lesson notes, a lesson comes back as material GPT Live tells in its o
   say(f,idOf(3),'给我讲讲罗马怎么玩');await new Promise(r=>setTimeout(r,5));
   f.bridge.beginBackgroundTool(idOf(3),'罗马');
   // V starts at once in its own words; the material carries it on (silence until it came cost 5 s against production).
-  assert.equal(appends(f).at(-1).channel,'speakable');assert.match(appends(f).at(-1).content[0].text,/现在就用自己的话开讲/u);
+  assert.equal(appends(f).at(-1).channel,'speakable');assert.match(appends(f).at(-1).content[0].text,/现在就开口，用一两句话说出最核心的那个意思/u);
   const begun=appends(f).length;
   const script='罗马景点散，先按三天排。第一天从斗兽场开始。第二天去万神殿。';
   // V is speaking when the material comes: it waits for V's turn to end (sent then, it was taken for the caller cutting in).
@@ -107,7 +107,7 @@ test('with lesson notes, a lesson comes back as material GPT Live tells in its o
   f.bridge.receive({type:'turn.done',turn:{id:'a9',role:'assistant',transcript:'罗马的景点挺分散的，我们先说个大概。'}});
   const material=appends(f).slice(begun);assert.equal(material.at(-1).channel,'speakable');
   const spoken=material.map(e=>e.content[0].text).join('');
-  assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*接着你正在讲的往下讲[^\n]*不重新开头/u);assert.match(spoken,/第二天去万神殿。$/u);
+  assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*接着你刚才那一两句往下讲[^\n]*不重新开头/u);assert.match(spoken,/第二天去万神殿。$/u);
   assert.doesNotMatch(spoken,/<say>|原样念/u);
   assert(!f.bridge.script); // no script: the captions are V's own words
   // The page is drawn after the material is handed over: its names follow as a note, never a turn of their own.
