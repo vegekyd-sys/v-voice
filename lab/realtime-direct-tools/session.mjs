@@ -116,7 +116,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,lessonStream=false,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,lessonStream=false,lessonStreamPageMs=0,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -985,10 +985,13 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               if(reader){for(const line of lines)reader.line(line);return;}
               waiting.push(...lines);
               opening??=(async()=>{
+                const ready=Date.now();
                 await quiet(s,8000);
+                // The first line waits a moment for its page's first piece, so the caller sees what V is about to explain.
+                while(lessonStreamPageMs>0&&!lesson.pageStarted?.(s.id)&&Date.now()-ready<lessonStreamPageMs&&current(s)&&!controller.signal.aborted)await new Promise(resolve=>setTimeout(resolve,100));
                 if(!current(s)||s.epoch!==epoch||controller.signal.aborted)return;
                 reader=ownerBridge.readLines();
-                audit({type:'lesson.stream-start',voiceSessionId:s.id,callId:call.callId,ok:Boolean(reader),lines:waiting.length,sinceCallMs:Date.now()-lessonStarted});
+                audit({type:'lesson.stream-start',voiceSessionId:s.id,callId:call.callId,ok:Boolean(reader),lines:waiting.length,sinceCallMs:Date.now()-lessonStarted,page:Boolean(lesson.pageStarted?.(s.id))});
                 for(const line of waiting.splice(0))reader?.line(line);
               })();
             }:null;

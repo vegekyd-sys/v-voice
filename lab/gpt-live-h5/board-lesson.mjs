@@ -379,6 +379,8 @@ export function createLessonWriter({complete, fallback = null, director, photoGa
   const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add', 'earlyMs', 'earlyKept', 'streamed'].filter(key => key in event).map(key => [key, event[key]])) : event);
   // What each call was last told, so a second lesson builds on the first.
   const told = new Map();
+  // The page revision each call's lesson page was started from (its first lines handed to the illustrator).
+  const pages = new Map();
   // The caller is waiting, so both writers start at once. The first one's
   // work is used if it arrives within `preferMs`; after that whichever has
   // something usable. Nothing by `totalMs`: nothing.
@@ -403,6 +405,8 @@ export function createLessonWriter({complete, fallback = null, director, photoGa
   return {
     available: Boolean(complete && director),
     wantsPhotos: words=>Boolean(photoGallery && photoCount(words)),
+    /** Whether the page of the lesson being written for this call has its first piece (VOICE_LESSON_STREAM waits for it a moment). */
+    pageStarted(owner) { const from = pages.get(owner), scene = director.scene?.(owner); return from !== undefined && Boolean(scene?.blocks?.length) && scene.rev > from; },
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
     async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false, assets = [], make = false, onLines = null} = {}) {
       if(photoGallery && !result && photoCount(ask))return photoGallery({owner,ask,topic,signal});
@@ -442,7 +446,8 @@ export function createLessonWriter({complete, fallback = null, director, photoGa
         if (!part) return;
         if (streaming) give(part.title, part.say, part.show);
         if (sent || early <= 0 || part.say.length < early) return;
-        sent = {script: spokenScript(part.say), ms: now() - started};
+        sent = {script: spokenScript(part.say), ms: now() - started, rev: director.scene?.(owner)?.rev ?? 0};
+        pages.set(owner, sent.rev);
         director.note(owner, {title: part.title, ask, script: sent.script, lines: part.say.map((line, index) => ({say: line, show: part.show[index]})), partial: true});
       } : null;
       let lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs, onText});
