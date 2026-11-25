@@ -446,6 +446,35 @@ p, h1, h2, h3 { margin: 0; }
 .turns.now .turn.assistant .turn-text { font-size: 17.5px; line-height: 1.72; }
 .turn[data-listen-only="true"] .turn-text { opacity: .6; }
 .turn[data-listen-only="true"] .turn-who { color: #9a93a3; font-weight: 500; }
+/* Side talk V did not take up: the line steps back but stays readable. A quiet
+   receipt under it says why; nothing about it reads as an error. */
+.turn.user .turn-text, .turn.user .turn-who { transition: opacity .5s ease, color .5s ease, background-color .5s ease; }
+.turn[data-not-for-v="true"] .turn-who { color: var(--faint); font-weight: 500; }
+.turn.user[data-not-for-v="true"] .turn-text {
+  color: var(--ink-soft);
+  background-color: rgb(238 231 244 / .45);
+  opacity: .82;
+}
+/* The receipt opens its own row (grid 0fr -> 1fr), so the lines below glide
+   down instead of jumping; then its words fade in. */
+.turn-aside {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin: 5px 4px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: .06em;
+  color: var(--faint);
+  animation: turn-aside-open .45s ease both;
+}
+.turn-aside > span { min-height: 0; overflow: hidden; animation: turn-aside-in .5s ease .2s both; }
+.earlier .turn-aside { display: none; }
+@keyframes turn-aside-open { from { grid-template-rows: 0fr; margin-top: 0; } }
+@keyframes turn-aside-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .turn.user .turn-text, .turn.user .turn-who { transition: none; }
+  .turn-aside, .turn-aside > span { animation: none; }
+}
 .turn-text p { margin: 0 0 10px; }
 .turn-text > :last-child { margin-bottom: 0; }
 .turn-text h1 { font-size: 22px; margin: 0 0 10px; }

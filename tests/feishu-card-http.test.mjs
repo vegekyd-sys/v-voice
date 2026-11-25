@@ -93,6 +93,29 @@ test('card-confirmed browser survives reopening and external SDK refusal without
  assert.equal(f.reservations.length,0,'reopening never starts a call');
 });
 
+test('card clicked after Feishu closed the phone page is picked up when the same browser reopens the entry',async t=>{
+ const f=await fixture(t);const state=await f.prepare();await f.send('/feishu/confirm/start',{body:{state}});
+ // Mobile: going back to the chat to click the card closes the page; nothing polls /status.
+ const early=await f.reopen();
+ const guest=await f.send('/feishu/client-login',{body:{state:early,failure:{code:2700002}}});assert.equal(guest.json().status.unidentified,true,'not clicked yet');
+ assert.equal((await f.confirm(state)).status,200);
+ const stranger=new Map();
+ const foreign=await f.send('/feishu?phone='+phone,{cookies:stranger,headers:{'user-agent':'Lark/7.0'}});
+ const foreignPage=await f.send(foreign.headers.location,{cookies:stranger,headers:{'user-agent':'Lark/7.0'}});
+ const foreignState=JSON.parse(foreignPage.text.match(/id="login-config">(.*?)<\/script>/s)[1]).state;
+ const other=await f.send('/feishu/client-login',{cookies:stranger,body:{state:foreignState,failure:{code:2700002}}});
+ assert.equal(other.json().status.unidentified,true,'another browser cannot redeem the confirmation');
+ const reopened=await f.reopen();
+ const response=await f.send('/feishu/client-login',{body:{state:reopened,failure:{code:2700002}}});assert.equal(response.status,200,response.text);
+ assert.equal(response.json().status.unidentified,undefined);assert.equal(response.json().status.accountLabel,'外部测试成员');
+ assert.equal((await f.send('/api/status?phone='+phone)).json().accountLabel,'外部测试成员');
+ assert.equal((await f.send('/feishu/confirm/status',{body:{state}})).status,403,'single redemption');
+ const again=await f.reopen();
+ assert.equal((await f.send('/feishu/client-login',{body:{state:again,failure:{code:2700002}}})).json().status.accountLabel,'外部测试成员','later opens resume the saved card identity');
+ assert.equal(f.api.filter(x=>x.init.method==='POST'&&x.url.includes('/messages')).length,1,'no second card');
+ assert.equal(f.reservations.length,0,'reopening never starts a call');
+});
+
 test('resuming a card-confirmed browser still checks live membership and fails closed',async t=>{
  const f=await fixture(t);await f.login();const state=await f.reopen();f.deny();
  const response=await f.send('/feishu/client-login',{body:{state,failure:{code:20027}}});assert.equal(response.status,200);

@@ -23,10 +23,15 @@ export function formatTranscriptTime(at) {
 export function createTranscriptPresentation() {
   let sequence = 0;
   const rows = [], nativeTurns = new Map(), openByRole = new Map(), fragments = new Map(), seenEvents = new Set(), speakers = new Map();
+  // Judgements that arrived before their line (keyed by the service's turn ID only:
+  // a text-only match could later catch an unrelated identical "好的").
+  const pendingNotForV = [];
+  const sameWords = (a, b) => typeof a === 'string' && typeof b === 'string' && a.replace(/\s+/gu, '') === b.replace(/\s+/gu, '') && a.trim() !== '';
   const view = row => ({
     key: row.key, role: row.role, speaker: row.sourceSpeakerId ? speakerLabel(row.sourceSpeakerId) : row.document ? 'V · 完整方案' : row.role === 'user' ? '你' : 'V',
     ...(row.sourceSpeakerId?{speakerId:row.sourceSpeakerId,speakerTone:[...speakers.keys()].indexOf(row.sourceSpeakerId)%5,listenOnly:row.listenOnly===true}:{}),
     text: row.text, document: row.document === true, ...(row.document?{callId:row.callId}:{}), at: row.at, time: formatTranscriptTime(row.at), complete: row.complete,
+    ...(row.notForV?{notForV:true}:{}),
   });
   const speakerLabel = id => {
     const person=speakers.get(id);if(!person)return '说话人';
@@ -76,6 +81,20 @@ export function createTranscriptPresentation() {
         if(event.type==='speaker.decision')row.listenOnly=!event.shouldRespond;
         return snapshot();
       }
+      // The floor judge heard this caller line as side talk, not said to V. Only
+      // that judgement marks a line; other ignored input (a timed release, V's
+      // own echo) carries no reason and changes nothing. Prefer the service's
+      // turn ID; otherwise the latest finished caller line with the same words.
+      if (event.type === 'input.speech.ignored') {
+        if (event.reason !== 'not-addressed') return snapshot();
+        const turnId = typeof event.turnId === 'string' && event.turnId ? event.turnId : null;
+        const user = rows.filter(row => row.role === 'user' && row.complete && !row.sourceSpeakerId);
+        const row = (turnId && user.findLast(row => row.sourceTurnId === turnId)) ??
+          user.slice(-4).findLast(row => (!turnId || !row.sourceTurnId) && sameWords(row.text, event.text));
+        if (row) row.notForV = true;
+        else if (turnId && !pendingNotForV.includes(turnId)) { pendingNotForV.push(turnId); if (pendingNotForV.length > 8) pendingNotForV.shift(); }
+        return snapshot();
+      }
       if (event.type === 'backend.result') {
         if (typeof event.callId !== 'string' || !event.callId || typeof event.text !== 'string' || !event.text.trim()) return snapshot();
         const id = `backend-document:${event.callId}`;
@@ -103,6 +122,11 @@ export function createTranscriptPresentation() {
         const row = resolve(turn.role, at, turn.id, false);
         if (typeof turn.transcript === 'string') row.text = turn.transcript;
         row.complete = true;
+        if (turn.role === 'user' && typeof turn.sourceTurnId === 'string' && turn.sourceTurnId) {
+          row.sourceTurnId = turn.sourceTurnId;
+          const waiting = pendingNotForV.indexOf(turn.sourceTurnId);
+          if (waiting >= 0) { pendingNotForV.splice(waiting, 1); row.notForV = true; }
+        }
         if (openByRole.get(turn.role) === row) openByRole.delete(turn.role);
         return snapshot();
       }
@@ -132,7 +156,7 @@ export function createTranscriptPresentation() {
     },
     reset() {
       sequence = 0; rows.length = 0;
-      nativeTurns.clear(); openByRole.clear(); fragments.clear(); seenEvents.clear(); speakers.clear();
+      nativeTurns.clear(); openByRole.clear(); fragments.clear(); seenEvents.clear(); speakers.clear(); pendingNotForV.length = 0;
       return snapshot();
     },
   };

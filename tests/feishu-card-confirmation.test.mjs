@@ -52,3 +52,16 @@ test('expired, replaced and foreign-browser requests cannot send or redeem; grou
  const r=f.prepare();await f.bridge.start(r.req,r.state);const tooMany=f.prepare();await assert.rejects(f.bridge.start(tooMany.req,tooMany.state),/rate_limited/);
  f.advance(300001);await assert.rejects(f.bridge.start(q.req,q.state));assert.equal(f.completed.length,0);
 });
+test('a confirmed card whose page closed is redeemed once by the same browser reopening the same conversation',async()=>{
+ const f=fixture(),p=f.prepare();await f.bridge.start(p.req,p.state);
+ assert.equal(await f.bridge.resume(p.req,{},phone),null,'nothing to redeem before the card is clicked');
+ await f.callback(f.proof(p.state));
+ assert.equal(await f.bridge.resume({headers:{}},{},phone),null,'another browser cannot redeem');
+ assert.equal(await f.bridge.resume({headers:{cookie:'v_feishu_confirm=forged'}},{},phone),null);
+ assert.equal(await f.bridge.resume(p.req,{},feishuConversationPhone('default','oc_other')),null,'another conversation cannot redeem');
+ const result=await f.bridge.resume(p.req,{},phone);assert.equal(result.status,'complete');
+ assert.equal(f.completed.length,1);assert.equal(f.completed[0].data.open_id,'ou_external');assert.equal(f.completed[0].pending.phoneId,phone);
+ assert.equal(await f.bridge.resume(p.req,{},phone),null,'single redemption');await assert.rejects(f.bridge.poll(p.req,{},p.state));
+ const q=f.prepare();await f.bridge.start(q.req,q.state);await f.callback(f.proof(q.state));f.advance(300001);
+ assert.equal(await f.bridge.resume(q.req,{},phone),null,'expired confirmation is not redeemed');assert.equal(f.completed.length,1);
+});
