@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';import {existsSync} from 'node:fs';
+import {readFile,writeFile,mkdir,copyFile,chmod,stat} from 'node:fs/promises';import {existsSync} from 'node:fs';
 import {resolve,dirname,join,relative} from 'node:path';
 import {createHash} from 'node:crypto';import {execFileSync} from 'node:child_process';
 import {buildTvEntry,TV_ENTRY_BUNDLE,buildTvStartup,TV_STARTUP_BUNDLE} from './build-tv-entry.mjs';
@@ -79,4 +79,11 @@ const clients={web:{node:'web'},ios:{node:'web',shellRevision:shell.revision,min
 const manifest={clients,schema:'v-voice-release-v1',commit,baselineCommit:baseline.sourceCommit,gatewayProtocol:4,gatewayRestartRequired:false,
  entrypoint:'lab/gpt-live-h5/server.mjs',files,filesSha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')};
 await writeFile(join(target,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{flag:'wx'});
+// The services run as their own users, so every packaged file must be readable whatever the
+// packager's umask (11/26: a release packaged under umask 077 could not start on either node).
+for(const name of ['manifest.json',...files.map(f=>f.path)]){
+ const dest=join(target,name);await chmod(dest,(await stat(dest)).mode&0o111?0o755:0o644);
+ for(let dir=dirname(dest);dir.startsWith(target+'/');dir=dirname(dir))await chmod(dir,0o755);
+}
+await chmod(target,0o755);
 console.log(JSON.stringify({artifact:target,commit,files:files.length,bytes:files.reduce((a,f)=>a+f.bytes,0),filesSha256:manifest.filesSha256}));
