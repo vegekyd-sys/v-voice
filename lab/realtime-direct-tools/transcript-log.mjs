@@ -39,6 +39,15 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       return enqueue({...owners.get(id),type:'call.created'});
     }
     const owner=owners.get(id)??(/^(?:task\.delivery-|backend\.|call\.report-|call\.summary-styled)/.test(event.type)?closedOwners.get(id):null);if(!owner)return false;
+    if(event.type==='improv.signal' && ['ice','offer','heartbeat'].includes(event.phase) && Number.isInteger(event.status)){
+      return enqueue({...owner,type:event.type,phase:event.phase,status:event.status,
+        ...(Number.isInteger(event.upstreamStatus)?{upstreamStatus:event.upstreamStatus}:{}),
+        ...(['billing','capacity','offer','access','upstream'].includes(event.issue)?{issue:event.issue}:{})});
+    }
+    if(event.type==='improv.stage' && typeof event.stage==='string' && event.stage.length<24){
+      return enqueue({...owner,type:event.type,stage:event.stage,...(Number.isSafeInteger(event.ms)?{ms:event.ms}:{}),
+        ...(typeof event.reason==='string'&&event.reason.length<12?{reason:event.reason}:{}),...(Number.isSafeInteger(event.status)?{status:event.status}:{})});
+    }
     if(event.type==='call.media'){
       if(!['phone','speaker'].includes(event.surface)||!['standard','courtesy','provider','assisted'].includes(event.playbackPolicy)||
         typeof event.nativeDuplex!=='boolean'||![16000,24000].includes(event.inputSampleRate))return false;
@@ -109,6 +118,8 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
       if(event.type==='backend.started'&&typeof event.ack?.taskId==='string')safe.taskId=event.ack.taskId;
       if(event.type==='backend.started'&&typeof event.ack?.runId==='string')safe.runId=event.ack.runId;
       if(event.type==='tool.delivered')safe.status=event.result?.error||event.result?.isError?'error':event.result?.cancelled?'cancelled':'ok';
+      // The live tool's refusals are service-written reasons, kept so a failed start or direction can be explained.
+      if(event.type==='tool.delivered'&&['improv_live','send_task_updates'].includes(event.name)&&typeof event.result?.error==='string')safe.error=event.result.error.slice(0,120);
       for(const key of ['ok','queued','applied'])if(typeof event[key]==='boolean')safe[key]=event[key];
       return enqueue({...owner,type:event.type,...safe});
     }
@@ -150,6 +161,16 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(typeof event.turnId==='string'?{turnId:event.turnId.slice(0,160)}:{}),
         ...(event.playbackEcho===true?{playbackEcho:true}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
+    }
+    // Whether something said over V's lesson was taken as said to V (floor-judge.mjs), and what came of it.
+    if(event.type==='floor.judged'){
+      if(!['cut','dropped','fallback','stale'].includes(event.outcome))return false;
+      return enqueue({...owner,type:event.type,outcome:event.outcome,toV:typeof event.toV==='boolean'?event.toV:null,
+        probability:Number.isFinite(event.probability)&&event.probability>=0&&event.probability<=1?event.probability:null,
+        ...(Number.isSafeInteger(event.ms)&&event.ms>=0?{ms:event.ms}:{}),
+        ...(typeof event.heard==='string'?{heard:event.heard.slice(0,300)}:{}),
+        ...(typeof event.turnId==='string'?{turnId:event.turnId.slice(0,160)}:{}),
+        ...(typeof event.responseId==='string'?{responseId:event.responseId.slice(0,160)}:{})});
     }
     if(['task.delivery-confirmed','task.delivery-failed'].includes(event.type)){
       const receipt=event.receipt??{};

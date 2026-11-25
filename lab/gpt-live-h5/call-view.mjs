@@ -97,10 +97,15 @@ function voiceStatus(state, now) {
   return {key: 'voice', tone: 'voice', text: '在听', full: 'V 在听，直接说话就好'};
 }
 
-/** Earlier turns stay quiet; the current turn starts at the latest caller words. */
+/**
+ * Earlier turns stay quiet; the current turn starts at the latest caller words
+ * said to V. Side talk V did not take up (notForV) stays inside V's turn, so a
+ * lesson keeps its place on screen instead of dropping into the quiet history.
+ */
 export function splitTurns(snapshot) {
   const rows = orderedTranscriptRows(snapshot);
-  let start = rows.findLastIndex(row => row.role === 'user');
+  let start = rows.findLastIndex(row => row.role === 'user' && !row.notForV);
+  if (start < 0) start = rows.findLastIndex(row => row.role === 'user');
   if (start < 0) start = Math.max(0, rows.length - 1);
   while (start > 0 && rows[start - 1].role === 'user') start--;
   return {earlier: rows.slice(0, start), now: rows.slice(start)};

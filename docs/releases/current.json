@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-relay-keepalive-20261124",
-  "version": "voice-gpt-live-11.20261124.2",
-  "entryCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
-  "deviceEntryCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
-  "filesSha256": "8d3173ea461720db4743c8daa4d682c61719a27530dff345323cd1e7bc8dea04",
-  "registration": "voice-relay-keepalive-20261124/release.json",
-  "previousEntryCommit": "7f8bfc5f656472c019e5223321994a8a2b2a7ffa",
+  "release": "voice-makaron-director-20261125",
+  "version": "voice-makaron-director.20261125.1",
+  "entryCommit": "017199ccc0a2bdc23f22dba9c0f2f3d3908e7e0e",
+  "deviceEntryCommit": "017199ccc0a2bdc23f22dba9c0f2f3d3908e7e0e",
+  "filesSha256": "65826367fc2e4957c52ffe8437e308bedfb14de1b36d55d4da9c1203500989d7",
+  "registration": "voice-makaron-director-20261125/release.json",
+  "previousEntryCommit": "53fe532cb76e1b25b48d93eb85e849a0e3d96f5e",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-24T18:45:10+08:00",
-  "runtimeDifference": "热修复：iOS App 通话不再在接通约 5 秒后报协议不支持挂断；其余与 GPT Live 1.1 正式版相同。"
+  "validatedAt": "2026-11-25T00:58:00+08:00",
+  "runtimeDifference": "私人入口作图扣主账号；直播录像分块上传、收播后约 30 秒存档；其余与上一版相同。"
 }

@@ -38,7 +38,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [role="button"]:focu
   outline: 3px solid #a28eb7;
   outline-offset: 4px;
 }
-button svg, .status svg, .entry-notice-icon svg, .task-icon svg {
+button svg, .reference-picker svg, .status svg, .entry-notice-icon svg, .task-icon svg {
   width: 22px;
   height: 22px;
   stroke: currentColor;
@@ -99,6 +99,7 @@ p, h1, h2, h3 { margin: 0; }
 }
 
 /* ---------- avatar: one circle, state in the light behind it ---------- */
+.avatar[hidden] { display: none; }
 .avatar {
   position: relative;
   flex: 0 0 auto;
@@ -445,6 +446,35 @@ p, h1, h2, h3 { margin: 0; }
 .turns.now .turn.assistant .turn-text { font-size: 17.5px; line-height: 1.72; }
 .turn[data-listen-only="true"] .turn-text { opacity: .6; }
 .turn[data-listen-only="true"] .turn-who { color: #9a93a3; font-weight: 500; }
+/* Side talk V did not take up: the line steps back but stays readable. A quiet
+   receipt under it says why; nothing about it reads as an error. */
+.turn.user .turn-text, .turn.user .turn-who { transition: opacity .5s ease, color .5s ease, background-color .5s ease; }
+.turn[data-not-for-v="true"] .turn-who { color: var(--faint); font-weight: 500; }
+.turn.user[data-not-for-v="true"] .turn-text {
+  color: var(--ink-soft);
+  background-color: rgb(238 231 244 / .45);
+  opacity: .82;
+}
+/* The receipt opens its own row (grid 0fr -> 1fr), so the lines below glide
+   down instead of jumping; then its words fade in. */
+.turn-aside {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin: 5px 4px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: .06em;
+  color: var(--faint);
+  animation: turn-aside-open .45s ease both;
+}
+.turn-aside > span { min-height: 0; overflow: hidden; animation: turn-aside-in .5s ease .2s both; }
+.earlier .turn-aside { display: none; }
+@keyframes turn-aside-open { from { grid-template-rows: 0fr; margin-top: 0; } }
+@keyframes turn-aside-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .turn.user .turn-text, .turn.user .turn-who { transition: none; }
+  .turn-aside, .turn-aside > span { animation: none; }
+}
 .turn-text p { margin: 0 0 10px; }
 .turn-text > :last-child { margin-bottom: 0; }
 .turn-text h1 { font-size: 22px; margin: 0 0 10px; }
@@ -2306,3 +2336,26 @@ video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 .board-body[data-lay="top"]:is([data-lead], :has(> .board-block[data-type="stage"])) > .board-block:not([data-type="stage"], [data-hero]) { grid-column: auto; max-width: 100%; width: auto; justify-self: stretch; }
 /* The large picture of a list is larger on a wide panel. */
 .board-body[data-lay] :is(.board-list, .board-steps) { --open: 320px; }
+
+/* The live picture sits where a made picture sits: the page's own body, centred. */
+.board-live-media { justify-items: center; }
+.improv-stage { gap: 10px; }
+.improv-stage .board-work-frame > video { background: #1d1722; }
+.improv-stage .board-work-frame > video:not([data-loaded]) { opacity: 0; }
+.improv-stage figcaption { align-items: center; }
+.improv-end { min-height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: #fffdfb; color: #4a3a56; font: 600 13px/1 var(--hand); box-shadow: 0 0 0 1px #4d35601f, 0 6px 12px -8px #4d356066; cursor: pointer; }
+.improv-end:hover { box-shadow: 0 0 0 1px var(--pen), 0 6px 12px -8px #4d356066; }
+/* The shot that is on screen now, written on the board in the lesson's hand. */
+.improv-cue { min-height: 1.6em; max-width: 30em; margin: 0; font-family: var(--hand); font-size: 20px; font-weight: 600; line-height: 1.5; color: #4a3a56; text-align: center; animation: board-in .5s ease-out both; }
+.improv-cue:empty { animation: none; }
+.composer .reference-picker { position: relative; flex: 0 0 auto; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--ink); cursor: pointer; }
+.composer .reference-picker:hover { background: #4d35600f; }
+.composer .reference-picker input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.composer .reference-picker:focus-within { outline: 2px solid var(--pen); }
+.board-dots { pointer-events: auto; gap: 0; bottom: 0; }
+.board-dots button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.improv-rec { position: absolute; z-index: 3; top: 18px; left: 18px; display: inline-flex; align-items: center; gap: .4em; padding: .24em .55em; border-radius: 4px; background: #181219b0; color: #fff; font: 600 12px/1.4 system-ui; letter-spacing: .04em; pointer-events: none; }
+.improv-rec i { width: .6em; height: .6em; border-radius: 50%; background: #ff515b; animation: improv-rec 1.6s ease-in-out infinite; }
+.improv-rec time { font-variant-numeric: tabular-nums; }
+@keyframes improv-rec { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .improv-rec i { animation: none; } }

@@ -377,3 +377,16 @@ test('a page asked before the rate is known: once the first answer tells it, the
   await Promise.all(['甲 一', '乙 二', '丙 三', '丁 四', '戊 五', '己 六'].map(query => finder.find(query)));
   assert.ok(sent.slice(1).every(at => at <= 600 + 300), `sent at ${sent}`);
 });
+
+test('photo requests count only distinct successful pictures and keep prior photos out of a new batch',async()=>{
+ const {photoCount,createPhotoGallery}=await import('./board-photo.mjs');
+ assert.equal(photoCount('再找3张其他的巴黎图片'),3);
+ assert.equal(photoCount('讲讲这些图片的拍摄技巧'),0);
+ const pages=[],subjects=['one','missing','another','duplicate','extra','last','next','third'];
+ let batch=0;
+ const make=createPhotoGallery({complete:async function*(){
+   yield JSON.stringify({title:'巴黎',subjects:(batch++?['one','last','next','third']:subjects).map(name=>({name,query:name}))});
+ },find:async query=>query==='missing'?null:{bytes:Buffer.from(query==='duplicate'?'one':query)},director:{gallery:(_id,_title,items)=>pages.push(items.map(x=>x.name))}});
+ await make({owner:'me',ask:'找三张巴黎图片'});await make({owner:'me',ask:'再找三张其他的巴黎图片'});
+ assert.deepEqual(pages,[['one','another','extra'],['last','next','third']]);
+});

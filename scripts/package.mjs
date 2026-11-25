@@ -22,7 +22,7 @@ if(existsSync(join(root,'lab/realtime-direct-tools/assets/tool-progress-provenan
 names.push('lab/realtime-direct-tools/device-location.mjs','lab/realtime-direct-tools/lookup-recovery.mjs','lab/realtime-direct-tools/native-runtime.mjs','lab/realtime-direct-tools/task-progress.mjs','lab/realtime-direct-tools/search-result.mjs');
 names.push('lab/realtime-direct-tools/audio-delivery-metrics.mjs','lab/realtime-direct-tools/media-cli-policy.mjs','lab/realtime-direct-tools/media-cli.mjs','lab/realtime-direct-tools/media-accounts.mjs','lab/realtime-direct-tools/media-turn-recovery.mjs','lab/realtime-direct-tools/local-executions.mjs');
 names.push('lab/realtime-direct-tools/native-interrupt.mjs','lab/realtime-direct-tools/native-duplex-policy.mjs');
-names.push('lab/gpt-live-h5/one-voice-policy.mjs');
+names.push('lab/gpt-live-h5/one-voice-policy.mjs','lab/gpt-live-h5/improv-player.mjs','lab/realtime-direct-tools/improv-live.mjs');
 names.push('lab/gpt-live-h5/ios-shell-release.json','lab/gpt-live-h5/app-bundle.mjs','lab/gpt-live-h5/entry-bootstrap.js');
 names.push('lab/realtime-direct-tools/tv-control-policy.mjs');
 names.push('lab/gpt-live-h5/tv-host.mjs','lab/gpt-live-h5/tv-entry.bundle.mjs','lab/gpt-live-h5/tv-startup.bundle.mjs');
@@ -43,6 +43,7 @@ names.push(...['peer','provider','router','auth'].map(n=>`lab/realtime-direct-to
 // What differs between voice models, asked by session.mjs and the GPT Live bridge (docs/model-capabilities.md).
 names.push('lab/realtime-direct-tools/capabilities.mjs');
 names.push('lab/realtime-direct-tools/playback-echo.mjs');
+names.push('lab/realtime-direct-tools/floor-judge.mjs','lab/realtime-direct-tools/playback-position.mjs');
 names.push('lab/gpt-live-h5/upload-backpressure.mjs');
 names.push('lab/gpt-live-h5/assets/v-avatar.jpg','lab/gpt-live-h5/board-assets.mjs','lab/gpt-live-h5/board-assets-client.mjs','lab/gpt-live-h5/board-picture-size.mjs','lab/realtime-direct-tools/media-script.mjs','lab/realtime-direct-tools/material-check.mjs','lab/gpt-live-h5/board-scene.mjs','lab/gpt-live-h5/board-director.mjs','lab/gpt-live-h5/board-client.mjs','lab/gpt-live-h5/board-sketch.mjs','lab/gpt-live-h5/board-photo.mjs','lab/gpt-live-h5/board-lesson.mjs','lab/gpt-live-h5/board-cue.mjs','lab/gpt-live-h5/board-clause.mjs','lab/gpt-live-h5/board-eye.mjs');
 // Every relative import of a packaged module must itself be packaged, so a

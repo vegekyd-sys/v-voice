@@ -1,0 +1,64 @@
+{
+  "version": "voice-makaron-director.20261124.5",
+  "verifiedAt": "2026-11-24T23:45:00+08:00",
+  "sourceCommit": "53fe532cb76e1b25b48d93eb85e849a0e3d96f5e",
+  "mergePRs": [
+    255,
+    258,
+    267,
+    270
+  ],
+  "makaron": {
+    "mergePRs": [
+      82,
+      83,
+      84,
+      85
+    ],
+    "devCommit": "00dc42d40bc1079ff8e117d7c6177ecd4c27e26f",
+    "cli": "makaron-cli@0.17.30 (npm latest)",
+    "directorService": "makaron-director.service, single-key host mode (services/director/start-host.mjs), loopback only"
+  },
+  "previousRunningCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
+  "intermediateRelease": {
+    "commit": "e754ef6775cbf4cafe9cb111f4a6b3bacd0ba2b6",
+    "version": "voice-makaron-director.20261124.4",
+    "note": "首次上线直播；线上验收发现录像上传被 95 秒转发超时切断，随后发布 .5 修复。"
+  },
+  "filesSha256": "d5938dcce074869b3b49905cf8906c58267fca51fe18001c3ae78cb999eadac2",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45426210527",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "serviceConfiguration": [
+    "网页节点新增 drop-in 97-voice-improv-live.conf，加载私有环境文件（直播开关、Makaron CLI 路径、本机 Director 地址）；其余私有配置不变。",
+    "V 上新增独立服务 makaron-director（同机 loopback，只接受电话服务自己的 Makaron key），代码来自 Makaron dev 已合入提交。",
+    "V 上 Makaron CLI 升级到 0.17.30，保留回滚链接到 0.17.28。"
+  ],
+  "fixes": [
+    "讲解画布里的即兴直播上线：开播、自动推进剧情、插话换镜、收播存档。只对 Tianyi 的私人入口开放。",
+    "模型没写字幕时，画面下方显示来电者完整原话（去掉口头词）。",
+    "录像上传单独给 15 分钟转发时间，录像码率限制在约 0.8 Mbps，文件约为原来的三分之一。"
+  ],
+  "acceptance": [
+    "线上合成语音通话（私人入口、豆包）：用 V 自己的形象开播，首帧在开播回执后 13.5–15.9 秒；静默时自动推进两幕并显示短字幕；插话说完约 3 秒发给生成端、6–7 秒后出画，完整原话显示在画面下方；之后接上重新规划的一幕；收播后继续聊天，课件接替画面。",
+    "服务器存档：7.5 MB 录像在收播后约 5 分钟上传完成，与浏览器录像 sha256 一致。",
+    "两个运行节点的提交、文件哈希已核对，均已恢复接入；本次发布未重启 Gateway。",
+    "npm test 1523/1523、test:speaker-native、check:ios-shell、release_fleet_test 和 main CI 均通过（android-tv 一次依赖下载失败后重跑通过）。"
+  ],
+  "notVerified": [
+    "真手机、真人语音、iOS App（原生运行时不提供此工具）未验收。",
+    "该私人入口绑定的飞书群 Makaron 账号积分不足，线上验收没有走『先画图再开播』，改用 V 自己的形象开播。"
+  ],
+  "knownLimits": [
+    "录像经线上 Cloudflare 隧道上传只有约 25–70 KB/s，收播后要保持页面打开几分钟才能存档；页面提前关闭时只剩浏览器里的本地副本。"
+  ]
+}

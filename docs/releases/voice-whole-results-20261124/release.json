@@ -1,0 +1,41 @@
+{
+  "version": "voice-gpt-live-11.20261124.5",
+  "verifiedAt": "2026-11-24T21:50:00+08:00",
+  "sourceCommit": "49dc49d977fcf40e71c7a0e045097594a32b4948",
+  "mergePRs": [
+    268
+  ],
+  "previousRunningCommit": "5871116bad2c32f4e0a044fbb090b1ae219942ef",
+  "filesSha256": "99bad50d9640c821d87a1d655dd2ee68b47ab6ffb26bcc1d38a7649544542cce",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45406195035",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "29c39482cbc53d2b39c04cb2463070447700d9b477cde373dd7ea2b3408bf689",
+  "serviceConfiguration": [
+    "私有配置不变：发布前后只有发布工具自己切换版本用的 95-unified-release.conf 不同。",
+    "设备节点首次在正式发布中经 vrelay 签名链接下载产物（#264），整次发布 123 秒。"
+  ],
+  "fixes": [
+    "GPT Live 1.1 拿到的工具结果不再在 2400 字处截断：日程、网页、后台任务结果与豆包一样整份给到（上限同为 32 KB，TOOL_RESULT_MAX_BYTES）；搜索和记忆每条按原样给出，不再只留 6 条、截到 520/1200 字。豆包和 Grok 收到的内容不变。"
+  ],
+  "acceptance": [
+    "编造的一天 6 个和 12 个会议的日程整份到达 GPT Live（修复前只看得到 3 个，新测试在没有修复时失败）。",
+    "两个运行节点的提交、文件哈希已核对，均已恢复接入；本次发布未重启 Gateway，发布前后 Gateway 身份一致。",
+    "npm test、test:speaker-native、check:ios-shell、release_fleet_test 和 main CI 均通过。"
+  ],
+  "notVerified": [
+    "真实 GPT Live 1.1 通话问一整天的日程或一次长搜索，由用户验收。"
+  ],
+  "notes": [
+    "发布前约 21:41 另一项平台发布重启了 Gateway，线上网页语音服务连不上 Gateway、自动重启 4 次，21:45:33 恢复就绪后才执行本次发布；该次中断与本发布无关。"
+  ]
+}

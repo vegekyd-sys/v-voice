@@ -396,6 +396,11 @@ test('a lesson starting keeps the title and print being drawn for the question; 
   assert.deepEqual(director.scene('q').blocks.map(block => block.t), ['photo']);
 });
 
+test('a shelf refresh retains both photo gallery pages without a streaming illustrator', () => {
+  const board = createBoardDirector(scripted());
+  for (const name of ['卢浮宫', '凯旋门']) board.gallery('call', name, [{name, query:name}]);
+  assert.deepEqual(board.state('call').canvas.zones.map(zone=>zone.title), ['卢浮宫','凯旋门']);
+});
 test('a caller\'s turn that draws nothing leaves the script\'s page in place for the rest of the reading', async () => {
   const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
   let calls = 0, next = null;

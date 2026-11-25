@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {createMediaAccounts,mediaAccountScope} from './media-accounts.mjs';
+import {createMediaAccounts,mediaAccountFailure,mediaAccountScope} from './media-accounts.mjs';
 import {createVoiceMediaCli,mediaArgv,validateMediaArgv} from './media-cli.mjs';
 
 test('CLI arguments preserve quoted user content but cannot run shell or other commands',()=>{
@@ -231,4 +231,20 @@ test('an explicit company binding never silently bills the group key',async t=>{
   await assert.rejects(accounts.resolve(scope),/公司账号/);
   await fs.writeFile(company,'company-key\n',{mode:0o600});
   assert.equal((await accounts.resolve(scope)).key,'company-key');
+});
+
+test('the owner entry pays with the owner account, never the group self-registered one',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'voice-owner-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const store=path.join(root,'store'),company=path.join(root,'company');
+  await fs.writeFile(store,JSON.stringify({'chat:oc_room':{api_key:'group-key',claimed:false}}),{mode:0o600});
+  const accounts=createMediaAccounts(store,company);
+  const owner={...mediaAccountScope('agent:makaron:feishu:group:oc_room'),owner:true};
+  await assert.rejects(accounts.resolve(owner,()=>assert.fail('the owner never registers a group account')),/主账号/);
+  await fs.writeFile(company,'owner-key\n',{mode:0o600});
+  const account=await accounts.resolve(owner,()=>assert.fail());
+  assert.equal(account.key,'owner-key');
+  assert.equal((await accounts.resolve({chat:'oc_room'})).key,'group-key','other callers keep the session binding');
+  assert.match(mediaAccountFailure('Error: insufficient credits',account,owner).message,/主账号积分不足/);
+  assert.doesNotMatch(mediaAccountFailure('Error: insufficient credits',account,owner).message,/飞书群|认领/);
 });

@@ -1,3 +1,4 @@
+import {createImprovPlayer} from "./improv-player.mjs";
 import {phoneModelOptions} from "./model-options.mjs";
 import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
 import {captureTvArray,hasTvArrayCapture,tvArraySupportsModel} from "./tv-array-capture.mjs";
@@ -42,8 +43,23 @@ if (document.querySelector) mountCallUi(document, view, {
   renderAssistant, onDocumentShown: callId => documentShown(callId),
   loadBoardPhoto: Object.assign(query => loadBoardPhoto(query), {missing: query => loadBoardPhoto.missing(query)}),
   // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
-  boardWorks: {pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: id => call?.boardAssets?.shown(id), save: item => saveBoardPicture(item)},
+  boardWorks: {visible: ids=>call?.boardAssets?.visible(ids), pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: (id, ratio) => call?.boardAssets?.shown(id, ratio), save: item => saveBoardPicture(item)},
   actions: {
+    uploadReference: async file => {
+      const active=call;
+      if (!active?.voiceSessionId || !file) return;
+      if (file.size>8*1024*1024) return setStatus('请选择小于 8 MB 的图片',{tone:'problem'});
+      setStatus('正在添加参考图');
+      try {
+        const url=new URL(apiUrl('reference-image'),document.baseURI);
+        url.searchParams.set('call',active.voiceSessionId);
+        const response=await fetch(url,{method:'POST',body:file,headers:{'content-type':file.type}});
+        if (!response.ok) throw Error((await response.json()).error);
+        if(call===active){active.boardAssets?.poke?.();setStatus('参考图已放到画布上',{tone:'success'});}
+      } catch(error){if(call===active)setStatus(error.message||'添加参考图失败',{tone:'problem'});}
+    },
+    toggleImprovSound: () => call?.improv?.toggleSound(),
+    endImprov: () => call?.improv?.finish(),
     openBinding: () => void openIosBinding(),
     connectIdentity: () => { guestDialAllowed=false;void confirmation.start(); },
     skipConfirmation: () => void skipConfirmation(),
@@ -72,7 +88,7 @@ let call = null;
 let starting = null;
 let avatarDiagnosticOwner = null;
 let liveReady = false;
-let boardAvailable = false;
+let boardAvailable = false, improvAvailable = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
@@ -122,6 +138,7 @@ function setMuted(muted) {
 function setOutputMuted(outputMuted) {
   if (!call) return;
   call.relay?.setOutputMuted(outputMuted);
+  call.improv?.setOutputMuted(outputMuted);
   $("remoteAudio").muted = outputMuted || Boolean(call.duplex?.snapshot().localPlaybackMuted);
   view.set({outputMuted});
 }
@@ -642,6 +659,9 @@ async function stopCall({failure}={}) {
   const active = call; call = null;
   if (starting === active) starting = null;
   if (active) {
+    active.improv?.finish('call');
+    view.set({improv:null,recordings:[]});
+    for(const clip of active.recordings?.values()??[])if(clip.recording)URL.revokeObjectURL(clip.recording);
     active.avatarTelemetry?.close();
     active.avatarReactions?.dispose();
     active.board?.dispose(); active.boardAssets?.dispose(); clearInterval(active.boardFocusTimer); view.set({ board: null, boardCanvas: null, boardSpoken: null, boardAssets: null });
@@ -778,11 +798,12 @@ async function startCall(options = {}) {
     const selectedModel = ['seeduplex','grok','gpt-live-11'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=await browserDeviceActions();
-    const params={model:selectedModel,nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:selectedModel==='seeduplex'&&view.get().doubao.voice?{voice:view.get().doubao.voice}:{})};
+    const improvLive = improvAvailable && selectedModel !== 'gpt-live';
+    const params={model:selectedModel,...(improvLive?{improvLive:true}:{}),nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:selectedModel==='seeduplex'&&view.get().doubao.voice?{voice:view.get().doubao.voice}:{})};
     let reservation;
     if(webDialVersion===2&&phoneEntry&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(improvLive?{improvLive:'1'}:{}),...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
       active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
       reservation=await withCapture(active.dialConnection.reservation);
     }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));
@@ -790,6 +811,17 @@ async function startCall(options = {}) {
     active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if(captureError)throw captureError;
+    if (improvLive) active.improv = createImprovPlayer({context:active.context,
+      update: improv => { if (call === active) view.set({improv}); },
+      archive: clip => {
+        if(call!==active){if(clip.recording)URL.revokeObjectURL(clip.recording);return;}
+        active.recordings??=new Map();active.recordings.set(clip.id,clip);
+        view.set({recordings:[...active.recordings.values()]});
+      },
+      ended: (id,reason) => { void api('improv-end',{voiceSessionId:active.voiceSessionId,id,reason}).catch(()=>{}); },
+      stage: ({stage,ms,reason,status}) => { if (call === active) void api('improv-stage',{voiceSessionId:active.voiceSessionId,stage,ms,reason,status}).catch(()=>{}); },
+      notice: (text,failed) => { if (call === active) setStatus(text,{tone:failed?'problem':'success'}); }
+    });
     const diagnosticOwner=avatarDiagnosticOwner=Symbol('avatar-call');
     document.body.dataset.avatarReactionRequests='0';
     document.body.dataset.avatarReactionApplied='0';
@@ -884,7 +916,7 @@ async function startCall(options = {}) {
         onAudioLevel:tvHost?value=>{if(call===active)tvHost.observeAudio(value);}:undefined,
         onError:error=>{if(call===active)void stopCall({failure:error});},
         onClosed:closed=>{if(call!==active)return;if(active.remoteEnding)void stopCall();else void redialLostCall(active,Object.assign(Error("连接已中断，请重新呼叫"),{code:"RELAY_CLOSED"}),closed);},
-        onPlaybackActivity:speaking=>{if(call===active){setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
+        onPlaybackActivity:speaking=>{if(call===active){active.improv?.setHostSpeaking(speaking);setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
           if(active.deviceAdapter?.handle(value))return;
@@ -892,6 +924,10 @@ async function startCall(options = {}) {
           if(value.type==='end.cancelled')active.remoteEnding=false;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.
+          if(value.type==='improv.notice'){setStatus(value.text,{tone:'problem'});return;}
+          if(value.type==='improv.live'){void active.improv?.receive(value);return;}
+          if(value.type==='input.speech.started')active.improv?.setCallerSpeaking(true);
+          if(value.type==='input.speech.stopped' || value.type==='input.speech.ignored' || (value.type==='transcript' && value.role==='user' && value.final))active.improv?.setCallerSpeaking(false);
           if(value.type==='input.speech.started'&&active.relayTurns?.assistant){
             // Close only the display row, preserving its received text in
             // history. This is not provider completion or playback proof.
@@ -915,11 +951,13 @@ async function startCall(options = {}) {
           if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
-            renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:
+            renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text,...(value.role==='user'&&typeof value.turnId==='string'?{sourceTurnId:value.turnId}:{})}}:
               {type:'output_transcript.delta',turn_id:id,delta:value.text}));
             if(value.final)delete active.relayTurns[value.role];
             if(value.final&&value.role==='user')view.thinking();
           }
+          // Side talk the floor judge heard as not said to V: its line quietly steps back.
+          if(value.type==='input.speech.ignored'&&value.reason==='not-addressed'&&!reservation.speakerRouting){renderTranscript(presentation.consume(value));view.set({thinkingAt:null});}
         }});
       await active.relay.start();if(call!==active)return;
       startPresentationRecovery(active);
@@ -1138,6 +1176,8 @@ function applyEntryStatus(status) {
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
     liveReady = status.ready === true;
+    improvAvailable = status.improvLive === true && !tvHost && typeof RTCPeerConnection === 'function';
+    view.set({referenceUpload:status.referenceUpload === true && !tvHost});
     boardAvailable = status.board === true && !tvHost;
     const phoneOptions = phoneModelOptions(status, view.get().model);
     const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));

@@ -278,6 +278,8 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     if (!words || /(?:不用|不要|别用|不需要)[^，。,.]{0,6}(?:图|照片)|重新(?:画|生成|做)一张|另外/u.test(words)) return null;
     const usable = item => item.fits !== false && (item.kind === 'image' && item.state === 'ready');
     const here = [...value.photos, ...value.assets].filter(usable);
+    if (/(?:你自己|你的|小何的|V的)(?:的)?(?:形象|头像|照片|图片)/iu.test(words)) return value.standing.find(item=>item.id==='v') ?? null;
+    if (/(?:我(?:刚刚?|刚才)?上传的[^，。]{0,6}(?:图|照片)|我自己的(?:照片|图片)|我的(?:照片|图片))/u.test(words)) return here.filter(item=>item.source==='upload').at(-1) ?? null;
     for (const match of words.matchAll(/[那这]\s*(?:个|张|幅|只|份)?\s*([^，。,.！？!?、那这]{2,12}?)的?\s*(?:那张|这张)?\s*(?:图片|照片|图|海报)/gu)) {
       const named = here.filter(item => nameFit(match[1], item.name) >= 1 || item.query && nameFit(match[1], item.query) >= 1).at(-1);
       if (named) return named;
@@ -434,6 +436,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       }
       if (asset.state === 'ready' && asset.url === url) { await wait(asset.looking, lookWaitMs); return api.facts(owner, asset.id); }
       asset.state = 'ready'; asset.url = url; asset.kind = media.kind === 'video' ? 'video' : 'image'; asset.readyAt = now();
+      if (asset.kind === 'image' && value.picked && asset.refs?.includes(value.picked)) value.picked = asset.id;
       audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: asset.kind, state: 'ready', madeMs: asset.readyAt - asset.at});
       changed(owner, value);
       await wait(look(owner, value, asset), lookWaitMs);
@@ -537,19 +540,49 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
       value.picked = id; changed(owner, value);
       return true;
     },
+    async openingImage(owner, reference, position) {
+      const value = owners.get(owner);
+      if (!value) return '';
+      const visible=value.visible?.map(id=>find(value,id)).filter(Boolean);
+      const selected=value.picked && find(value,value.picked);
+      let item=find(value,reference);
+      if(position!==undefined)item=visible?.[position-1];
+      else if(reference==='current'){
+        if(selected && (!visible || visible.includes(selected)))item=selected;
+        else if(visible)item=visible.length===1?visible[0]:null;
+        else item=value.assets.at(-1);
+      }
+      if (item?.kind !== 'image' || item.state !== 'ready' || item.fits === false) return '';
+      return https(await api.address(owner, item.id));
+    },
     /** Where a thing can be fetched from outside the call (to save it): a made thing's own link, a found photograph lent out. */
     async address(owner, id) {
       const value = owners.get(owner), asset = value?.assets.find(item => item.id === id && item.state === 'ready');
       if (asset) return asset.url;
-      if (!value?.photos.some(photo => photo.id === id)) return '';
+      if (!value || !pictures(value).some(photo => photo.id === id)) return '';
       await api.lend(owner, `--image ${id}`);
-      const photo = value.photos.find(item => item.id === id);
+      const photo = pictures(value).find(item => item.id === id);
       return photo?.url && photo.until >= now() ? photo.url : '';
     },
     /** The page has the thing on screen (its picture loaded). */
-    seen(owner, ids) {
+    visible(owner,ids) {
+      const value=row(owner);value.visible=[...new Set(ids.slice(0,16))].filter(id=>typeof id==='string' && SHELF_ID.test(id) && find(value,id));
+    },
+    openingName(owner,url) {
+      const value=owners.get(owner);return value && [...value.assets,...pictures(value)].find(item=>item.url===url)?.name || '';
+    },
+    openingAspect(owner,url) {
+      const value=owners.get(owner), asset=value && [...value.assets,...pictures(value)].find(item=>item.url===url && item.kind==='image');
+      if(!asset)return '';
+      const [w,h]=String(asset.aspect??'').split(':').map(Number);
+      const ratio=asset.displayRatio || w/h;
+      if(!Number.isFinite(ratio) || ratio<=0)return '';
+      const threshold=4/3;
+      return ratio>threshold?'16:9':ratio<1/threshold?'9:16':'1:1';
+    },
+    seen(owner, ids, shapes) {
       const value = owners.get(owner);
-      for (const id of Array.isArray(ids) ? ids.slice(0, 12) : []) { const asset = value?.assets.find(item => item.id === id); if (asset && asset.state === 'ready') asset.shown = true; }
+      for (const id of Array.isArray(ids) ? ids.slice(0, 12) : []) { const asset = value && find(value,id); if (asset && asset.state === 'ready') {asset.shown=true;const ratio=shapes?.[id];if(Number.isFinite(ratio)&&ratio>0&&ratio<100)asset.displayRatio=ratio;} }
     },
     shown(owner, id) { return owners.get(owner)?.assets.find(asset => asset.id === id)?.shown === true; },
     watch(owner, watcher) { const value = row(owner); value.watchers.add(watcher); return () => value.watchers.delete(watcher); },
