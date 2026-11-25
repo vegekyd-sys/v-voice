@@ -1053,3 +1053,40 @@ test("the page's voice choices are speakers this provider maps, the default firs
   // Mapped for the provider but not offered, another model's voice, a raw speaker id, nothing at all.
   for (const voice of ["companion", "sol", "zh_female_vv_uranus_bigtts", "", null]) assert.throws(() => seeduplexVoice(voice), /豆包音色/u);
 });
+
+async function readingFixture(){
+ const socket=new FakeSocket(),audio=[],texts=[],done=[],clears=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,onAudio:(b,m)=>audio.push(m.responseId),onTranscript:(...a)=>texts.push(a),onResponseDone:o=>done.push(o.responseId),onClearAudio:(reason)=>clears.push(reason),onInputSpeech(){},onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket});
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ const commits=()=>socket.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
+ const line=(id,more=true)=>{socket.message({type:'response.output_audio.started',response_id:id,tts_type:'chat_tts_text'});socket.message({type:'response.output_audio.delta',response_id:id,delta:floatAudio([.5])});if(more)socket.message({type:'response.output_audio.done',response_id:id});socket.message({type:'response.done',response_id:id});};
+ return {socket,bridge,audio,texts,done,clears,commits,line,e:x=>socket.message(x)};
+}
+
+test('a script read a line at a time is one reply: lines follow one another, nothing is cleared, one caption row, one completion',async t=>{
+ const f=await readingFixture();t.after(()=>f.bridge.close());
+ const reader=f.bridge.readLines();
+ reader.line('灯塔每晚把光扫过海面。');reader.line('船看到光，就知道离岸多远。');
+ assert.deepEqual(f.commits(),['灯塔每晚把光扫过海面。'],'one commit at a time: a second would replace the first');
+ f.line('r1');
+ assert.deepEqual(f.commits(),['灯塔每晚把光扫过海面。','船看到光，就知道离岸多远。'],'the next line once the one before is generated');
+ f.line('r2',false);reader.line('所以灯塔要建在最高处。');reader.end();
+ f.e({type:'response.output_audio.done',response_id:'r2'});f.line('r3');
+ assert.deepEqual(f.audio,['r1','r1','r1'],'every line is heard as the reading\'s own reply');
+ assert.deepEqual(f.clears,[],'no line clears the one still playing');
+ assert.deepEqual(f.texts.filter(x=>!x[2]).map(x=>x[1]),['灯塔每晚把光扫过海面。','船看到光，就知道离岸多远。','所以灯塔要建在最高处。']);
+ assert.deepEqual(f.texts.filter(x=>x[2]).map(x=>[x[1],x[3]]),[['灯塔每晚把光扫过海面。船看到光，就知道离岸多远。所以灯塔要建在最高处。','V-backend-summary']]);
+ assert.deepEqual(f.done,['r1'],'completed once, after the last line');
+});
+
+test('a reading stops when the caller really speaks: no further line is committed',async t=>{
+ const f=await readingFixture();t.after(()=>f.bridge.close());
+ const reader=f.bridge.readLines();
+ reader.line('第一句。');f.line('r1',false);reader.line('第二句。');
+ f.e({type:'conversation.item.input_audio_transcription.started'});
+ f.e({type:'conversation.item.input_audio_transcription.completed',transcript:'等一下，我有个问题'});
+ f.e({type:'response.output_audio.done',response_id:'r1'});reader.line('第三句。');reader.end();
+ assert.deepEqual(f.commits(),['第一句。']);
+ assert.equal(f.socket.sent.filter(e=>e.type==='response.cancel').length,1);
+ assert.deepEqual(f.texts.filter(x=>x[2]&&x[0]==='assistant').map(x=>x[1]),['第一句。'],'what was said stays as the reply');
+});

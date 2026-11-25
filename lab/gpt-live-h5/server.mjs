@@ -1453,7 +1453,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // Whether speech over a lesson still playing is said to V: the Decisions API (floor-judge.mjs),
     // with the board's text model as the fallback. VOICE_FLOOR_JUDGE=0 leaves it to the voice model.
     const floorJudge=process.env.VOICE_FLOOR_JUDGE==='0'?null:(floorJudgeFromEnv(process.env)??(()=>{const completion=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'8'});return completion?createFloorJudge({complete:completion}):null;})());
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,floorJudge,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,lessonStream:process.env.VOICE_LESSON_STREAM==='1',assets,floorJudge,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({accounts:createMediaAccounts(

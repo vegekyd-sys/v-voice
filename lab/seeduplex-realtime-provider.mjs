@@ -535,6 +535,7 @@ export class SeeduplexRealtimeVoiceBridge {
     if (!this.producedAudio && this.greetingRequested) { this.greetAfterReconnect = true; this.greetingRequested = false; }
     this.reconnectAttempts.push(now);
     this.reconnecting = true;
+    this.reading = null;
     this.ready = false;
     this.connected = false;
     this.pendingInput = Buffer.alloc(0);
@@ -617,6 +618,52 @@ export class SeeduplexRealtimeVoiceBridge {
     this.#send({ type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`, text });
   }
 
+  /**
+   * A script read out a line at a time, as its lines are written (VOICE_LESSON_STREAM).
+   * Host speech takes one commit at a time (a second commit replaces the first), so each
+   * line is committed when the one before has been generated; generation runs several times
+   * faster than playback, so the phone hears no gap. To the rest of the call the reading is
+   * one reply: one response id, one caption row growing line by line, one completion.
+   * Returns {line(text), end()}, or null when nothing can be spoken now.
+   */
+  readLines({ source = "V-backend-summary" } = {}) {
+    if (this.terminal || (!this.ready && !this.reconnecting)) return null;
+    const reading = { queue: [], busy: false, owner: null, ids: new Set(), said: "", current: null, ended: false, source };
+    this.reading = reading;
+    return {
+      line: (text) => { const line = optionalString(text); if (!line || this.reading !== reading || reading.ended) return; reading.queue.push(line); this.#readNext(); },
+      end: () => { if (this.reading !== reading) return; reading.ended = true; this.#readNext(); },
+      get active() { return reading.ended === false; },
+    };
+  }
+
+  #readNext() {
+    const reading = this.reading;
+    if (!reading || reading.busy || this.terminal) return;
+    const text = reading.queue.shift();
+    if (!text) { if (reading.ended) this.#finishReading(); return; }
+    reading.busy = true;
+    reading.current = text;
+    this.injectedSpeech = true;
+    this.responseActive = true;
+    this.outputClosed = false;
+    this.#send({ type: "speech_text_buffer.commit", event_id: `event_${randomUUID()}`, text });
+  }
+
+  #finishReading({ cancelled = false } = {}) {
+    const reading = this.reading;
+    if (!reading) return;
+    this.reading = null;
+    // (The lines' own terminal events, which come just after, are the reading's, already completed.)
+    this.readIds = reading.ids;
+    if (reading.said) this.request.onTranscript?.("assistant", reading.said, true, reading.source, { responseId: reading.owner });
+    if (cancelled) return;
+    this.responseActive = false;
+    this.injectedSpeech = false;
+    this.request.onAudioSegmentDone?.();
+    if (reading.owner) this.#onResponseDone({ status: "completed", responseId: reading.owner });
+  }
+
   updateTerminalContext(text, previous, {notice='设备状态通知', reply='后续设备请求以这份当前状态为准；不自动重试此前被拒绝的操作。'} = {}) {
     this.request.instructions=this.request.instructions.replace(previous,text);
     // This provider's existing paired-history event does not trigger speech.
@@ -654,7 +701,11 @@ export class SeeduplexRealtimeVoiceBridge {
 
   handleBargeIn({ confirmed = false } = {}) {
     if (!this.ready) return;
-    const retiredResponseId=confirmed?(this.audioResponseId??this.responseOwnerId):undefined;
+    // A script being read a line at a time stops here: the phone knows its audio by the reading's
+    // first response id, and the lines not yet committed are never spoken.
+    const reading=this.reading;
+    if(reading){for(const id of reading.ids)this.retiredResponses.add(id);this.#finishReading({cancelled:true});}
+    const retiredResponseId=confirmed?(reading?.owner??this.audioResponseId??this.responseOwnerId):undefined;
     if(retiredResponseId){this.retiredResponses.add(retiredResponseId);if(this.retiredResponses.size>256)this.retiredResponses.delete(this.retiredResponses.values().next().value);}
     // Flushing local playback is the whole barge-in, matching the GPT Live One
     // bridge. A barge-in signal is only ever a guess by input VAD, and during a
@@ -683,6 +734,8 @@ export class SeeduplexRealtimeVoiceBridge {
   #cancelUpstreamResponse(force = false) {
     this.bargeInPending = false;
     this.pendingSpeechCaption = null;
+    // A script being read a line at a time stops with it: no further line is committed.
+    if (this.reading) { const reading = this.reading; for (const id of reading.ids) this.retiredResponses.add(id); this.#finishReading({ cancelled: true }); if (reading.owner) this.audioResponseId ??= reading.owner; }
     if (!this.ready || this.cancelledOutputPending || (!this.responseActive && !force)) return;
     this.cancelledOutputPending = true;
     const retiredId = this.audioResponseId ?? this.responseOwnerId;
@@ -767,6 +820,7 @@ export class SeeduplexRealtimeVoiceBridge {
   acknowledgeMark(_markName) {}
 
   close() {
+    this.reading = null;
     this.nativeAsideCandidates.clear();
     if (this.terminal) return;
     this.terminal = true;
@@ -825,6 +879,15 @@ export class SeeduplexRealtimeVoiceBridge {
     const type = event?.type;
     const responseId = optionalString(event.response_id) ?? optionalString(event.response?.id);
     if (responseId && this.retiredResponses.has(responseId) && type?.startsWith("response.")) return;
+    // A line of a script being read (readLines): its response belongs to the reading.
+    const reading=this.reading;
+    if(reading?.busy&&type==="response.output_audio.started"&&responseId&&!reading.ids.has(responseId)){reading.ids.add(responseId);reading.owner??=responseId;}
+    if(type==="response.done"&&(reading&&(!responseId||reading.ids.has(responseId))||responseId&&this.readIds?.has(responseId)))return;
+    if(reading&&type==="response.output_audio.done"&&reading.busy&&reading.ids.has(responseId??this.audioResponseId)){
+      reading.busy=false;
+      this.#readNext();
+      return;
+    }
     if(this.request.nativeDuplex){
       // response.done carries usage and can arrive after the next turn starts.
       // An anonymous terminal cannot finish an identified new playback queue.
@@ -1107,8 +1170,17 @@ export class SeeduplexRealtimeVoiceBridge {
         // A packet's own identity is authoritative. Never stamp a late old
         // chunk with the current TTS ID. Anonymous chunks remain owned by the
         // most recent TTS start, not a new answer's earlier text event.
-        const deliveredId=responseId??(this.request.nativeDuplex?this.nativeTtsResponseId:this.audioResponseId);
+        let deliveredId=responseId??(this.request.nativeDuplex?this.nativeTtsResponseId:this.audioResponseId);
         if(this.request.nativeDuplex&&(!deliveredId||this.retiredResponses.has(deliveredId)))return;
+        // A line being read: captioned as its audio starts, delivered under the reading's own id.
+        if(reading&&reading.ids.has(deliveredId)){
+          if(audio.length&&reading.current){
+            const piece=(reading.said&&/[A-Za-z0-9.,!?'")]$/u.test(reading.said)&&/^[A-Za-z0-9"'(]/u.test(reading.current)?' ':'')+reading.current;
+            reading.current=null;reading.said+=piece;
+            this.request.onTranscript?.("assistant",piece,false,reading.source,{responseId:reading.owner});
+          }
+          deliveredId=reading.owner;
+        }
         if(audio.length){this.deliveredAudioResponseId=deliveredId;this.producedAudio=true;}
         this.request.onAudio(audio, { ...(this.injectedSpeech ? {source:"injected-speech"} : {}), responseId: deliveredId });
         this.request.onMark?.(`seeduplex-audio-${randomUUID()}`);
@@ -1310,6 +1382,8 @@ export class SeeduplexRealtimeVoiceBridge {
   #acceptNativeResponse(responseId) {
     const previous=this.nativeResponseId??this.deliveredAudioResponseId;
     if(previous===responseId)return;
+    // The next line of the same reading continues the reply; the line before is still playing.
+    if(previous&&this.reading?.ids.has(previous)&&this.reading.ids.has(responseId)){this.nativeResponseId=responseId;this.audioResponseId=responseId;return;}
     this.nativeResponseId=responseId;
     // Keep speech-control ownership aligned with the accepted response while
     // its first audio is still pending. The old stream is retired locally;

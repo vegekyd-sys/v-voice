@@ -376,7 +376,7 @@ export function parseIllustration(text, said, taken = []) {
 export function createLessonWriter({complete, fallback = null, director, photoGallery=null, now = Date.now, record: keep = () => {}, preferMs = 8000, totalMs = 13000, scriptInstructions = SCRIPT_INSTRUCTIONS, early = 0} = {}) {
   // Callers who are not the owner (`quiet`): how a lesson went is kept, what was asked and said is not.
   const hushed = new Set();
-  const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add', 'earlyMs', 'earlyKept'].filter(key => key in event).map(key => [key, event[key]])) : event);
+  const record = event => keep(hushed.has(event?.voiceSessionId) ? Object.fromEntries(['type', 'voiceSessionId', 'ok', 'writer', 'scripted', 'durationMs', 'failure', 'none', 'add', 'earlyMs', 'earlyKept', 'streamed'].filter(key => key in event).map(key => [key, event[key]])) : event);
   // What each call was last told, so a second lesson builds on the first.
   const told = new Map();
   // The caller is waiting, so both writers start at once. The first one's
@@ -404,7 +404,7 @@ export function createLessonWriter({complete, fallback = null, director, photoGa
     available: Boolean(complete && director),
     wantsPhotos: words=>Boolean(photoGallery && photoCount(words)),
     /** Returns the script to speak, or null when no lesson could be written. `ask` is the caller's own words. */
-    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false, assets = [], make = false} = {}) {
+    async prepare({owner, topic, audience = '', ask = '', reference = '', signal, quiet = false, result = false, assets = [], make = false, onLines = null} = {}) {
       if(photoGallery && !result && photoCount(ask))return photoGallery({owner,ask,topic,signal});
       const started = now();
       if (quiet) { hushed.add(owner); if (hushed.size > 500) hushed.delete(hushed.values().next().value); }
@@ -426,19 +426,38 @@ export function createLessonWriter({complete, fallback = null, director, photoGa
       // the rest is still being written; then V's voice does not wait for a page. One writer only:
       // with two racing, the lines might be from the script that is not used.)
       let sent = null;
-      const onText = scripted && early > 0 && !fallback ? text => {
-        if (sent || signal?.aborted) return;
+      // (`onLines`, VOICE_LESSON_STREAM: each line of the script is handed over as soon as it is
+      // written, so V can begin speaking it while the rest is still being written.)
+      const streaming = scripted && typeof onLines === 'function' && !fallback;
+      const given = {title: '', say: [], show: []};
+      const give = (title, say, show) => {
+        if (say.length <= given.say.length) return;
+        const fresh = say.slice(given.say.length);
+        given.title ||= title; given.say.push(...fresh); given.show.push(...say.slice(given.show.length).map((_, index) => show[given.show.length + index] ?? ''));
+        onLines(fresh, {at: now() - started});
+      };
+      const onText = scripted && (early > 0 || streaming) && !fallback ? text => {
+        if (signal?.aborted) return;
         const part = partialScript(text);
-        if (!part || part.say.length < early) return;
+        if (!part) return;
+        if (streaming) give(part.title, part.say, part.show);
+        if (sent || early <= 0 || part.say.length < early) return;
         sent = {script: spokenScript(part.say), ms: now() - started};
         director.note(owner, {title: part.title, ask, script: sent.script, lines: part.say.map((line, index) => ({say: line, show: part.show[index]})), partial: true});
       } : null;
       let lesson = await race({owner, messages, signal, started, first: complete, second: fallback, parse: scripted ? parseScript : parseLesson, preferMs, totalMs, onText});
+      // Lines already spoken cannot be taken back: the lesson is what was handed over, and any
+      // line the finished script has beyond it. (A reply cut short after some lines were spoken is
+      // not written again by a second writer: what was spoken stands.)
+      if (streaming && given.say.length) {
+        if (lesson) give(lesson.title, lesson.say, lesson.show);
+        if (given.say.length >= 2 || lesson) lesson = {title: lesson?.title ?? given.title, say: given.say.slice(), show: given.show.slice(), writer: lesson?.writer ?? 'preferred'};
+      }
       // A single writer that came back with something unusable (a reply cut short, as in call 83315f5d) is asked once more.
-      if (!lesson && !fallback && !signal?.aborted && now() - started < preferMs) lesson = await race({owner, messages, signal, started: now(), first: complete, second: null, parse: scripted ? parseScript : parseLesson, preferMs, totalMs: preferMs});
+      if (!lesson && !given.say.length && !fallback && !signal?.aborted && now() - started < preferMs) lesson = await race({owner, messages, signal, started: now(), first: complete, second: null, parse: scripted ? parseScript : parseLesson, preferMs, totalMs: preferMs});
       const say = lesson ? spokenScript(lesson.say) : '';
       if (scripted) {
-        record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, scripted: true, durationMs: now() - started, say: lesson?.say ?? null, show: lesson?.show ?? null,
+        record({type: 'board.lesson', voiceSessionId: owner, topic, audience, ask, ok: Boolean(lesson), writer: lesson?.writer ?? null, scripted: true, durationMs: now() - started, say: lesson?.say ?? null, show: lesson?.show ?? null, ...(given.say.length ? {streamed: given.say.length} : {}),
           ...(sent ? {earlyMs: sent.ms, earlyKept: Boolean(lesson) && say.startsWith(sent.script)} : {})});
         if (!lesson) { director.expect?.(owner, 0); return null; }
         told.delete(owner); told.set(owner, {title: lesson.title, say});
