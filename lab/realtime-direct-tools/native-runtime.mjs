@@ -41,6 +41,10 @@ export function documentPresentation(id,body,serverOwned=true){
 export function createNativeRuntime({voiceSessionId,duplex=false,assisted=false,speakerRouted=false,policy=DEFAULT_NATIVE_RUNTIME_POLICY}={}){
   let revision=0, listenOnly=false, lastSpeakerId=null;
   const rows=[], people=[], documents=new Map();
+  // Caller lines the floor judge heard as not said to V are shown as listen-only rows, the same
+  // way web shows them. The service's turn ID finds the row; it is kept here, not sent to the app.
+  const turnOf=new Map(), pendingListenOnly=[], words=value=>String(value??'').replace(/[\p{P}\s]+/gu,'');
+  const markListenOnly=r=>{Object.assign(r,{speakerId:'caller',speakerLabel:'',speakerTone:0,listenOnly:true});return {row:{...r}};};
   const descriptor={...structuredClone(policy), playback:{replaceResponse:duplex, localPause:assisted}};
   const trim=()=>{while(rows.length>80||rows.reduce((n,row)=>n+row.text.length,0)>64000)rows.shift();};
   const row=(role,key)=>{
@@ -60,7 +64,16 @@ export function createNativeRuntime({voiceSessionId,duplex=false,assisted=false,
       case 'audio.done':push('audio.complete',{responseId:value.responseId});break;
       case 'input.speech.started':if(assisted)push('playback.hold');break;
       case 'input.speech.stopped':if(assisted)push('playback.hold',{complete:true,recognized:value.recognized!==false});break;
-      case 'input.speech.ignored':if(assisted)push('playback.release',{responseId:value.preservedResponseId});break;
+      case 'input.speech.ignored':{
+        if(assisted)push('playback.release',{responseId:value.preservedResponseId});
+        if(value.reason!=='not-addressed')break;
+        const turnId=typeof value.turnId==='string'&&value.turnId?value.turnId:null;
+        const users=rows.filter(r=>r.role==='user'&&r.complete&&!r.speakerId);
+        const r=(turnId&&users.findLast(r=>turnOf.get(r.id)===turnId))??users.slice(-4).findLast(r=>(!turnId||!turnOf.has(r.id))&&words(r.text)&&words(r.text)===words(value.text));
+        if(r)push('conversation.row',markListenOnly(r));
+        else if(turnId&&!pendingListenOnly.includes(turnId)){pendingListenOnly.push(turnId);if(pendingListenOnly.length>8)pendingListenOnly.shift();}
+        break;
+      }
       case 'speaker.utterance':case 'speaker.decision':{
         const t=value.turn;
         if(!t||!text(t.text).trim()||t.speakerId===undefined||!Number.isFinite(t.startMs)||!Number.isFinite(t.endMs)||t.startMs<0||t.endMs<t.startMs)break;
@@ -86,7 +99,10 @@ export function createNativeRuntime({voiceSessionId,duplex=false,assisted=false,
       case 'transcript':{
         if(!['user','assistant'].includes(value.role)||!text(value.text)||speakerRouted&&value.role==='user')break;
         const r=row(value.role);r.text=value.role==='assistant'&&!value.final?text(r.text+value.text):text(value.text);r.complete=value.final===true;
-        push('conversation.row',{row:{...r}});
+        if(r.role==='user'&&typeof value.turnId==='string'&&value.turnId){turnOf.set(r.id,value.turnId);if(turnOf.size>80)turnOf.delete(turnOf.keys().next().value);}
+        const waiting=r.role==='user'&&r.complete?pendingListenOnly.indexOf(turnOf.get(r.id)):-1;
+        if(waiting>=0){pendingListenOnly.splice(waiting,1);push('conversation.row',markListenOnly(r));}
+        else push('conversation.row',{row:{...r}});
         if(r.role==='user'&&r.complete)push('surface.phase',{phase:'thinking'});
         if(r.role==='assistant'&&r.complete&&(hasMedia(r.text)||r.text.length>1100||r.text.length>450&&/^#{1,3}\s/mu.test(r.text))){
           r.documentId='reply-'+r.id;push('conversation.row',{row:{...r}});push('document.present',{document:documentPresentation(r.documentId,r.text,false)});
