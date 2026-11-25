@@ -100,11 +100,7 @@ test('with lesson notes, a lesson comes back as material GPT Live tells in its o
   assert.equal(appends(f).at(-1).channel,'speakable');assert.match(appends(f).at(-1).content[0].text,/现在就用自己的话开讲/u);
   const begun=appends(f).length;
   const script='罗马景点散，先按三天排。第一天从斗兽场开始。第二天去万神殿。';
-  // V is speaking when the material comes: it waits for V's turn to end (sent then, it was taken for the caller cutting in).
-  f.bridge.receive({type:'turn.created',turn:{id:'a9',role:'assistant'}});
   f.bridge.completeBackgroundTool(idOf(3),{result:script},{spokenText:script,displayedFullResult:true,retell:{names:['斗兽场','万神殿'],points:['罗马景点散，先按三天排。','第一天从斗兽场开始。','第二天去万神殿。']}});
-  assert.equal(appends(f).length,begun);
-  f.bridge.receive({type:'turn.done',turn:{id:'a9',role:'assistant',transcript:'罗马的景点挺分散的，我们先说个大概。'}});
   const material=appends(f).slice(begun);assert.equal(material.at(-1).channel,'speakable');
   const spoken=material.map(e=>e.content[0].text).join('');
   assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*接着你正在讲的往下讲[^\n]*不重新开头/u);assert.match(spoken,/第二天去万神殿。$/u);

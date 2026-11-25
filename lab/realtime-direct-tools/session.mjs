@@ -845,8 +845,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
             let script=null;
             try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(traitsOf(s).retells?{retell:true}:{}),...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)&&!asksOnlyToFind(s.latestUserTurn?.text)}:{})});
               // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
-              // (Not for a retold lesson: V is already explaining, and the bridge hands the material over when its turn ends.)
-              if(script&&!traitsOf(s).retells)await quiet(s,8000);}
+              if(script)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
             finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
             if(current(s)&&s.epoch===epoch){
