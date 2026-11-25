@@ -96,8 +96,8 @@ test('with lesson notes, a lesson comes back as material GPT Live tells in its o
   assert.match(gptLiveDelegationPolicy(new Set(['explain_on_board']),{retell:true}),/用你自己的话讲/u);assert.doesNotMatch(gptLiveDelegationPolicy(new Set(['explain_on_board']),{retell:true}),/原样念完/u);
   say(f,idOf(3),'给我讲讲罗马怎么玩');await new Promise(r=>setTimeout(r,5));
   f.bridge.beginBackgroundTool(idOf(3),'罗马');
-  // V starts at once in its own words; the material carries it on (silence until it came cost 5 s against production).
-  assert.equal(appends(f).at(-1).channel,'speakable');assert.match(appends(f).at(-1).content[0].text,/现在就开口，用一两句话说出最核心的那个意思/u);
+  // While the material is written V says nothing of its own (speaking first, it told everything twice).
+  assert.equal(appends(f).at(-1).channel,'commentary');assert.match(appends(f).at(-1).content[0].text,/材料到之前不要自己讲内容/u);
   const begun=appends(f).length;
   const script='罗马景点散，先按三天排。第一天从斗兽场开始。第二天去万神殿。';
   // V is speaking when the material comes: it waits for V's turn to end (sent then, it was taken for the caller cutting in).
@@ -107,7 +107,7 @@ test('with lesson notes, a lesson comes back as material GPT Live tells in its o
   f.bridge.receive({type:'turn.done',turn:{id:'a9',role:'assistant',transcript:'罗马的景点挺分散的，我们先说个大概。'}});
   const material=appends(f).slice(begun);assert.equal(material.at(-1).channel,'speakable');
   const spoken=material.map(e=>e.content[0].text).join('');
-  assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*接着你刚才那一两句往下讲[^\n]*不重新开头/u);assert.match(spoken,/第二天去万神殿。$/u);
+  assert.match(spoken,/^讲解材料到了。[^\n]*按顺序是：斗兽场、万神殿[^\n]*用你自己的话讲给用户听[^\n]*不照着念/u);assert.match(spoken,/第二天去万神殿。$/u);
   assert.doesNotMatch(spoken,/<say>|原样念/u);
   assert(!f.bridge.script); // no script: the captions are V's own words
   // The page is drawn after the material is handed over: its names follow as a note, never a turn of their own.
@@ -289,6 +289,15 @@ test('a reply is reported finished after its last audio, never before',async()=>
   assert.deepEqual(f.events.filter(e=>e.done).map(e=>e.done.responseId),['a1','a2']);
   f.bridge.receive({type:'turn.done',turn:{id:'a3',role:'assistant',transcript:'二'}});f.bridge.close();
   assert.deepEqual(f.events.filter(e=>e.done).map(e=>e.done.responseId),['a1','a2','a3']);
+});
+
+test('with lesson notes, a lesson starts on the caller\'s words as soon as the router is sure, before the model delegates',async()=>{
+  const f=await fixture({retell:true,tools:[{type:'function',name:'explain_on_board',parameters:{type:'object',properties:{topic:{type:'string'}},required:['topic']}},{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'}},required:['question']}}]});
+  await ready(f);
+  f.bridge.receive({type:'turn.created',turn:{id:'u1',role:'user'}});
+  f.bridge.receive({type:'turn.done',turn:{id:'u1',role:'user',transcript:'给小朋友讲讲恐龙是怎么灭绝的'}});
+  await new Promise(r=>setTimeout(r,200));
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].name,'explain_on_board');assert.match(f.calls[0].callId,/^host_1$/u);
 });
 
 test('an explanation the model promised but never delegated is prepared anyway, once',async()=>{

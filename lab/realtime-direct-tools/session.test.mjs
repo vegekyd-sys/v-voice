@@ -1783,6 +1783,24 @@ test('call c2c47e58: a second request for the lesson being given writes no secon
  assert(await until(()=>prepared===2),'a new request gets its own lesson');
 });
 
+test('with lesson retell, a function-tool model is answered with the lesson as material it tells itself, not a script read out for it',async t=>{
+  let asked=null;
+  const lesson={available:true,prepare:async options=>{asked=options;return {say:'蓝光波长短，最容易被空气分子散开。傍晚光走的路更长，剩下红光。',sentences:['蓝光波长短，最容易被空气分子散开。','傍晚光走的路更长，剩下红光。']};},shown:async()=>['蓝光','红光']};
+  for(const model of ['grok','seeduplex']){
+    const f=await fixture(async()=>({ok:true,output:{}}),model,{lesson,lessonRetell:true});t.after(()=>f.service.dispose());
+    const declared=f.upstream.sent.find(m=>m.session?.tools||m.tools);
+    const tools=declared?.session?.tools??declared?.tools??[];
+    assert.match(JSON.stringify(tools),/返回查证过的讲解材料/u,model);
+    if(model==='seeduplex')continue; // (its function calls arrive in another shape; the session path is the same)
+    f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲讲天空为什么是蓝的'});
+    f.call('explain_on_board',{topic:'天空为什么是蓝的'},'sky-'+model);
+    assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='sky-'+model)),model);
+    assert.equal(asked.retell,true);
+    const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='sky-'+model);
+    assert.match(JSON.stringify(delivered.result??delivered),/蓝光波长短[\s\S]*用你自己的话讲/u,model);
+  }
+});
+
 test('call 649709d0: a lesson about today looks it up first; a search made for a request to explain becomes the lesson\'s research',async t=>{
  const prepared=[],searched=[];
  const lesson={available:true,reroute:true,prepare:async args=>{prepared.push({topic:args.topic,reference:args.reference});return {say:'黄仁勋今天辞任了。'};}};
