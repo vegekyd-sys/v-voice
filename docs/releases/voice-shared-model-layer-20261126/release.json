@@ -1,0 +1,46 @@
+{
+  "version": "voice-shared-model-layer.20261126.1",
+  "verifiedAt": "2026-11-26T02:05:00+08:00",
+  "sourceCommit": "166f4fd4814506b5d415c77849a50b8c1ce8d788",
+  "mergePRs": [
+    266
+  ],
+  "previousRunningCommit": "279fc3c2e28cdfaed3d3d0c11e3ec62527fc52c9",
+  "filesSha256": "9b63f9bfcf7986674bddcb431cfb4dc7583be496d97789f0d768fe0f498b2e78",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45670042200",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "9c2925950bed6476500d23841ed02cc02772379c867d0ad54c312d668935e91c",
+  "serviceConfiguration": [
+    "私有配置不变；网页节点经 vrelay、设备节点经 vrelay 签名链接取件。"
+  ],
+  "changes": [
+    "模型能力层（capabilities.mjs）：豆包、Grok、GPT Live 的差别由能力表决定，不再按模型名判断；工具简介只写一份。",
+    "GPT Live 1.1 的路由读与豆包、Grok 相同的选工具规则（toolChoicePolicy），并看到每个工具的完整说明。豆包和 Grok 的指令逐字不变。",
+    "统一讲解实验（VOICE_LESSON_RETELL）已在发布前撤回，没有上线。"
+  ],
+  "acceptance": [
+    "路由评测（编造的 38 句、5 轮、真实路由模型）：候选 183/190，线上 1c372a12 为 178/190；没有一句变差，“你能挂电话吗”从 0/5 变为 5/5 正确；路由中位耗时 825 vs 723 ms。",
+    "三个模型 384 种指令组合与 main 逐字比对，全部相同。",
+    "候选上 GPT Live 合成通话（日程、新闻、记忆、股价、天气、时间、挂断）与线上代码各打一遍：每句选用相同工具，回答相近。",
+    "两节点提交与文件哈希一致并恢复接入；Gateway 进程与发布前相同，未重启；首页更新日志已在部署文件中。",
+    "npm test 1570/1570、test:speaker-native、check:ios-shell、release_fleet_test 和 main CI 均通过。"
+  ],
+  "notVerified": [
+    "真实手机上的 GPT Live 1.1 通话。",
+    "候选环境的飞书日程本身不可用，日程类请求未能比较结果内容。",
+    "首页没有用已登录的浏览器打开查看，只核对了部署文件。"
+  ],
+  "notes": [
+    "上一版 279fc3c2（listen-only）由 V 在本次发布前约 10 分钟完成发布；本次发布前 inspect 确认两节点空闲、无他人发布。"
+  ]
+}
