@@ -35,7 +35,5 @@ A phone call can be spoken by Doubao (`seeduplex`), Grok or GPT Live 1.1. They t
 
 ## What still forks (next steps)
 
-1. **Explaining.** Doubao reads a lesson script (researched, with pictures, the board prepared per sentence); GPT Live explains in its own words and the board follows. Reading a script sounds recited on GPT Live, and its own explanations are thinner.
-   - Experiment, off by default: `VOICE_GPT_LIVE_LESSON_NOTES=1` gives GPT Live the lesson tool, so the same lesson pipeline researches and draws the page, and hands the lesson to GPT Live as material to tell in its own words (`retellLesson`) with the page's things in order. The page is hung on those names (`hangOnNames`, `director.retold`) and stays the lesson's page whatever words V uses. It replaces the speech-following board for GPT Live only if real calls sound at least as natural and show at least as much.
-   - `boardOpening` exists only on the GPT Live bridge.
+1. **Explaining.** Doubao reads a lesson script (researched, with pictures, the board prepared per sentence); GPT Live explains in its own words and the board follows. Reading a script sounds recited on GPT Live, and its own explanations are thinner. The aim is one lesson pipeline whose material GPT Live tells in its own words; `boardOpening` exists only on the GPT Live bridge.
 2. **GPT Live's own front prompt.** Its delegation policy (when to hand a sentence over at all) is still its own text; the choice of tool after that is shared.

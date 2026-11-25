@@ -342,31 +342,6 @@ test('a script\'s page is started when the script arrives; the caller\'s screen 
   assert.notEqual((await director.run({owner: 'c', trigger: 'assistant_end', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text: '佛罗伦萨其实更适合慢慢逛，两天就够了。'}]})).reason, 'same');
 });
 
-test('a lesson V tells in its own words keeps its page, and the page waits for each thing\'s name (VOICE_GPT_LIVE_LESSON_NOTES)', async () => {
-  const {STREAM_INSTRUCTIONS, refineStreamOp} = await import('./board-lesson.mjs');
-  const {spokenProgress, withCuesToCome} = await import('./board-scene.mjs');
-  let calls = 0;
-  const director = createBoardDirector({stream: {instructions: STREAM_INSTRUCTIONS, refine: refineStreamOp}, complete: async function* () {
-    calls++;
-    yield '{"op":"scene","title":"罗马三天"}\n';
-    yield '{"op":"put","block":{"id":"l","t":"list","items":[{"id":"a","h":"斗兽场","q":"第一天从斗兽场开始"},{"id":"b","h":"万神殿","q":"第二天去万神殿"}]}}\n';
-  }});
-  const script = '罗马景点散，先按三天排。第一天从斗兽场开始，票和古罗马广场是同一张。第二天去万神殿。';
-  director.note('c', {title: '罗马三天', ask: '那罗马怎么玩', script, lines: [{say: script, show: ''}], retell: true});
-  assert.deepEqual(await director.retold('c'), ['斗兽场', '万神殿']);
-  const scene = director.scene('c');
-  assert.deepEqual(scene.blocks[0].items.map(item => item.q), ['斗兽场', '万神殿']);
-  // In V's own words, not the script's: still the lesson's page, never drawn again.
-  for (const text of ['罗马的景点比较分散，', '罗马的景点比较分散，我们分三天走：先去斗兽场，'])
-    assert.equal((await director.run({owner: 'c', trigger: 'assistant_progress', clientRev: director.scene('c').rev, turns: [{role: 'assistant', text}]})).reason, 'same');
-  assert.equal(calls, 1);
-  // The second thing waits until V names it.
-  const said = '罗马的景点比较分散，我们分三天走：先去斗兽场，';
-  assert.deepEqual(spokenProgress(scene, withCuesToCome(scene, said), Array.from(said).length).ahead, ['l/b']);
-  const later = said + '再去万神殿看看穹顶。';
-  assert.deepEqual(spokenProgress(scene, withCuesToCome(scene, later), Array.from(later).length).ahead, []);
-});
-
 test('hedged: a reply that has not started in time is raced by a second request', async () => {
   const {hedged} = await import('./board-director.mjs');
   let calls = 0;

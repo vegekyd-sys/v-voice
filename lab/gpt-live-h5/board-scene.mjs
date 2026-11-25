@@ -376,23 +376,6 @@ export function namedThings(scene, limit = 6) {
   }
   return names.slice(0, limit);
 }
-/**
- * A lesson's page for a voice that tells the lesson in its own words: its pieces were hung on the
- * script's words (`q`), which such a voice never says. Each thing with a name waits for its name
- * instead (the mark follows it by name, as it does for `boardOpening`); a piece whose only anchor
- * was the script's words (a whole block, a place on a picture, a pen mark, an arrow's words) no
- * longer waits for words that will not come.
- */
-export function hangOnNames(scene) {
-  const named = item => { const name = String(item?.h ?? item?.label ?? '').trim(); const {q, ...rest} = item; return name ? {...rest, q: name} : rest; };
-  const blocks = (scene?.blocks ?? []).map(block => {
-    const {q, ...rest} = block, next = {...rest};
-    for (const key of ['items', 'cols', 'nodes']) if (Array.isArray(block[key])) next[key] = block[key].map(named);
-    if (Array.isArray(block.edges)) next.edges = block.edges.map(([from, to, label]) => [from, to, label ?? '']);
-    return next;
-  });
-  return {...scene, blocks, ...(scene?.pins ? {pins: scene.pins.map(({q, ...pin}) => pin)} : {}), ...(scene?.marks ? {marks: scene.marks.map(({q, ...mark}) => mark)} : {})};
-}
 /** Whether a focus id ("block" or "block/item") points at something on screen. */
 export function focusExists(scene, id) {
   const [blockId, itemId] = id.split('/'), block = scene.blocks.find(b => b.id === blockId);

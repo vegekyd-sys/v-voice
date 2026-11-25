@@ -40,7 +40,7 @@ export const TOOL_BRIEFS=Object.freeze([
   {tools:['feishu_calendar','lark_read'],line:'飞书：飞书日程和飞书资料（只读）'},
   {tools:['exec'],line:'创作：直接生成或修改一张图片、一个短视频'},
   {tools:['show_content'],line:'上屏：把已有的真实内容放到屏幕上',display:true},
-  {tools:['explain_on_board'],line:'讲解：准备一段带画面和真实图片的讲解稿或故事，由你念出来',retell:'讲解：准备查证过的讲解材料和带真实图片的画面，由你用自己的话讲'},
+  {tools:['explain_on_board'],line:'讲解：准备一段带画面和真实图片的讲解稿或故事，由你念出来'},
   {tools:['delegate_to_v'],line:'办事：多步调研、写文档、发消息、改日程等长任务或写操作，由后台持续完成'},
   {tools:['cancel_task'],line:'取消：取消正在执行的后台任务'},
   {tools:['send_task_updates'],line:'进展发群：把任务进展和结果发到飞书群'},
@@ -51,6 +51,6 @@ export const TOOL_BRIEFS=Object.freeze([
 // openclaw_tool), and device tools of calls that are not on GPT Live today.
 export const UNBRIEFED=Object.freeze(['openclaw_agent_control','read','process','openclaw_tool','get_current_location','set_speaker_volume','look']);
 /** The lines for the tools a call has, in order; a screen-only tool only where there is a screen. */
-export function toolBriefs(names,{display=true,retell=false}={}){
-  return TOOL_BRIEFS.filter(brief=>brief.tools.some(name=>names.has(name))&&(display||!brief.display)).map(brief=>retell&&brief.retell?brief.retell:brief.line);
+export function toolBriefs(names,{display=true}={}){
+  return TOOL_BRIEFS.filter(brief=>brief.tools.some(name=>names.has(name))&&(display||!brief.display)).map(brief=>brief.line);
 }
