@@ -973,10 +973,12 @@ export class SeeduplexRealtimeVoiceBridge {
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
       if(this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:Boolean(spoken?.trim())});
       // V's own voice, heard again from a loud phone speaker while its reply still plays: the
-      // reply goes on, and the model's answer to the echo is never played.
-      if(this.request.nativeDuplex&&spoken&&this.request.isPlaybackEcho?.(spoken)){
+      // reply goes on, and the model's answer to the echo is never played. (A bare acknowledgement
+      // while V still speaks is kept the same way; the host names which it was.)
+      const heardBack=this.request.nativeDuplex&&spoken?this.request.isPlaybackEcho?.(spoken):false;
+      if(heardBack){
         this.playbackEchoAt=Date.now();
-        this.request.onEvent?.({direction:'server',type:'native.playback-echo',preservedResponseId:this.audioResponseId});
+        this.request.onEvent?.({direction:'server',type:'native.playback-echo',preservedResponseId:this.audioResponseId,...(typeof heardBack==='string'?{reason:heardBack}:{})});
       }
       if (this.injectedCancelPending) {
         this.injectedCancelPending = false;

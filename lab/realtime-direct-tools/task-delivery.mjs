@@ -96,6 +96,8 @@ export function createTaskDelivery({gateway,sessionKey,ownerId,readNativeResult,
     close(){closed=true;if(!activeRun&&!watched.size)onIdle();if(authorized&&activeRun)void send(activeRun,'accepted','已接续这通电话的后台任务，后续进展和结果会发在这里。').catch(()=>{});},
     get detached(){return closed;},
     get pending(){return Boolean(activeRun||watched.size||claiming||replyDelivery?.pending);},
+    /** Whether there is any backend task (running or finished) whose progress or result this can forward. */
+    get hasTask(){return Boolean(activeRun||watched.size||lastResult);},
     handleEvent(event){
       const native=event.event==='talk.event'&&event.payload?.voiceSessionId===ownerId?event.payload.talkEvent:null;
       const completed=native&&observers.get(native.callId);

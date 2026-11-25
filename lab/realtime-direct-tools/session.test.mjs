@@ -1823,6 +1823,30 @@ test('call 4132718f: while a lesson is being written V may say one short line, n
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.name==='explain_on_board')));
 });
 
+test('call c58fea83: Doubao says "好，我讲讲。" and calls nothing, and the lesson it promised is started for it',async t=>{
+ const prepared=[];
+ const lesson={available:true,prepare:async args=>{prepared.push({topic:args.topic,ask:args.ask});return {say:'第一次来广州，先从一碗云吞面开始。'};}};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{lesson});t.after(()=>f.service.dispose());
+ const asked='你给我介绍一下广州可以吧？';
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:asked});
+ f.event({type:'response.output_text.done',response_id:'ack',text:'好，我讲讲。'});
+ f.event({type:'response.done',response_id:'ack',response:{id:'ack',status:'completed'}});
+ assert(await until(()=>prepared.length===1,4000),'the lesson is written without the model asking for it');
+ assert.deepEqual(prepared[0],{topic:asked,ask:asked});
+ assert(f.audit.some(e=>e.type==='lesson.promise-recovery'));
+ assert(f.audit.some(e=>e.type==='tool.call'&&e.name==='explain_on_board'&&e.host===true));
+ assert(await until(()=>f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text==='第一次来广州，先从一碗云吞面开始。')),'and V says its script');
+ assert(!f.upstream.sent.some(e=>e.type==='conversation.item.create'&&e.items?.some(item=>item.role==='tool')),'no answer goes to a call the model never made');
+ assert.equal(f.client.readyState,1);
+ // The model asking for the lesson itself in the next turn: nothing is started for it twice.
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'再讲讲勾股定理'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'own-lesson',name:'explain_on_board',arguments:JSON.stringify({topic:'勾股定理'})}]});
+ f.event({type:'response.output_text.done',response_id:'ack2',text:'好，我讲讲。'});
+ assert(await until(()=>prepared.length===2));
+ await delay(1700);
+ assert.equal(prepared.length,2);assert.equal(f.audit.filter(e=>e.type==='lesson.promise-recovery').length,1);
+});
+
 test('call 83315f5d: when no script can be written V answers the question itself instead of stopping',async t=>{
  const lesson={available:true,prepare:async()=>null};
  const f=await fixture(async()=>({ok:true,output:{}}),'grok',{lesson});t.after(()=>f.service.dispose());
@@ -1931,11 +1955,15 @@ test('a call says which way it ended: the voice service closing it, or the page 
  assert.equal(g.audit.find(e => e.type === 'call.closed')?.why, 'client-closed:1006');
 });
 
-// Invented words; a loud phone speaker leaking V's reply back into the microphone.
-for(const [name,options,playing,expectEcho] of [
+// Invented words; a loud phone speaker leaking V's reply back into the microphone, or a
+// listener's bare acknowledgement while V still speaks.
+for(const [name,options,playing,expectEcho,heard='划到对岸',reason='echo'] of [
  ['on the phone, while its reply still plays, V\'s own voice heard back is not the caller',{},true,true],
  ['once the reply has finished playing, the same words are the caller\'s',{},false,false],
  ['the echo guard can be switched off',{playbackEchoGuard:false},true,false],
+ ['a bare acknowledgement while the reply still plays keeps it playing',{},true,true,'可以啊。','backchannel'],
+ ['the same acknowledgement after the reply has finished is the caller\'s turn',{},false,false,'可以啊。'],
+ ['a request while the reply still plays still interrupts it',{},true,false,'换个故事讲讲吧'],
 ])test(name,async t=>{
  const f=await fixture(undefined,'seeduplex',options);t.after(()=>f.service.dispose());
  const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
@@ -1945,7 +1973,7 @@ for(const [name,options,playing,expectEcho] of [
  f.event({type:'response.done',response:{id:'story',status:'completed'}});
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:playing})),false);
  f.event({type:'conversation.item.input_audio_transcription.started'});
- f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'划到对岸'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:heard});
  f.event({type:'response.output_text.delta',response_id:'echo-answer',delta:'是的。'});
  f.event({type:'response.output_audio.started',response_id:'echo-answer'});f.event({type:'response.output_audio.delta',response_id:'echo-answer',delta:pcm.toString('base64')});
  const sent=f.client.sent;
@@ -1955,8 +1983,67 @@ for(const [name,options,playing,expectEcho] of [
  assert.equal(sent.filter(e=>e.type==='audio').length,expectEcho?1:2);
  const userRows=f.audit.filter(e=>e.type==='transcript'&&e.role==='user');
  assert.equal(userRows.length,1,'the recognised words stay in the call log either way');assert.equal(userRows[0].playbackEcho===true,expectEcho);
- assert.equal(f.audit.some(e=>e.type==='input.playback-echo'),expectEcho);
+ assert.equal(f.audit.some(e=>e.type==='input.playback-echo'&&e.reason===reason),expectEcho,'the log names echo or backchannel');
  assert.equal(f.audit.some(e=>e.type==='input.playback-echo-reply'&&e.responseId==='echo-answer'),expectEcho);
+});
+
+// VOICE_LESSON_GUARD. Invented words: a board lesson playing on the phone while people in the room talk.
+async function lessonPlaying(options){
+ const lesson={available:true,prepare:async()=>({say:'灯塔每晚把光扫过海面，一圈又一圈，给远处的船指路。'})};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{lesson,...options});
+ const pcm=Buffer.alloc(8);pcm.writeFloatLE(.1,0);pcm.writeFloatLE(.2,4);
+ const audio=id=>f.event({type:'response.output_audio.delta',response_id:id,delta:pcm.toString('base64')});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'给我讲讲灯塔'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'lesson-call',name:'explain_on_board',arguments:JSON.stringify({topic:'灯塔'})}]});
+ assert(await until(()=>f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&e.text.startsWith('灯塔每晚'))),'the lesson is spoken');
+ f.event({type:'response.output_audio.started',response_id:'lesson',tts_type:'chat_tts_text'});audio('lesson');
+ f.event({type:'response.done',response:{id:'lesson',status:'completed'}});
+ const playing=speaking=>f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking})),false);
+ playing(true);
+ // Someone in the room speaks; when recognised, the model answers them.
+ const speak=(text,id)=>{
+  const sent=f.client.sent.length;
+  f.event({type:'conversation.item.input_audio_transcription.started'});
+  const held=f.client.sent.slice(sent).some(e=>e.type==='input.speech.started');
+  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:text});
+  f.event({type:'response.output_text.delta',response_id:id,delta:'好的。'});
+  f.event({type:'response.output_audio.started',response_id:id});audio(id);
+  const after=f.client.sent.slice(sent);
+  return {held,kept:after.some(e=>e.type==='input.speech.ignored'&&e.preservedResponseId==='lesson'),
+   cleared:after.some(e=>e.type==='audio.clear'),answered:after.some(e=>e.type==='audio'&&e.responseId===id)};
+ };
+ return {f,speak,playing};
+}
+
+test('lesson guard off (default): side talk during a lesson pauses and replaces it, as before',async t=>{
+ const {f,speak}=await lessonPlaying({});t.after(()=>f.service.dispose());
+ assert.deepEqual(speak('他们家的咖啡还挺好喝的','side'),{held:true,kept:false,cleared:true,answered:true});
+ assert(!f.audit.some(e=>e.type==='input.playback-echo'));
+});
+
+test('lesson guard on: side talk neither pauses nor replaces a lesson that is still playing',async t=>{
+ const {f,speak}=await lessonPlaying({lessonGuard:true});t.after(()=>f.service.dispose());
+ assert.deepEqual(speak('他们家的咖啡还挺好喝的','side'),{held:false,kept:true,cleared:false,answered:false});
+ assert.deepEqual(speak('不好意思，打断你了，你重新说','apology'),{held:false,kept:true,cleared:false,answered:false});
+ assert.equal(f.audit.filter(e=>e.type==='input.playback-echo'&&e.reason==='lesson-guard'&&e.responseId==='lesson').length,2);
+ assert(f.audit.some(e=>e.type==='transcript'&&e.role==='user'&&e.text==='他们家的咖啡还挺好喝的'&&e.playbackEcho===true),'the words stay in the call log');
+ assert(!f.upstream.sent.some(e=>e.type==='response.cancel'),'the lesson is not cancelled upstream');
+});
+
+for(const [heard,why] of [['等一下，我想问个问题','a stop word'],['V，这个灯塔在哪里','speech that addresses V'],['艾维，换个话题吧','V by name']])
+ test(`lesson guard on: ${why} still interrupts the lesson`,async t=>{
+  const {f,speak}=await lessonPlaying({lessonGuard:true});t.after(()=>f.service.dispose());
+  assert.deepEqual(speak(heard,'asked'),{held:false,kept:false,cleared:true,answered:true});
+  assert(!f.audit.some(e=>e.type==='input.playback-echo'));
+ });
+
+test('lesson guard on: once the lesson has finished playing, the room is heard as before',async t=>{
+ const {f,speak,playing}=await lessonPlaying({lessonGuard:true});t.after(()=>f.service.dispose());
+ playing(false);
+ assert.deepEqual(speak('他们家的咖啡还挺好喝的','after'),{held:true,kept:false,cleared:true,answered:true});
+ // The next reply playing is not the lesson either.
+ playing(true);
+ assert.deepEqual(speak('那明天去哪里玩呢','next'),{held:true,kept:false,cleared:true,answered:true});
 });
 
 test('what a call was making when its connection was lost is finished where the call goes on; a hang-up ends it',async t=>{
@@ -2180,4 +2267,28 @@ test('the owner entry hands the media runner an owner scope; other sessions keep
   await until(()=>scopes.length===(ownerMedia?1:2));
  }
  assert.deepEqual(scopes,[{chat:'oc_room',owner:true},{chat:'oc_room'}]);
+});
+
+// Call efecdf3d (11-25): "把这个视频发到我跟艾瑞特和你的那个群" went to send_task_updates; its bare refusal
+// read as "ask to confirm", and after "是的，去发吧" V said it was sending with nothing started.
+test('a send this call cannot forward points to delegate_to_v instead of a bare refusal or a silent accept',async t=>{
+ const sends=[];
+ const f=await fixture(async(args,method)=>{if(method==='send'){sends.push(args);return {messageId:'om-'+sends.length};}return {ok:true};},'grok',{sessionKey:'agent:makaron:feishu:group:oc_room'});
+ t.after(()=>f.service.dispose());
+ const output=id=>JSON.parse(f.upstream.sent.find(x=>x.item?.call_id===id).item.output);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你这样吧，然后把这个视频发到我跟艾瑞特和你的那个群里面吧？'});
+ f.call('send_task_updates',{},'elsewhere');await delay(5);
+ const refused=output('elsewhere');
+ assert.match(refused.error,/尚未要求/);assert.match(refused.error,/delegate_to_v/);assert.match(refused.error,/不要再问一遍确认/);
+ // The call's own group, but nothing in the background to forward: no silent "accepted".
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'把这个视频发到群里吧'});
+ f.call('send_task_updates',{},'bound');await delay(5);
+ const nothing=output('bound');
+ assert.equal(nothing.sent,false);assert.equal(nothing.taskRunning,false);assert.match(nothing.instruction,/delegate_to_v/);assert.equal(sends.length,0);
+ // With a backend task it still subscribes as before, without the hand-off instruction.
+ f.call('delegate_to_v',{question:'调研后发群'},'job');for(let n=0;n<100&&!f.audit.some(e=>e.type==='backend.started');n++)await delay(2);
+ f.call('send_task_updates',{},'with-task');await delay(5);
+ const subscribed=output('with-task');
+ assert.equal(subscribed.accepted,true);assert.equal(subscribed.instruction,undefined);
+ f.completeBackend('完成');await delay(50);
 });
