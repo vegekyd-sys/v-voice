@@ -33,8 +33,11 @@ const {createBoardDirector} = await from('lab/gpt-live-h5/board-director.mjs');
 const shelfModule = await from('lab/gpt-live-h5/board-assets.mjs');
 const {TOOLS} = await from('lab/realtime-direct-tools/tools.mjs');
 const {WebSocket} = createRequire(join(root, 'package.json'))('ws');
-// BARGE_FLOOR_JUDGE=1: the code under test judges, with the board's own text model, whether speech over V is said to V.
-const floorJudge = process.env.BARGE_FLOOR_JUDGE === '1' ? (await from('lab/realtime-direct-tools/floor-judge.mjs')).createFloorJudge({complete: (await from('lab/gpt-live-h5/board-director.mjs')).boardCompletionFromEnv({...process.env, VOICE_BOARD_MAX_TOKENS: '8'})}) : null;
+// BARGE_FLOOR_JUDGE=1: the code under test judges whether speech over V is said to V, exactly as the
+// service does (the Decisions API; the board's text model only if that route is not configured).
+const floorModule = await from('lab/realtime-direct-tools/floor-judge.mjs');
+const floorJudge = process.env.BARGE_FLOOR_JUDGE !== '1' ? null
+  : (floorModule.floorJudgeFromEnv(process.env) ?? floorModule.createFloorJudge({complete: (await from('lab/gpt-live-h5/board-director.mjs')).boardCompletionFromEnv({...process.env, VOICE_BOARD_MAX_TOKENS: '8'})}));
 const key = process.env.VOLCENGINE_REALTIME_API_KEY ?? process.env.DOUBAO_SPEECH_API_KEY;
 if (!key) throw Error('The voice model credential is not in this environment');
 const only = process.env.BARGE_ONLY ? new RegExp(process.env.BARGE_ONLY, 'u') : null;

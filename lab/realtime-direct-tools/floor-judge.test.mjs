@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createFloorJudge,floorJudgeMessages,FLOOR_JUDGE_INSTRUCTIONS} from './floor-judge.mjs';
+import {createFloorJudge,floorJudgeMessages,FLOOR_JUDGE_INSTRUCTIONS,createDecisionJudge,floorDecisionState,floorDecisionQuestions,floorJudgeFromEnv} from './floor-judge.mjs';
 
 const stream = (...parts) => async function* ({signal}) { for (const part of parts) { if (signal.aborted) return; yield part; } };
 
@@ -23,4 +23,42 @@ test('the judge is told what V was saying, what comes next and what was heard; n
   assert.equal(system.content, FLOOR_JUDGE_INSTRUCTIONS);
   for (const part of ['直角边是三和四', '斜边就是五', '我也要我也要', '讲讲勾股定理']) assert(user.content.includes(part));
   assert(!floorJudgeMessages({heard: '嗯'})[1].content.includes('接下来'), 'nothing invented when there is nothing ahead');
+});
+
+const decision = noul => async () => ({answers: {addressedNow: {type: 'noul', noul}}});
+
+test('the decision judge turns one probability into 是/否 at the threshold', async () => {
+  assert.equal((await createDecisionJudge({evaluate: decision(0.91), threshold: 0.5})({heard: '你重新说'})).toV, true);
+  assert.equal((await createDecisionJudge({evaluate: decision(0.07), threshold: 0.5})({heard: '可以啊'})).probability, 0.07);
+  assert.equal((await createDecisionJudge({evaluate: decision(0.07)})({heard: '可以啊'})).toV, false);
+  assert.equal((await createDecisionJudge({evaluate: decision(0.5)})({heard: '嗯'})).toV, true, 'the threshold itself counts as 是');
+});
+
+test('a missing, invalid or aborted decision is no judgement', async () => {
+  assert.equal((await createDecisionJudge({evaluate: async () => ({answers: {}})})({heard: '嗯'})).toV, null);
+  assert.equal((await createDecisionJudge({evaluate: decision('high')})({heard: '嗯'})).toV, null);
+  assert.equal((await createDecisionJudge({evaluate: async () => { throw Error('HTTP 500'); }})({heard: '嗯'})).toV, null);
+  const stalled = createDecisionJudge({evaluate: (_s, _q, signal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(Error('abort')))), timeoutMs: 20});
+  // AbortSignal.timeout is unref'd, so keep the loop alive for it to fire.
+  const [verdict] = await Promise.all([stalled({heard: '嗯'}), new Promise(resolve => setTimeout(resolve, 60))]);
+  assert.equal(verdict.toV, null);
+});
+
+test('the decision judge sends the utterance, what V is saying around it and who spoke', () => {
+  const state = floorDecisionState({said: '直角边是三和四', ahead: '斜边就是五', heard: '我也要我也要', recent: [{role: 'user', text: '讲讲勾股定理'}], speaker: '爸爸'});
+  assert.equal(state.saidNow, '直角边是三和四');
+  assert.equal(state.saidAhead, '斜边就是五');
+  assert.equal(state.speaker, '爸爸');
+  assert.equal(state.recent[0].role, '有人');
+  assert.equal(floorDecisionState({heard: '嗯'}).speaker, null);
+  const questions = floorDecisionQuestions();
+  assert.equal(questions.addressedNow.type, 'noul');
+  assert(questions.addressedNow.instructions.includes('没叫 V 的名字'));
+});
+
+test('the env judge is absent without the router key and can be turned off', async () => {
+  assert.equal(floorJudgeFromEnv({}), null);
+  assert.equal(floorJudgeFromEnv({OPENROUTER_API_KEY: 'x', VOICE_FLOOR_JUDGE: '0'}), null);
+  const judge = floorJudgeFromEnv({OPENROUTER_API_KEY: 'x'}, {evaluate: decision(0.9)});
+  assert.equal((await judge({heard: '你重新说'})).toV, true);
 });
