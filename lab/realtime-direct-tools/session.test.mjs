@@ -2243,8 +2243,10 @@ test('speech over V judged not said to V: the answer is dropped and the speech p
  // More of the same answer, after the judgement: dropped too.
  f.event({type:'response.output_audio.delta',response_id:'reply',delta:Buffer.alloc(960).toString('base64')});
  assert.deepEqual(audio().map(e=>e.responseId),['lesson']);
- assert(f.audit.some(e=>e.type==='floor.judged'&&e.toV===false&&e.responseId==='lesson'));
+ assert(f.audit.some(e=>e.type==='floor.judged'&&e.toV===false&&e.responseId==='lesson'&&e.outcome==='dropped'&&e.heard==='我也要我也要'));
  assert(f.audit.some(e=>e.type==='floor.dropped'&&e.kind==='audio'));
+ // The page is told which line was not for V.
+ assert(f.client.sent.some(e=>e.type==='input.speech.ignored'&&e.reason==='not-addressed'&&e.text==='我也要我也要'));
  // Someone speaks again over the lesson: what is left of the dropped answer stays dropped either way.
  f.event({type:'conversation.item.input_audio_transcription.started'});
  f.event({type:'response.output_audio.delta',response_id:'reply',delta:Buffer.alloc(960).toString('base64')});
@@ -2270,15 +2272,17 @@ test('speech over V judged said to V: the speech stops at once and the answer fo
  f.event({type:'response.output_audio.delta',response_id:'lesson',delta:Buffer.alloc(960).toString('base64')});
  assert.deepEqual(audio().map(e=>e.responseId),['lesson','reply']);
  assert(f.client.sent.some(e=>e.type==='transcript'&&e.role==='assistant'&&/一起听/u.test(e.text)));
+ assert(f.audit.some(e=>e.type==='floor.judged'&&e.outcome==='cut'&&e.toV===true&&e.ms===400));
 });
 for(const [name,judge] of [
  ['a judge that does not answer in time',()=>new Promise(()=>{})],
  ['a judge that fails',async()=>{throw Error('judge down');}],
  ['a judge with no clear answer',async()=>({toV:null,ms:1500})],
 ])test(name+' leaves the voice model\'s answer to go through',async t=>{
- const {audio,cleared}=await speechOverPlayback(t,judge,{judgeMs:30});
+ const {f,audio,cleared}=await speechOverPlayback(t,judge,{judgeMs:30});
  await delay(80);
  assert.deepEqual(audio().map(e=>e.responseId),['lesson','reply']);assert.equal(cleared(),true);
+ assert(!f.client.sent.some(e=>e.type==='input.speech.ignored'&&e.reason));
 });
 test('a tool call answering speech not said to V is answered as ignored, never run',async t=>{
  const {f}=await speechOverPlayback(t,async()=>({toV:false,ms:3}),{tool:true});

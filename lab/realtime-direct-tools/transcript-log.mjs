@@ -162,6 +162,16 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(event.playbackEcho===true?{playbackEcho:true}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
     }
+    // Whether something said over V's lesson was taken as said to V (floor-judge.mjs), and what came of it.
+    if(event.type==='floor.judged'){
+      if(!['cut','dropped','fallback','stale'].includes(event.outcome))return false;
+      return enqueue({...owner,type:event.type,outcome:event.outcome,toV:typeof event.toV==='boolean'?event.toV:null,
+        probability:Number.isFinite(event.probability)&&event.probability>=0&&event.probability<=1?event.probability:null,
+        ...(Number.isSafeInteger(event.ms)&&event.ms>=0?{ms:event.ms}:{}),
+        ...(typeof event.heard==='string'?{heard:event.heard.slice(0,300)}:{}),
+        ...(typeof event.turnId==='string'?{turnId:event.turnId.slice(0,160)}:{}),
+        ...(typeof event.responseId==='string'?{responseId:event.responseId.slice(0,160)}:{})});
+    }
     if(['task.delivery-confirmed','task.delivery-failed'].includes(event.type)){
       const receipt=event.receipt??{};
       return enqueue({...owner,type:event.type,...(typeof event.runId==='string'?{runId:event.runId}:{}),

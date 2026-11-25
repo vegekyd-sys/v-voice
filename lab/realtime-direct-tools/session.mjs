@@ -404,20 +404,22 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     emit(s,{type:'audio.clear',reason:'addressed',retiredResponseId:responseId});
   };
   const ignoreCall=(s,call)=>{try{s.bridge.submitToolResult(call.callId,IGNORED_TURN);}catch{}};
-  const judgeFloor=(s,heard)=>{
+  const judgeFloor=(s,heard,turnId)=>{
     const floor=s.floor;if(!floor||floor.state!=='heard')return;
-    floor.state='judging';clearTimeout(floor.timer);
+    floor.state='judging';clearTimeout(floor.timer);floor.heard=heard;floor.turnId=turnId;
     const {said,ahead}=splitSpoken(s.playbackText.text,floor.position.playedMs,floor.position.totalMs);
     const recent=s.latestUserTurn?.text?[{role:'user',text:s.latestUserTurn.text}]:[];
     // A judge that does not answer in time is no judgement: the model's answer goes through.
     let timer;const late=new Promise(resolve=>{timer=setTimeout(resolve,speechYield?.judgeMs??3000,null);timer.unref?.();});
     void Promise.race([Promise.resolve().then(()=>floorJudge({said,ahead,heard,recent})).catch(()=>null),late]).then(verdict=>{clearTimeout(timer);
-      audit({type:'floor.judged',voiceSessionId:s.id,responseId:floor.responseId,toV:verdict?.toV??null,ms:verdict?.ms??null,held:floor.held.length});
-      if(!current(s)||s.floor!==floor)return;
+      const stale=!current(s)||s.floor!==floor;
       // Said to V: the speech stops now, not once the model has finished looking things up (it often
       // calls a tool or two first: 4–10 s on the 11/24–25 requests). No judgement: as before.
-      if(verdict?.toV===true){stopSpeech(s,floor.responseId);openFloor(s);return;}
-      if(verdict?.toV!==false){openFloor(s);if(s.yieldWait)armYield(s,speechYield?.addressedMs);return;}
+      const outcome=stale?'stale':verdict?.toV===true?'cut':verdict?.toV===false?'dropped':'fallback';
+      audit({type:'floor.judged',voiceSessionId:s.id,responseId:floor.responseId,turnId,heard,toV:verdict?.toV??null,probability:verdict?.probability??null,ms:verdict?.ms??null,outcome,held:floor.held.length});
+      if(outcome==='stale')return;
+      if(outcome==='cut'){stopSpeech(s,floor.responseId);openFloor(s);return;}
+      if(outcome==='fallback'){openFloor(s);if(s.yieldWait)armYield(s,speechYield?.addressedMs);return;}
       dropFloor(s);
     });
   };
@@ -427,7 +429,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     floor.state='dropped';clearTimeout(floor.timer);for(const item of floor.held)if(item.responseId!=null)dropReply(s,item.responseId);floor.held=[];
     for(const call of floor.calls)ignoreCall(s,call);
     endYield(s);s.playback.paused(false);
-    emit(s,{type:'input.speech.ignored',preservedResponseId:floor.responseId});
+    // Which line was not for V, so the page can show it as such (judged; V's own echo is never shown).
+    emit(s,{type:'input.speech.ignored',preservedResponseId:floor.responseId,...(floor.heard?{reason:'not-addressed',text:floor.heard,...(floor.turnId?{turnId:floor.turnId}:{})}:{})});
   };
   // `responseId`: whose output this is (the speech still playing passes straight through).
   const floorGate=(s,kind,responseId,deliver,call)=>{
@@ -1069,7 +1072,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(role==='assistant')s.playbackText.observe(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
-        if(role==='user'&&final&&text.trim())judgeFloor(s,text);
+        if(role==='user'&&final&&text.trim())judgeFloor(s,text,metadata.turnId);
         const deliver=()=>{
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
         if(role==='assistant'&&final){if(!s.unidentified)speakerRouting?.assistant(s.id,text);if(!source){s.mediaRecovery?.assistant(text);s.answers=[...(s.answers??[]).slice(-5),{at:Date.now(),text}];}}
@@ -1081,7 +1084,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
           const keeps=s.bridge?.keepsEnding?.(text);
           if(typeof keeps?.then==='function')void keeps.then(yes=>{if(yes!==true)undo();},undo);else undo();
         }
-        emit(s,{type:'transcript',role,text,final,...(source?{source}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
+        emit(s,{type:'transcript',role,text,final,...(source?{source}:{}),...(role==='user'&&metadata.turnId?{turnId:metadata.turnId}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
         if(role==='assistant'&&!source)floorGate(s,'transcript',metadata.responseId,()=>routeOutput('transcript',{role,text,final,source},deliver));else if(role==='assistant')routeOutput('transcript',{role,text,final,source},deliver);else deliver();
       },
