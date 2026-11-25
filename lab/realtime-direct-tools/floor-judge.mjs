@@ -81,7 +81,7 @@ export function floorDecisionQuestions() {
  * {toV, probability, ms, answer}; toV is null when there is no usable probability.
  * `threshold` is the probability above which the utterance counts as said to V.
  */
-export function createDecisionJudge({evaluate, threshold = 0.5, timeoutMs = 1200, now = () => performance.now()} = {}) {
+export function createDecisionJudge({evaluate, threshold = 0.6, timeoutMs = 1200, now = () => performance.now()} = {}) {
   if (typeof evaluate !== 'function') throw Error('a decision evaluator is required');
   if (!Number.isFinite(threshold) || threshold <= 0 || threshold >= 1) throw Error('invalid threshold');
   return async function judge(input) {
@@ -104,7 +104,7 @@ export function createDecisionJudge({evaluate, threshold = 0.5, timeoutMs = 1200
 export function floorJudgeFromEnv(env = process.env, {evaluate = null, fetchImpl = null} = {}) {
   if (env.VOICE_FLOOR_JUDGE === '0') return null;
   const timeoutMs = Number(env.VOICE_FLOOR_JUDGE_TIMEOUT_MS ?? 1200);
-  const threshold = Number(env.VOICE_FLOOR_JUDGE_THRESHOLD ?? 0.5);
+  const threshold = Number(env.VOICE_FLOOR_JUDGE_THRESHOLD ?? 0.6);
   if (evaluate) return createDecisionJudge({evaluate, threshold, timeoutMs});
   const apiKey = env.VOICE_JEV_API_KEY ?? env.OPENROUTER_API_KEY;
   if (!apiKey) return null;

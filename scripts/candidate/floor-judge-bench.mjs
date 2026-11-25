@@ -33,4 +33,4 @@ const byId = Object.fromEntries([...new Set(rows.map(row => row.id))].map(id => 
   return [id, p.length ? {min: p[0], med: p[Math.floor(p.length / 2)], max: p.at(-1)} : null];
 }));
 console.error(JSON.stringify({module: process.env.FJ_MODULE ?? 'tree', threshold: process.env.VOICE_FLOOR_JUDGE_THRESHOLD ?? null}));
-console.log(JSON.stringify({genuineToV: rate('genuine'), sideToV: rate('side'), threshold: Number(process.env.VOICE_FLOOR_JUDGE_THRESHOLD ?? 0.5), p50: q(.5), p90: q(.9), max: ms.at(-1), byId}));
+console.log(JSON.stringify({genuineToV: rate('genuine'), sideToV: rate('side'), threshold: Number(process.env.VOICE_FLOOR_JUDGE_THRESHOLD ?? 0.6), p50: q(.5), p90: q(.9), max: ms.at(-1), byId}));
