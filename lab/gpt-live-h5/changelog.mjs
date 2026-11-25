@@ -229,6 +229,14 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-shared-model-layer.20261126.1',date:'2026-11-26',
+    title:'GPT Live 1.1 选工具和豆包按同一套规则',
+    items:[
+      'GPT Live 1.1 决定自己答、查日程、交后台还是挂电话，现在和豆包读同一套规则，也能看到每个工具的完整说明；比如问“你能挂电话吗”不会再真的挂断。',
+      '豆包的说话和用法不变。',
+    ],
+  },
+  {
     version:'voice-listen-only.20261126.1',date:'2026-11-26',
     title:'没对 V 说的话，网页和 App 一样显示「仅倾听」',
     items:[

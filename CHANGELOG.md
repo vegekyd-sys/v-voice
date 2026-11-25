@@ -4,6 +4,13 @@
 
 
 
+## 2026-11-26 — One capability layer for every voice model (`voice-shared-model-layer.20261126.1`)
+
+- `capabilities.mjs`: what differs between Doubao, Grok and GPT Live is a trait table (`MODEL_TRAITS`), not model-name checks; tool briefs are written once (`TOOL_BRIEFS`).
+- GPT Live's router reads the same tool-choice policy (`toolChoicePolicy`: task routing and hand-off, task control, consent, calendar service) that Doubao and Grok read in their instructions, and each tool's whole description. Router eval over 38 invented cases on V: 185/190 vs 180/190 for production; median routing time up 20–140 ms.
+- Doubao's and Grok's instructions are unchanged byte for byte.
+- The experiment that had every model retell lessons in its own words (`VOICE_LESSON_RETELL`) was reverted before release: the board's sentence-by-sentence follow-along was lost.
+
 ## 2026-11-25 — Live broadcast recordings upload in parts (`voice-makaron-director.20261125.1`)
 
 - A full-flow production check found the 15-minute relay limit was not enough: Cloudflare ends a request whose origin has not answered in about 100 s (HTTP 524), so a single recording upload over the slow tunnel never finished.
