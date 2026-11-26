@@ -25,6 +25,16 @@ import java.io.File;
 public final class CallService extends Service {
     private static CallService current;
     private static boolean entryVisible;
+    static boolean expandRemoteCall() {
+        CallService call = current;
+        if (entryVisible || (call != null && call.closing)) return true;
+        if (call == null || call.web == null) return false;
+        if ("idle".equals(call.lastCall) && call.pendingLaunch == null && !call.hadCall) return false;
+        call.web.evaluateJavascript("window.vVoiceTV?.setLayout('medium')", null);
+        call.resize("medium");
+        return true;
+    }
+
     static void entryStarted(){entryVisible=true;if(current!=null&&current.attached){current.windows.removeView(current.surface);current.attached=false;}}
     static void entryFinished(){entryVisible=false;if(current!=null)current.handler.postDelayed(()->{if(current!=null&&!entryVisible)current.resize(current.mode);},250);}
     private WindowManager windows;
@@ -43,7 +53,7 @@ public final class CallService extends Service {
     private String personalUrl,projectionOwner,mode="medium";
     private long generation=-1,revision=-1,pageVersion;
     private String pendingLaunch;
-    private static final String START_CALL="live.tianyi.vvoice.tv.action.START_CALL";
+    static final String START_CALL="live.tianyi.vvoice.tv.action.START_CALL";
     private final String local="http://127.0.0.1:26326/?tv=1&tvShell=1&tvSurface=1&tvOverlay=1";
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
