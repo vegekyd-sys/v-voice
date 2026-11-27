@@ -958,8 +958,10 @@ export class SeeduplexRealtimeVoiceBridge {
       // the speech is cancelled only once the utterance is recognised and is not V's own voice
       // coming back. Cancelling at the first sound cut lessons off after a few seconds whenever
       // a loud speaker's echo started recognition (11/21: 8 s and 11 s of 40 s and 30 s lessons).
+      // (`yieldToModel`: the speech is not cancelled for the utterance at all. An answer to it replaces
+      // the speech; what the service judges was not said to V (floor-judge.mjs) leaves it playing.)
       if (this.injectedSpeech && this.responseActive) {
-        if (this.request.nativeDuplex) this.injectedCancelPending = true;
+        if (this.request.nativeDuplex) this.injectedCancelPending = !this.request.yieldToModel;
         else this.#cancelUpstreamResponse(true);
       }
       this.responseOwnerAnnounced = false;

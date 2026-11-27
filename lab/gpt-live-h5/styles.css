@@ -446,6 +446,12 @@ p, h1, h2, h3 { margin: 0; }
 .turns.now .turn.assistant .turn-text { font-size: 17.5px; line-height: 1.72; }
 .turn[data-listen-only="true"] .turn-text { opacity: .6; }
 .turn[data-listen-only="true"] .turn-who { color: #9a93a3; font-weight: 500; }
+/* A line V only listened to steps back smoothly when it is marked. */
+.turn.user .turn-text, .turn.user .turn-who { transition: opacity .5s ease, color .5s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .turn.user .turn-text, .turn.user .turn-who { transition: none; }
+}
+
 .turn-text p { margin: 0 0 10px; }
 .turn-text > :last-child { margin-bottom: 0; }
 .turn-text h1 { font-size: 22px; margin: 0 0 10px; }

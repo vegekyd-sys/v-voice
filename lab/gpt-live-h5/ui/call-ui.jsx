@@ -110,10 +110,13 @@ function Turn({row, options, quiet}) {
     else text.current.textContent = row.text;
   }, [row.text, row.complete, row.key]);
   useEffect(() => { if (row.document && !quiet) options.onDocumentShown?.(row.callId); }, [row.document, row.callId, quiet]);
-  const label = row.speaker + (row.listenOnly ? ' · 仅倾听' : '');
+  // A line V only listened to: side talk in a multi-speaker call, or a line the floor judge heard as
+  // not said to V (notForV). Web and the iOS app show both the same way.
+  const listenOnly = row.listenOnly || row.notForV;
+  const label = row.speaker + (listenOnly ? ' · 仅倾听' : '');
   return (
     <article className={`turn ${row.role}`} data-key={row.key} data-streaming={String(!row.complete)}
-      data-tone={row.speakerId ? row.speakerTone : undefined} data-listen-only={row.listenOnly ? 'true' : undefined}
+      data-tone={row.speakerId ? row.speakerTone : undefined} data-listen-only={listenOnly ? 'true' : undefined}
       data-document={row.document ? 'true' : undefined}>
       <span className="turn-who">{label}</span>
       <div className="turn-text" ref={text} />

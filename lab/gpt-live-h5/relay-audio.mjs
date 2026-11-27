@@ -58,14 +58,21 @@ export class PcmPlaybackQueue {
     }
   }
 }
+// While someone in the room speaks over V's speech, the speech goes on at a quarter of its volume
+// (about -12 dB) instead of stopping; it is cut only when V answers, and comes back to full volume
+// when V does not. The gain moves over about 20 ms so the change does not click.
+export const DUCK_GAIN=.25;
+export const DUCK_STEP=.005;
 // Bundlers may rename this class or serialize it as an anonymous expression.
 // Give the worklet its own stable binding instead of relying on the outer name.
 export function relayWorkletSource(){return `const PcmPlaybackQueue = ${PcmPlaybackQueue.toString()};
+const DUCK_GAIN = ${DUCK_GAIN}, DUCK_STEP = ${DUCK_STEP};
 class Speaker extends AudioWorkletProcessor {
  constructor(options){super();const prefill=options?.processorOptions?.prefillMs??120,growMs=options?.processorOptions?.prefillGrowMs??0,maxMs=options?.processorOptions?.prefillMaxMs??prefill;this.reference=options?.processorOptions?.renderReference===true;this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;
  if(!Number.isFinite(prefill)||prefill<0||prefill>1000||!Number.isFinite(growMs)||growMs<0||!Number.isFinite(maxMs)||maxMs>1000)throw Error('Invalid playback buffer');
- this.outputMuted=false;this.queue=new PcmPlaybackQueue(sampleRate,prefill,undefined,{growMs,maxMs});this.epoch=0;this.tick=0;this.firstNonzeroAt=null;
- this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();}
+ this.outputMuted=false;this.gain=1;this.gainTarget=1;this.queue=new PcmPlaybackQueue(sampleRate,prefill,undefined,{growMs,maxMs});this.epoch=0;this.tick=0;this.firstNonzeroAt=null;
+ this.port.onmessage=({data:e})=>{if(e.type==='clear'){this.epoch=e.epoch;this.queue.clear();this.gainTarget=1;}
+ else if(e.type==='duck'&&e.epoch===this.epoch)this.gainTarget=e.ducked===true?DUCK_GAIN:1;
  else if(e.type==='output-mute')this.outputMuted=e.muted===true;
  else if(e.type==='hold'&&e.epoch===this.epoch)this.queue.hold();
  else if(e.type==='pause'&&e.epoch===this.epoch)this.queue.paused=e.paused===true;
@@ -73,6 +80,7 @@ class Speaker extends AudioWorkletProcessor {
  else if(e.type==='audio'&&e.epoch===this.epoch){try{this.queue.push(new Int16Array(e.buffer));}catch{this.port.postMessage({type:'error',epoch:this.epoch});}}};}
  process(inputs,outputs){const out=outputs[0]?.[0];if(!out)return true;
  const before=this.queue.frames;this.queue.render(out,currentTime);if(this.outputMuted)out.fill(0);
+ else if(this.gain!==1||this.gainTarget!==1)for(let i=0;i<out.length;i++){this.gain+=(this.gainTarget-this.gain)*DUCK_STEP;if(Math.abs(this.gain-this.gainTarget)<.001)this.gain=this.gainTarget;out[i]*=this.gain;}
  if(this.firstNonzeroAt===null){const index=out.findIndex(value=>value!==0);if(index>=0){this.firstNonzeroAt=currentTime+index/sampleRate;this.port.postMessage({type:'first-render',epoch:this.epoch,contextTime:this.firstNonzeroAt});}}
  if(this.reference)for(const value of out){this.ref[this.refPos++]=value;if(this.refPos===this.ref.length){this.port.postMessage({type:'render-reference',epoch:this.epoch,sampleRate,buffer:this.ref.buffer},[this.ref.buffer]);this.ref=new Float32Array(Math.round(sampleRate/50));this.refPos=0;}}
  if(++this.tick%8===0||before>0&&this.queue.frames===0)this.port.postMessage({type:'playback',epoch:this.epoch,consumed:this.queue.consumed,underflows:this.queue.underflows,stretchedMs:Math.round(this.queue.stretched*1000/sampleRate),lastPlayedAt:this.queue.lastPlayedAt,playing:this.queue.playing&&!this.queue.paused&&!this.outputMuted});return true;}
@@ -91,8 +99,9 @@ registerProcessor('v-direct-speaker',Speaker);registerProcessor('v-direct-mic',M
 export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=prefillMs}={}){
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
   let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
-  let paused=false,held=false,complete=false,muted=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
+  let paused=false,held=false,complete=false,muted=false,ducked=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
   let firstAudibleAt=null,reportedFirstRender=false;
+  const level=()=>{if(muted)output.gain.value=0;else output.gain.setTargetAtTime?.(ducked?DUCK_GAIN:1,context.currentTime,.02)??(output.gain.value=ducked?DUCK_GAIN:1);};
   const rate=24000,blockFrames=2400,lead=.72;
   const port={onmessage:null,postMessage:command,close:dispose};output.port=port;
   const futureFrames=(block,now)=>Math.max(0,block.pcm.length-Math.max(0,Math.min(block.pcm.length,Math.floor((now-block.at)*rate+1e-5))));
@@ -106,10 +115,11 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   function take(count){const out=new Int16Array(count);let n=0;while(n<count){const chunk=chunks[0],size=Math.min(count-n,chunk.length-offset);out.set(chunk.subarray(offset,offset+size),n);n+=size;offset+=size;frames-=size;if(offset===chunk.length){chunks.shift();offset=0;}}return out;}
   function notify(data){port.onmessage?.({data:{epoch,...data}});}
   function command(e){if(closed)return;
-    if(e.type==='clear'){reclaim();chunks=[];offset=frames=consumed=underflows=0;epoch=e.epoch;nextAt=firstAt=lastPlayedAt=null;paused=held=complete=starved=false;return;}
-    if(e.type==='output-mute'){muted=e.muted===true;if(muted)firstAudibleAt=null;output.gain.value=muted?0:1;return;}
+    if(e.type==='clear'){reclaim();chunks=[];offset=frames=consumed=underflows=0;epoch=e.epoch;nextAt=firstAt=lastPlayedAt=null;paused=held=complete=starved=false;if(ducked){ducked=false;level();}return;}
+    if(e.type==='output-mute'){muted=e.muted===true;if(muted)firstAudibleAt=null;output.gain.value=muted?0:ducked?DUCK_GAIN:1;return;}
     if(e.epoch!==epoch)return;
     if(e.type==='pause'){if(e.paused===true&&!paused)reclaim();paused=e.paused===true;return;}
+    if(e.type==='duck'){ducked=e.ducked===true;level();return;}
     if(e.type==='hold'){if(!held)reclaim();held=true;return;}
     if(e.type==='done'){complete=true;held=false;return;}
     if(e.type==='audio'){
@@ -239,6 +249,8 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   // later answers keep streaming with their normal lead, and the mic stays on.
   const backendOnset=new BackendSpeechOnset();let backendPlayback=false, backendResponseId=null;const retiredResponses=new Set();
   const nativeDuplex=reservation.nativeDuplex===true,assisted=reservation.nativePlaybackPolicy==='assisted',nativeCourtesy=nativeDuplex&&reservation.nativePlaybackPolicy!=='provider',nativePause=new NativeSpeechPause(assisted?{minRms:.035,consecutiveOnset:true,trustNativeOnset:false,requireConfirmation:true}:{});let nativePaused=false,currentResponseId=null;
+  // The service says whether V's speech is softened rather than stopped while someone speaks.
+  const yieldCommand=nativeDuplex&&reservation.nativeSpeechYield==='duck'?'duck':'pause';
   let greetingHeld=reservation.provider==='grok';
   const endpoint=new URL('./api/relay',globalThis.document?.baseURI??location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
   endpoint.search=new URLSearchParams({voiceSessionId:reservation.voiceSessionId,ticket:reservation.relayTicket});
@@ -258,7 +270,8 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
-  const pause=paused=>{if(nativePaused===paused)return;nativePaused=paused;speaker?.port.postMessage({type:'pause',paused,epoch});stats[paused?'nativePauses':'nativeResumes']++;onEvent({type:paused?'playback.duplex-paused':'playback.duplex-resumed'});};
+  const yieldMessage=held=>yieldCommand==='duck'?{type:'duck',ducked:held,epoch}:{type:'pause',paused:held,epoch};
+  const pause=paused=>{if(nativePaused===paused)return;nativePaused=paused;speaker?.port.postMessage(yieldMessage(paused));stats[paused?'nativePauses':'nativeResumes']++;onEvent({type:paused?'playback.duplex-paused':'playback.duplex-resumed',mode:yieldCommand});};
   const flush=()=>{backendPlayback=false;backendOnset.reset();nativePause.reset();nativePaused=false;epoch++;written=0;pendingOutput.length=0;outputComplete=false;greetingHeld=false;stats.queuedOutputBytes=0;lastPlayedAt=null;speaker?.port.postMessage({type:'clear',epoch});stats.clears++;activity(false);reportBusy();ending=null;clearTimeout(tailTimer);};
   const checkEnd=()=>{if(closed||!ending)return;
     if(context.state==='running'&&lastPlayedAt!==null&&stats.queuedOutputBytes===0&&context.currentTime>=lastPlayedAt+.75){stats.playbackDrained=true;send({type:'playback.drained',callId:ending});ending=null;}
@@ -365,7 +378,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       if(closed)return;
       speaker=new AudioWorkletNode(context,'v-direct-speaker',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{prefillMs:startBufferMs,prefillGrowMs:bufferGrowMs,prefillMaxMs:bufferMaxMs,renderReference:typeof renderReference==='function'}});
     }
-    speaker.port.postMessage({type:'output-mute',muted:outputMuted});speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage({type:'pause',paused:true,epoch});if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
+    speaker.port.postMessage({type:'output-mute',muted:outputMuted});speaker.port.postMessage({type:'clear',epoch});if(nativePaused)speaker.port.postMessage(yieldMessage(true));if(greetingHeld)speaker.port.postMessage({type:'hold',epoch});speaker.connect(context.destination);
     speaker.port.onmessage=({data:e})=>{
       if(closed)return;
       // A render-thread nonzero PCM receipt excludes pickup cues and silent

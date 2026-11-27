@@ -1,0 +1,47 @@
+{
+  "version": "voice-lesson-barge.20261126.1",
+  "verifiedAt": "2026-11-26T01:12:00+08:00",
+  "sourceCommit": "1c372a1207069852a485fb8d14f9584f757c6f49",
+  "mergePRs": [
+    275
+  ],
+  "previousRunningCommit": "017199ccc0a2bdc23f22dba9c0f2f3d3908e7e0e",
+  "filesSha256": "85255c0efc6f45aebbdd8d8f7366fb137b6ae9a85d883b134b745819aee872c0",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/45659969583",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "87c2eae6cdf63983b030fcb33ea856e875782425f5124e330189031d8b26c7d0",
+  "serviceConfiguration": [
+    "私有配置不变。打断判官直连 OpenAI Decisions，使用生产已有的 GPT Live 1.1 选工具用的 Decisions key，没有新增密钥。",
+    "本次发布由 V 主导完成：合并、打包、校验与 release-fleet publish 在 Owner 的另一台机器上执行（设备节点 SSH 当时只在那台机器上）；发布后已为 V 配好设备节点访问与私有 inventory，从 V 直接 inspect 两个节点均通过。"
+  ],
+  "fixes": [
+    "讲解进行中有人开口时，由 OpenAI Decisions 判断这句话是不是对 V 说的（阈值 0.6，不认关键词）：旁聊、附和、道歉不再切断讲解；对 V 说的话约 1.5 秒切断讲解（原中位 3.6 秒）。",
+    "判官看到的是正在播放的讲稿和这段讲解回应的请求，被丢弃的回答不再冒充“V 正在讲”。",
+    "连着说的一长串话先看是冲谁开口的再判断。",
+    "识别出语音后讲解不再无限期停住（3 秒释放）。",
+    "网页端有人说话时讲解压低音量而不是暂停；判为没对 V 说的字幕变淡并标“没对 V 说”。",
+    "每次判断（概率、耗时、结果）写入通话转写 floor.judged。",
+    "外部用户确认卡后回到电话页可直接拨号；发作品、发别的群统一交给后台 V。"
+  ],
+  "acceptance": [
+    "39 个讲解插话用例（来自真实通话，用例本身不入库）：对 V 说的全部 ≥0.91，明显旁聊除一句“…OK，你听我说”(0.67) 外最高 0.11；判断中位 0.30 秒、最长 0.43 秒、无超时。",
+    "真实豆包回放：对 V 说 5/5 切断（1.2–1.5 秒），旁聊 0/5。",
+    "两个运行节点的提交与 filesSha256 已核对，均已恢复接入；本次发布未重启 Gateway。",
+    "npm test 1563/1563、test:speaker-native、check:ios-shell、release_fleet_test 和 main CI 均通过。"
+  ],
+  "notVerified": [
+    "外部用户确认卡流程的真机验证（需上线后找外部账号）。",
+    "网页端压低音量对识别断句时长的影响（candidate 长尾偏重，待查）。",
+    "iOS 不变淡字幕，只暂停后恢复/停止。"
+  ]
+}

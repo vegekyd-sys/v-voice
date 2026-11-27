@@ -17,18 +17,21 @@ export function fallbackRoute(text,names,{userText}={}){
   if(said&&names.has('delegate_to_v'))return {name:'delegate_to_v',args:{question:said.slice(0,2000),...(userText&&userText!==said?{context:`用户原话：${String(userText).slice(0,600)}`}:{})},via:'fallback'};
   return null;
 }
-const ROUTER_PROMPT=`你是语音助手 V 的工具调度器。前台语音模型把用户刚说的一件要办的事交给你（通常就是用户的原话），你只选一个工具并填好参数，不回答问题、不解释。
+// What to choose — doing it itself, a direct tool or the backend — is the policy every model has, given
+// below this prompt as notes (session.mjs `routerNotes`), with each tool's own description. Only what is
+// the router's own job is written here: picking one tool and writing its arguments.
+const ROUTER_PROMPT=`你是语音助手 V 的工具调度器。前台语音模型把用户刚说的一件要办的事交给你（通常就是用户的原话），你只选一个工具并填好参数，不回答问题、不解释。下面的“任务分工”等规则原本写给语音模型，现在由你替它做选择：其中“自己做/自己讲”对应 answer_directly，“交后台”对应 delegate_to_v。
 规则：
-- 能用一步直接工具办完的事（上网搜索、读一个网页、查时间、查个人记忆、查飞书日程或资料、把已有内容放到屏幕、讲解一个东西、结束通话、取消任务），选对应的直接工具。问到用户自己的事（家人、偏好、以前说过或定过的事、项目历史）先查个人记忆。
+- 问到用户自己的事（家人、偏好、以前说过或定过的事、项目历史）先查个人记忆。
 - web_search 的 query 写成适合搜索引擎的关键词，保留人名、公司名、日期和用户指定的条件；问“今天、现在、今年、本赛季、最新”的事时带上当天日期，并把“今年”写成具体年份。
 - 这句话是对刚才那件事的追问、纠正或补充（再看一下、具体多少、另一场呢、不对是……、查得怎么样了）时，结合“最近对话”把对象补全，沿用上一次用的工具并写出更具体的参数；绝不能改去查无关的东西（例如时间）。
 - memory_search 的 query 写成几个关键词（项目名、人名、事情的名字），去掉“帮我查一下”“呃”这类口头语；问的是某件事“现在怎么样、进展如何”，关键词里带上“进展 现状”。
 - 用户话里的称呼照原样保留：语音转写可能把名字写成数字或同音字，不要把它改写成年龄、数量或别的意思。
 - 有 answer_directly、没有讲解工具时：讲解、科普、讲故事、看法、常识由前台自己讲，选 answer_directly；要讲的是今天的事或用户自己的事，先选搜索或记忆工具查资料（它拿到资料后自己讲）。
 - 有 answer_directly、没有讲解工具时，用户想看图、想多看几张（看的是现成的真实照片：景点、藏品、菜、动物、人物、产品）也选 answer_directly：页面会自己找照片贴出来，前台接着讲这些东西就行。创作工具只用于用户明确要新做一样东西（生成、画一张、做一张海报、把图做成视频）。
-- 有讲解工具时：讲故事、讲解、科普、找图给用户看（“配上图”“用图片讲”“给我看看”“发个图片”“多来几张”），选讲解工具：真实图片和画面会跟着声音出现，几秒就能开始；topic 里写清用户点名要的角色和东西。只有用户明确要“生成、画、做一张新图”或要把东西发到群里，才交给 delegate_to_v。
+- 有讲解工具时，topic 里写清用户点名要的角色和东西。
 - 只有“后台任务”一栏写着正在执行时，才可以选查进度、补充要求或取消后台任务的工具。
-- 需要多步、反复查证、写操作（发消息、改日程、写文档、发到群里）、或者没有合适的直接工具时，选 delegate_to_v；question 保留用户的完整目标、对象、时间和条件，不要扩大用户没有要求的范围。
+- delegate_to_v 的 question 保留用户的完整目标、对象、时间和条件，不要扩大用户没有要求的范围。
 - 只能使用下面提供的工具，参数必须符合各自的定义。`;
 
 /** Chat-completions function calling against any OpenAI-compatible endpoint. */
@@ -42,7 +45,7 @@ export function createRouterCompletion({apiKey,endpoint,model,extra={},fetchImpl
         headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},
         body:JSON.stringify({model,stream:false,temperature:0,max_tokens:400,tool_choice:'required',
           messages:[{role:'system',content:system},{role:'user',content:user}],
-          tools:tools.map(tool=>({type:'function',function:{name:tool.name,description:String(tool.description??'').slice(0,320),parameters:tool.parameters}})),...extra})});
+          tools:tools.map(tool=>({type:'function',function:{name:tool.name,description:String(tool.description??''),parameters:tool.parameters}})),...extra})});
       // The provider's reason (a refused schema or parameter) goes to the private log only.
       if(!response.ok)throw Error(`router HTTP ${response.status} ${String(await Promise.resolve(response.text?.()).catch(()=>'')??'').replace(/\s+/gu,' ').slice(0,240)}`.trim());
       const call=(await response.json())?.choices?.[0]?.message?.tool_calls?.[0]?.function;

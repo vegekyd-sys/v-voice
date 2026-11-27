@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';import {existsSync} from 'node:fs';
+import {readFile,writeFile,mkdir,copyFile,chmod,stat} from 'node:fs/promises';import {existsSync} from 'node:fs';
 import {resolve,dirname,join,relative} from 'node:path';
 import {createHash} from 'node:crypto';import {execFileSync} from 'node:child_process';
 import {buildTvEntry,TV_ENTRY_BUNDLE,buildTvStartup,TV_STARTUP_BUNDLE} from './build-tv-entry.mjs';
@@ -40,7 +40,10 @@ names.push('lib/terminal-context.mjs','lib/device-requests.mjs','lab/gpt-live-h5
 names.push('lab/robot/robot-semantics.mjs');
 names.push('lab/realtime-direct-tools/idle-hangup.mjs');
 names.push(...['peer','provider','router','auth'].map(n=>`lab/realtime-direct-tools/gpt-live-${n}.mjs`));
+// What differs between voice models, asked by session.mjs and the GPT Live bridge (docs/model-capabilities.md).
+names.push('lab/realtime-direct-tools/capabilities.mjs');
 names.push('lab/realtime-direct-tools/playback-echo.mjs');
+names.push('lab/realtime-direct-tools/floor-judge.mjs','lab/realtime-direct-tools/playback-position.mjs');
 names.push('lab/gpt-live-h5/upload-backpressure.mjs');
 names.push('lab/gpt-live-h5/assets/v-avatar.jpg','lab/gpt-live-h5/board-assets.mjs','lab/gpt-live-h5/board-assets-client.mjs','lab/gpt-live-h5/board-picture-size.mjs','lab/realtime-direct-tools/media-script.mjs','lab/realtime-direct-tools/material-check.mjs','lab/gpt-live-h5/board-scene.mjs','lab/gpt-live-h5/board-director.mjs','lab/gpt-live-h5/board-client.mjs','lab/gpt-live-h5/board-sketch.mjs','lab/gpt-live-h5/board-photo.mjs','lab/gpt-live-h5/board-lesson.mjs','lab/gpt-live-h5/board-cue.mjs','lab/gpt-live-h5/board-clause.mjs','lab/gpt-live-h5/board-eye.mjs');
 // Every relative import of a packaged module must itself be packaged, so a
@@ -76,4 +79,11 @@ const clients={web:{node:'web'},ios:{node:'web',shellRevision:shell.revision,min
 const manifest={clients,schema:'v-voice-release-v1',commit,baselineCommit:baseline.sourceCommit,gatewayProtocol:4,gatewayRestartRequired:false,
  entrypoint:'lab/gpt-live-h5/server.mjs',files,filesSha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')};
 await writeFile(join(target,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{flag:'wx'});
+// The services run as their own users, so every packaged file must be readable whatever the
+// packager's umask (11/26: a release packaged under umask 077 could not start on either node).
+for(const name of ['manifest.json',...files.map(f=>f.path)]){
+ const dest=join(target,name);await chmod(dest,(await stat(dest)).mode&0o111?0o755:0o644);
+ for(let dir=dirname(dest);dir.startsWith(target+'/');dir=dirname(dir))await chmod(dir,0o755);
+}
+await chmod(target,0o755);
 console.log(JSON.stringify({artifact:target,commit,files:files.length,bytes:files.reduce((a,f)=>a+f.bytes,0),filesSha256:manifest.filesSha256}));

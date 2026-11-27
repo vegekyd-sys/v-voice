@@ -2181,3 +2181,157 @@ test('the owner entry hands the media runner an owner scope; other sessions keep
  }
  assert.deepEqual(scopes,[{chat:'oc_room',owner:true},{chat:'oc_room'}]);
 });
+
+// Call efecdf3d (11-25): "把这个视频发到我跟艾瑞特和你的那个群" went to send_task_updates; its bare refusal
+// read as "ask to confirm", and after "是的，去发吧" V said it was sending with nothing started.
+test('a send this call cannot forward points to delegate_to_v instead of a bare refusal or a silent accept',async t=>{
+ const sends=[];
+ const f=await fixture(async(args,method)=>{if(method==='send'){sends.push(args);return {messageId:'om-'+sends.length};}return {ok:true};},'grok',{sessionKey:'agent:makaron:feishu:group:oc_room'});
+ t.after(()=>f.service.dispose());
+ const output=id=>JSON.parse(f.upstream.sent.find(x=>x.item?.call_id===id).item.output);
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你这样吧，然后把这个视频发到我跟艾瑞特和你的那个群里面吧？'});
+ f.call('send_task_updates',{},'elsewhere');await delay(5);
+ const refused=output('elsewhere');
+ assert.match(refused.error,/尚未要求/);assert.match(refused.error,/delegate_to_v/);assert.match(refused.error,/不要再问一遍确认/);
+ // The call's own group, but nothing in the background to forward: no silent "accepted".
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'把这个视频发到群里吧'});
+ f.call('send_task_updates',{},'bound');await delay(5);
+ const nothing=output('bound');
+ assert.equal(nothing.sent,false);assert.equal(nothing.taskRunning,false);assert.match(nothing.instruction,/delegate_to_v/);assert.equal(sends.length,0);
+ // With a backend task it still subscribes as before, without the hand-off instruction.
+ f.call('delegate_to_v',{question:'调研后发群'},'job');for(let n=0;n<100&&!f.audit.some(e=>e.type==='backend.started');n++)await delay(2);
+ f.call('send_task_updates',{},'with-task');await delay(5);
+ const subscribed=output('with-task');
+ assert.equal(subscribed.accepted,true);assert.equal(subscribed.instruction,undefined);
+ f.completeBackend('完成');await delay(50);
+});
+
+// Someone in the room speaks while V's speech still plays on the phone (the voice model generated it
+// well ahead of playback and believes V has finished). With a floor judge, its answer waits for the
+// judgement: not said to V and it is dropped and the speech plays on; said to V, or no judgement in
+// time, and it replaces the speech as before.
+async function speechOverPlayback(t,floorJudge,{judgeMs=2000,tool=false,playing=true}={}){
+ const lesson={available:true,prepare:async()=>({say:'海豚用回声找鱼，声音碰到鱼会弹回来。'})};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{lesson,floorJudge,speechYield:{decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs}});t.after(()=>f.service.dispose());
+ const seconds=n=>Buffer.alloc(48000*n).toString('base64');
+ // The lesson: asked for, written, and read out by V (generated far faster than it plays).
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲讲海豚怎么找鱼'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'lesson-call',name:'explain_on_board',arguments:JSON.stringify({topic:'海豚怎么找鱼'})}]});
+ assert(await until(()=>f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&/海豚/u.test(e.text))));
+ f.event({type:'response.output_audio.started',response_id:'lesson',tts_type:'chat_tts_text'});f.event({type:'response.output_audio.delta',response_id:'lesson',delta:seconds(6)});
+ f.event({type:'response.done',response:{id:'lesson',status:'completed'}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:playing})),false);
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'我也要我也要'});
+ f.event({type:'response.created',response:{id:'reply'}});
+ if(tool){f.event({type:'response.function_call_arguments.done',items:[{call_id:'side-call',name:'web_search',arguments:JSON.stringify({query:'我也要'})}]});}
+ else{
+  f.event({type:'response.output_text.delta',response_id:'reply',delta:'好呀，一起听。'});
+  f.event({type:'response.output_audio.started',response_id:'reply'});f.event({type:'response.output_audio.delta',response_id:'reply',delta:seconds(1)});
+ }
+ const audio=()=>f.client.sent.filter(e=>e.type==='audio');
+ return {f,audio,cleared:()=>f.client.sent.some(e=>e.type==='audio.clear'),released:()=>f.client.sent.some(e=>e.type==='input.speech.ignored'&&e.preservedResponseId==='lesson')};
+}
+test('speech over V judged not said to V: the answer is dropped and the speech plays on',async t=>{
+ const asked=[];
+ const {f,audio,cleared,released}=await speechOverPlayback(t,async input=>{asked.push(input);return {toV:false,ms:3};});
+ await delay(20);
+ assert.equal(asked.length,1);assert.equal(asked[0].heard,'我也要我也要');assert.match(asked[0].said+asked[0].ahead,/海豚/u);
+ assert.equal(cleared(),false,'the speech is not cut');assert.equal(released(),true,'the phone plays on');
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson'],'the answer never reaches the phone');
+ assert(!f.client.sent.some(e=>e.type==='transcript'&&e.role==='assistant'&&/一起听/u.test(e.text)));
+ // More of the same answer, after the judgement: dropped too.
+ f.event({type:'response.output_audio.delta',response_id:'reply',delta:Buffer.alloc(960).toString('base64')});
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson']);
+ assert(f.audit.some(e=>e.type==='floor.judged'&&e.toV===false&&e.responseId==='lesson'&&e.outcome==='dropped'&&e.heard==='我也要我也要'));
+ assert(f.audit.some(e=>e.type==='floor.dropped'&&e.kind==='audio'));
+ // The page is told which line was not for V.
+ assert(f.client.sent.some(e=>e.type==='input.speech.ignored'&&e.reason==='not-addressed'&&e.text==='我也要我也要'));
+ // Someone speaks again over the lesson: what is left of the dropped answer stays dropped either way.
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.event({type:'response.output_audio.delta',response_id:'reply',delta:Buffer.alloc(960).toString('base64')});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'你为什么这样讲'});
+ await delay(20);
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson']);
+ // The judge is told of the lesson, not of the dropped answer's words (11/25: they stood in for it),
+ // and before it of the request and of the line passed over, not of that line alone.
+ assert.equal(asked.length,2);assert.match(asked[1].said+asked[1].ahead,/海豚/u);assert.doesNotMatch(asked[1].said+asked[1].ahead,/一起听/u);
+ assert.deepEqual(asked[0].recent.map(turn=>turn.text),['讲讲海豚怎么找鱼']);
+ assert.deepEqual(asked[1].recent.map(turn=>turn.text),['讲讲海豚怎么找鱼','我也要我也要']);
+ // Once the speech has played out, the model is heard again.
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
+ f.event({type:'response.created',response:{id:'later'}});f.event({type:'response.output_audio.started',response_id:'later'});
+ f.event({type:'response.output_audio.delta',response_id:'later',delta:Buffer.alloc(960).toString('base64')});
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson','later']);
+});
+test('speech over V judged said to V: the speech stops at once and the answer follows',async t=>{
+ let answer;const judged=new Promise(resolve=>answer=resolve);
+ const {f,audio,cleared,released}=await speechOverPlayback(t,()=>judged);
+ await delay(10);
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson'],'nothing of the answer before the judgement');assert.equal(cleared(),false);
+ answer({toV:true,ms:400});await delay(10);
+ assert.equal(f.client.sent.find(e=>e.type==='audio.clear')?.reason,'addressed','stopped by the judgement, not by the answer');
+ assert.equal(f.client.sent.find(e=>e.type==='audio.clear')?.retiredResponseId,'lesson');
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson','reply']);assert.equal(cleared(),true);assert.equal(released(),false);
+ // More of the speech still on its way from upstream is not played again.
+ f.event({type:'response.output_audio.delta',response_id:'lesson',delta:Buffer.alloc(960).toString('base64')});
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson','reply']);
+ assert(f.client.sent.some(e=>e.type==='transcript'&&e.role==='assistant'&&/一起听/u.test(e.text)));
+ assert(f.audit.some(e=>e.type==='floor.judged'&&e.outcome==='cut'&&e.toV===true&&e.ms===400));
+});
+for(const [name,judge] of [
+ ['a judge that does not answer in time',()=>new Promise(()=>{})],
+ ['a judge that fails',async()=>{throw Error('judge down');}],
+ ['a judge with no clear answer',async()=>({toV:null,ms:1500})],
+])test(name+' leaves the voice model\'s answer to go through',async t=>{
+ const {f,audio,cleared}=await speechOverPlayback(t,judge,{judgeMs:30});
+ await delay(80);
+ assert.deepEqual(audio().map(e=>e.responseId),['lesson','reply']);assert.equal(cleared(),true);
+ assert(!f.client.sent.some(e=>e.type==='input.speech.ignored'&&e.reason));
+});
+test('a tool call answering speech not said to V is answered as ignored, never run',async t=>{
+ const {f}=await speechOverPlayback(t,async()=>({toV:false,ms:3}),{tool:true});
+ await delay(20);
+ assert(!f.client.sent.some(e=>e.type==='tool.call'&&e.name==='web_search'),'nothing is started for it');
+ assert(!f.invocations.some(args=>args?.name==='web_search'));
+ const answered=f.upstream.sent.filter(e=>JSON.stringify(e).includes('side-call'));
+ assert(answered.some(e=>JSON.stringify(e).includes('ignored')),'the model gets its answer');
+});
+test('with nothing still playing there is nothing to judge',async t=>{
+ let asked=0;
+ const {audio,cleared}=await speechOverPlayback(t,async()=>{asked++;return {toV:false};},{playing:false});
+ await delay(10);
+ assert.equal(asked,0);assert.deepEqual(audio().map(e=>e.responseId),['lesson','reply']);assert.equal(cleared(),true);
+});
+test('speech the model says itself is left to the model, as before',async t=>{
+ let asked=0;
+ const f=await fixture(undefined,'seeduplex',{floorJudge:async()=>{asked++;return {toV:false};}});t.after(()=>f.service.dispose());
+ f.event({type:'response.created',response:{id:'answer'}});
+ f.event({type:'response.output_audio.started',response_id:'answer',tts_type:'default'});f.event({type:'response.output_audio.delta',response_id:'answer',delta:Buffer.alloc(48000*6).toString('base64')});
+ f.event({type:'response.done',response:{id:'answer',status:'completed'}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'我也要我也要'});
+ f.event({type:'response.created',response:{id:'reply'}});f.event({type:'response.output_audio.started',response_id:'reply',tts_type:'default'});
+ f.event({type:'response.output_audio.delta',response_id:'reply',delta:Buffer.alloc(960).toString('base64')});
+ await delay(10);
+ assert.equal(asked,0);assert.deepEqual(f.client.sent.filter(e=>e.type==='audio').map(e=>e.responseId),['answer','reply']);
+});
+test('V\'s own voice heard back over a lesson is not judged, and nothing the model does for it plays',async t=>{
+ let asked=0;
+ const lesson={available:true,prepare:async()=>({say:'海豚用回声找鱼，声音碰到鱼会弹回来。'})};
+ const f=await fixture(async()=>({ok:true,output:{}}),'seeduplex',{lesson,floorJudge:async()=>{asked++;return {toV:true};}});t.after(()=>f.service.dispose());
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'讲讲海豚怎么找鱼'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'lesson-call',name:'explain_on_board',arguments:JSON.stringify({topic:'海豚怎么找鱼'})}]});
+ assert(await until(()=>f.upstream.sent.some(e=>e.type==='speech_text_buffer.commit'&&/海豚/u.test(e.text))));
+ f.event({type:'response.output_audio.started',response_id:'lesson',tts_type:'chat_tts_text'});f.event({type:'response.output_audio.delta',response_id:'lesson',delta:Buffer.alloc(48000*6).toString('base64')});
+ f.event({type:'response.done',response:{id:'lesson',status:'completed'}});
+ f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:true})),false);
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'弹回来'});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'echo-call',name:'web_search',arguments:JSON.stringify({query:'海豚'})}]});
+ await delay(20);
+ assert.equal(asked,0);assert(!f.client.sent.some(e=>e.type==='audio.clear'));
+ assert(!f.client.sent.some(e=>e.type==='tool.call'&&e.name==='web_search'));
+ assert(f.upstream.sent.some(e=>JSON.stringify(e).includes('echo-call')&&JSON.stringify(e).includes('ignored')),'answered as ignored at once, not left to go through later');
+});

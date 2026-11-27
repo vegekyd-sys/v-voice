@@ -92,6 +92,14 @@ test('the current turn starts at the latest caller words; earlier turns are quie
   assert.deepEqual(splitTurns({history: [], current: []}), {earlier: [], now: []});
 });
 
+test('side talk V did not take up stays inside V\'s turn instead of starting a new one', () => {
+  const row = (key, role, extra = {}) => ({key, role, text: key, complete: true, ...extra});
+  const lesson = [row('v1', 'assistant'), row('u1', 'user'), row('v2', 'assistant'), row('aside', 'user', {notForV: true}), row('v3', 'assistant')];
+  assert.deepEqual(splitTurns({history: lesson, current: []}).now.map(r => r.key), ['u1', 'v2', 'aside', 'v3']);
+  // With only side talk so far, the latest caller line still starts the turn, as before.
+  assert.deepEqual(splitTurns({history: [row('v1', 'assistant'), row('aside', 'user', {notForV: true}), row('v2', 'assistant')], current: []}).now.map(r => r.key), ['aside', 'v2']);
+});
+
 test('task progress keeps its start time across presentation recovery and counts real stages', () => {
   const tasks = createAvatarTasks();
   tasks.consume({type: 'tool.call', callId: 'a', name: 'delegate_to_v'}, 1_000);

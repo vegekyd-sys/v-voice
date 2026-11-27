@@ -42,6 +42,7 @@ import {gptLiveVoice} from '../realtime-direct-tools/gpt-live-provider.mjs';
 import {seeduplexVoice} from '../seeduplex-realtime-provider.mjs';
 import {idleHangupFromEnv} from '../realtime-direct-tools/idle-hangup.mjs';
 import {boardCompletionFromEnv,boardDirectorFromEnv,boundedBoardRequest} from './board-director.mjs';
+import {createFloorJudge,floorJudgeFromEnv} from '../realtime-direct-tools/floor-judge.mjs';
 import {createPhotoFinder,createPhotoGallery} from './board-photo.mjs';
 import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-lesson.mjs';
 import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
@@ -514,7 +515,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if(phoneLogin?.confirmation&&req.method==='POST'&&new URL(req.url,'http://voice.invalid').pathname===`${basePath}/feishu/confirm/callback`){
         if(req.headers.origin)return json(res,403,{error:'身份回调无效'});
         let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>4096)return json(res,413,{error:'身份回调过大'});}
-        try{return json(res,200,await phoneLogin.confirmation.callback(raw,req.headers['x-voice-confirm-signature']));}
+        try{const result=await phoneLogin.confirmation.callback(raw,req.headers['x-voice-confirm-signature']);console.info(JSON.stringify({type:'voice.card-confirmation',stage:'confirmed'}));return json(res,200,result);}
         catch(error){console.warn(JSON.stringify({type:'voice.card-confirmation-rejected',reason:error.confirmationReason??'unavailable'}));return json(res,403,{error:'身份确认无效或已过期'});}
       }
       const requestOrigin = hosted ? publicOrigin : `http://${host}`;
@@ -643,11 +644,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(!body||Object.keys(body).length!==1||typeof body.state!=='string')return json(res,400,{error:'请求无效'});
         try{
           if(pathname.endsWith('/cancel')){phoneLogin.confirmation.cancel(req,body.state);return json(res,200,{status:'cancelled'});}
-          if(pathname.endsWith('/start'))return json(res,200,await phoneLogin.confirmation.start(req,body.state));
+          if(pathname.endsWith('/start')){const started=await phoneLogin.confirmation.start(req,body.state);console.info(JSON.stringify({type:'voice.card-confirmation',stage:'start',status:started.status}));return json(res,200,started);}
           const result=await phoneLogin.confirmation.poll(req,res,body.state);
           if(result.binding)issueVisitor(res,result.binding);
           return json(res,200,{status:result.status,...(result.binding?{entry:entrySnapshot(result.binding)}:{}),...(result.location?{location:result.location}:{})});
-        }catch(error){return json(res,error.message==='confirmation_rate_limited'?429:403,{error:error.message==='confirmation_rate_limited'?'此会话刚收到确认请求，请稍后重试。':'连接请求无效或已过期，请重新连接。'});}
+        }catch(error){if(pathname.endsWith('/start'))console.warn(JSON.stringify({type:'voice.card-confirmation',stage:'send-failed',reason:error.message==='confirmation_rate_limited'?'rate_limited':error.message==='confirmation_delivery_failed'?'delivery':'request'}));
+          return json(res,error.message==='confirmation_rate_limited'?429:403,{error:error.message==='confirmation_rate_limited'?'此会话刚收到确认请求，请稍后重试。':'连接请求无效或已过期，请重新连接。'});}
       }
       let entryVisitor = null, entryBinding = null, clientLoginConfig = null;
       const handoffBinding=phoneLogin&&pathname==='/feishu'?phoneLogin.consumeHandoff(req,url.searchParams.get('phone'),url.searchParams.get('identified')):null;
@@ -663,6 +665,14 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
             if(remembered){
               issueVisitor(res,remembered);
               return json(res,200,{status:entrySnapshot(remembered)});
+            }
+            // A card clicked after its page closed (Feishu mobile) is redeemed
+            // by the same browser on reopening; otherwise it would be orphaned.
+            const confirmed=await phoneLogin.confirmation?.resume(req,res,pending.phone);
+            if(confirmed?.binding){
+              console.info(JSON.stringify({type:'voice.card-confirmation',stage:'redeemed-on-reopen'}));
+              issueVisitor(res,confirmed.binding);
+              return json(res,200,{status:entrySnapshot(confirmed.binding)});
             }
           } else {
             const result=await phoneLogin.completeClient(req,res,body,{inline:true});
@@ -1495,7 +1505,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if(lesson)lesson.source=['backend','parallel'].includes(process.env.VOICE_BOARD_LESSON_SOURCE)?process.env.VOICE_BOARD_LESSON_SOURCE:'service';
     // (VOICE_MATERIAL_CHECK=0: nothing is looked at before a creation is submitted.)
     const materialCheck=assets&&process.env.VOICE_MATERIAL_CHECK!=='0'?createMaterialCheck({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'120'}),audit:event=>board.log?.(event)}):null;
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
+    // Whether speech over a lesson still playing is said to V: the Decisions API (floor-judge.mjs),
+    // with the board's text model as the fallback. VOICE_FLOOR_JUDGE=0 leaves it to the voice model.
+    const floorJudge=process.env.VOICE_FLOOR_JUDGE==='0'?null:(floorJudgeFromEnv(process.env)??(()=>{const completion=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'8'});return completion?createFloorJudge({complete:completion}):null;})());
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,floorJudge,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({accounts:createMediaAccounts(

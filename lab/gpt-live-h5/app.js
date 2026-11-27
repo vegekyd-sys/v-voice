@@ -1008,11 +1008,13 @@ async function startCall(options = {}) {
           if(value.type==='transcript'&&!(reservation.speakerRouting&&value.role==='user')) {
             active.relayTurns??={};
             const id=active.relayTurns[value.role]??=crypto.randomUUID();
-            renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text}}:
+            renderTranscript(presentation.consume(value.final?{type:'turn.done',turn:{id,role:value.role,transcript:value.text,...(value.role==='user'&&typeof value.turnId==='string'?{sourceTurnId:value.turnId}:{})}}:
               {type:'output_transcript.delta',turn_id:id,delta:value.text}));
             if(value.final)delete active.relayTurns[value.role];
             if(value.final&&value.role==='user')view.thinking();
           }
+          // Side talk the floor judge heard as not said to V: its line quietly steps back.
+          if(value.type==='input.speech.ignored'&&value.reason==='not-addressed'&&!reservation.speakerRouting){renderTranscript(presentation.consume(value));view.set({thinkingAt:null});}
         }});
       await active.relay.start();if(call!==active)return;
       startPresentationRecovery(active);
