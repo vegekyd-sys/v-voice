@@ -1060,10 +1060,6 @@ function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canva
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
         {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
-        {tv && pages.length > 1 && <div className="tv-board-pages" aria-label="讲解翻页">
-          {[-1, 1].map(step => <button key={step} type="button" disabled={!pages[inView + step]}
-            onClick={() => selectPage(inView + step)}>{step < 0 ? '上一页' : '下一页'}</button>)}
-        </div>}
         {onReport && !page.clip && page.serial !== liveId && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
@@ -1080,7 +1076,6 @@ function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canva
         ))}
       </div>
       {pages.length > 1 && <nav className="board-dots" aria-label="画面分页">{pages.map((item, index) => <button key={item.serial} type="button" aria-label={item.serial === liveId ? "查看直播画面" : item.clip ? "查看直播回放" : "查看第" + (index + 1) + "页"} aria-current={index === inView ? "page" : undefined} onClick={() => selectPage(index)}><b data-current={index === inView || undefined}/></button>)}</nav>}
-      {tv && <small className="tv-board-guide">↑↓ 浏览　·　→ 回到对话</small>}
       {viewing && <Viewer items={viewing.items} start={viewing.start} works={works} onClose={() => setViewing(null)} />}
     </section>
   );

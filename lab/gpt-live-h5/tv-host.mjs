@@ -307,7 +307,17 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       if (region) {
         if (active?.matches?.('.tv-return') && direction === 'down') return focus(region);
         if (active?.closest?.('.board-top') && direction === 'down') return focus(region);
-        if (active?.closest?.('.board-dots') && direction === 'up') return focus(region);
+        const pager = active?.closest?.('.board-dots');
+        if (pager) {
+          if (direction === 'up') return focus(region);
+          const adjacent = direction === 'left' ? active.previousElementSibling
+            : direction === 'right' ? active.nextElementSibling ?? chat : null;
+          return adjacent ? focus(adjacent) : true;
+        }
+        if (active === region && direction === 'left') {
+          const currentPage = items.find(item => item.matches?.('.board-dots [aria-current="page"]'));
+          if (currentPage) return focus(currentPage);
+        }
         if (active === region && direction === 'right' && chat) return focus(chat);
         if (active === chat && direction === 'left') return focus(region);
       }
