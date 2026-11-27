@@ -229,6 +229,14 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-tv-lessons.20261128.1',date:'2026-11-28',
+    title:'电视讲解跟页和语音通话',
+    items:[
+      '电视和网页共用讲解画布。连续换话题时，标题、正文和页码一起更新，也可以用遥控器翻回之前的讲解。',
+      '从桌面接通后，按一次确认即可全屏。改善电视通话的收字速度、回复播放和重复道别时的挂断。',
+    ],
+  },
+  {
     version:'voice-shared-model-layer.20261126.1',date:'2026-11-26',
     title:'GPT Live 1.1 选工具和豆包按同一套规则',
     items:[
