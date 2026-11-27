@@ -58,3 +58,12 @@ test('inline identity finishes before dial readiness and replaces the guest snap
  await Promise.resolve();assert.equal(settled,false);finish(verified);assert.deepEqual(await work,{status:verified});
  assert.deepEqual(await startVoiceEntry({location,initialStatus:guest,identity:Promise.resolve(null),fetch:()=>assert.fail('guest stays on the existing page')}),{status:guest});
 });
+
+test('TV personal link can use the status returned by its access exchange',async()=>{
+ const urls=[], status={ready:true};
+ const result=await startVoiceEntry({location:{...location,search:'?tv=1',hash:'#access=test'},replaceState:()=>{},fetch:async url=>{
+   urls.push(url);return {ok:true,json:async()=>({ok:true,status})};
+ }});
+ assert.deepEqual(result,{status});
+ assert.deepEqual(urls,['./api/access?entry=tianyi&snapshot=1']);
+});

@@ -15,6 +15,7 @@ public final class ConfigProvider extends ContentProvider {
     @Override public String getType(Uri uri) { return "application/json"; }
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if (!"/config".equals(uri.getPath()) || !"w".equals(mode)) throw new FileNotFoundException();
+        CallService.configChanging();
         return ParcelFileDescriptor.open(new File(getContext().getFilesDir(), "entry.json"),
             ParcelFileDescriptor.MODE_WRITE_ONLY | ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE);
     }
@@ -22,13 +23,13 @@ public final class ConfigProvider extends ContentProvider {
         if (!"/status".equals(uri.getPath())) throw new IllegalArgumentException("Unknown diagnostics");
         var prefs = getContext().getSharedPreferences("diagnostics", 0);
         MatrixCursor cursor = new MatrixCursor(new String[]{
-            "configured", "window_mode", "web_instance", "call_state", "generation", "foreground", "muted", "focus", "reading", "has_document", "meter_source", "meter_peak", "viewport_width", "viewport_height", "model", "mic_driver", "mic_channels", "output_muted", "failure_code", "interactive", "host_kind"
+            "configured", "window_mode", "web_instance", "call_state", "generation", "foreground", "muted", "focus", "reading", "has_document", "meter_source", "meter_peak", "viewport_width", "viewport_height", "model", "mic_driver", "mic_channels", "output_muted", "failure_code", "interactive", "host_kind", "desktop_page"
         });
         cursor.addRow(new Object[]{new File(getContext().getFilesDir(), "entry.json").isFile() ? 1 : 0,
             prefs.getString("window_mode", ""), prefs.getString("web_instance", ""),
             prefs.getString("projected_call", "idle"), prefs.getLong("generation", 0),
             prefs.getBoolean("foreground", false) ? 1 : 0,prefs.getBoolean("muted",false)?1:0,prefs.getString("focus",""),prefs.getBoolean("reading",false)?1:0,
-            prefs.getBoolean("has_document",false)?1:0,prefs.getString("meter_source","none"),prefs.getInt("meter_peak",0),prefs.getInt("viewport_width",0),prefs.getInt("viewport_height",0),prefs.getString("model",""),prefs.getString("mic_driver","none"),prefs.getInt("mic_channels",0),prefs.getBoolean("output_muted",false)?1:0,prefs.getString("failure_code",""),prefs.getBoolean("interactive",false)?1:0,"foreground-service"});
+            prefs.getBoolean("has_document",false)?1:0,prefs.getString("meter_source","none"),prefs.getInt("meter_peak",0),prefs.getInt("viewport_width",0),prefs.getInt("viewport_height",0),prefs.getString("model",""),prefs.getString("mic_driver","none"),prefs.getInt("mic_channels",0),prefs.getBoolean("output_muted",false)?1:0,prefs.getString("failure_code",""),prefs.getBoolean("interactive",false)?1:0,"foreground-service",DesktopPage.state});
         return cursor;
     }
     @Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException(); }

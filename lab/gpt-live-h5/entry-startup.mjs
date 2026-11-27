@@ -61,7 +61,8 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
       const query = phone ? `phone=${encodeURIComponent(phone)}` : 'entry=tianyi';
       const access = new URLSearchParams(location.hash.slice(1)).get('access');
       if (access) {
-        const response = await request(`./api/access?${query}`, {
+        const tvSnapshot = !phone && new URLSearchParams(location.search).get('tv') === '1';
+        const response = await request(`./api/access?${query}${tvSnapshot ? '&snapshot=1' : ''}`, {
           method: 'POST', headers: { 'content-type': 'application/json' },
           credentials: 'same-origin', body: JSON.stringify({ access }),
         });
@@ -70,6 +71,10 @@ export function startVoiceEntry({ location, fetch: request, replaceState, initia
         const search = new URLSearchParams(location.search);
         if (!phone) search.set('entry', 'tianyi');
         replaceState(`${location.pathname}?${search}`);
+        if (tvSnapshot && !identity && typeof value.status?.ready === 'boolean') {
+          mark('voice.status.complete');
+          return {status:value.status};
+        }
       }
       if(identity){const verified=await identity;if(verified)initialStatus=verified;}
       mark('voice.status.start');

@@ -4,13 +4,41 @@ import {PcmPlaybackQueue} from './relay-audio.mjs';
 export const hasTvArrayCapture=()=>globalThis.vTvAudioCapability?.version===1&&typeof globalThis.VTVArray?.start==='function';
 export const tvArraySupportsModel=model=>['seeduplex','grok'].includes(model);
 const fault=(code,message)=>Object.assign(Error(message),{code});
+// Only hardware format survives a call. The standby worker trains on synthetic frames.
+let idleRuntime, lastFormat;
+function loadRuntime(format){
+  const worker=new Worker(new URL('./tv-array-worker.js',import.meta.url));
+  let cancel;
+  const ready=new Promise((resolve,reject)=>{
+    const finish=error=>{clearTimeout(timer);worker.onmessage=worker.onerror=null;error?reject(error):resolve();};
+    const timer=setTimeout(()=>finish(fault('TV_DSP_TIMEOUT','电视音频准备超时，请重试')),8000);
+    cancel=()=>finish(fault('TV_MIC_CANCELLED','采集已结束'));
+    worker.onmessage=({data})=>{
+      if(data.type==='ready'&&format)worker.postMessage({type:'configure',...format});
+      else if(data.type==='ready'||data.type==='configured')finish();
+      else if(data.type==='error')finish(fault('TV_DSP_INIT','电视音频准备失败，请重试'));
+    };
+    worker.onerror=()=>finish(fault('TV_DSP_LOAD','电视音频加载失败，请重试'));
+  });
+  return {worker,ready,cancel,format};
+}
+export function warmTvAudio(){
+  if(idleRuntime||typeof globalThis.VTVArray?.start!=='function')return;
+  try{
+    let format=lastFormat;
+    if(!format&&globalThis.VTVArray.formatHint)format=JSON.parse(globalThis.VTVArray.formatHint());
+    const runtime=idleRuntime=loadRuntime(format);
+    runtime.ready.catch(()=>{if(idleRuntime===runtime){runtime.worker.terminate();idleRuntime=null;}});
+  }catch{/* The next dial can retry loading the worker. */}
+}
 export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagnostics=()=>{},onError=()=>{},directPcm=false}={}){
   if(!hasTvArrayCapture())throw fault('TV_MIC_CAPABILITY','电视收音尚未就绪，请重试');
   const bridge=globalThis.VTVArray,token=globalThis.vTvAudioCapability.pageToken,id='capture-'+crypto.randomUUID();
   let closed=false,capturing=false,node,destination,metadata,sequence=0,outstanding=0,poll,configured=0,configureWait,pcmSink,streamWait,portListener;
   const inputGain=new TvInputGain();
   const metrics={dspFrames:0,dspMs:0,maxDspMs:0,pullCount:0,maxPullGapMs:0,elapsedMs:0,decodeMs:0,bridgeMs:0,renderMs:0,maxRoundtripMs:0};const submitted=new Map();let beganAt=0,lastPull=0;
-  const worker=new Worker(new URL('./tv-array-worker.js',import.meta.url));
+  const runtime=idleRuntime??loadRuntime();idleRuntime=null;
+  const {worker}=runtime;
   const fail=error=>{if(closed)return;dispose();onError(error);};
   const current=()=>!closed&&!signal?.aborted&&isCurrent();
   function dispose(){
@@ -65,7 +93,7 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
         // Native delivers only to the checked top-frame origin. The per-page
         // token and capture id reject late or unrelated channel transfers.
         globalThis.removeEventListener('message',portListener);portListener=null;
-        worker.postMessage({type:'bind-port',port:event.ports[0]},[event.ports[0]]);
+        worker.postMessage({type:'bind-port',port:event.ports[0],batchSize:3},[event.ports[0]]);
       };
       globalThis.addEventListener('message',portListener);
       if(typeof bridge.openStream!=='function'||bridge.openStream(token,id)!=='ok'){
@@ -83,15 +111,9 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
   }
   try{
     if(!current())throw fault('TV_MIC_CANCELLED','采集已结束');
-    await new Promise((resolve,reject)=>{
-      const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',aborted);};
-      const aborted=()=>{cleanup();reject(fault('TV_MIC_CANCELLED','采集已结束'));};
-      const timer=setTimeout(()=>{cleanup();reject(fault('TV_DSP_TIMEOUT','电视音频准备超时，请重试'));},8000);
-      signal?.addEventListener('abort',aborted,{once:true});
-      worker.onmessage=({data})=>{if(data.type==='ready'){cleanup();resolve();}else if(data.type==='error'){cleanup();reject(fault('TV_DSP_INIT','电视音频准备失败，请重试'));}};
-      worker.onerror=()=>{cleanup();reject(fault('TV_DSP_LOAD','电视音频加载失败，请重试'));};
-      if(signal?.aborted)aborted();
-    });
+    signal?.addEventListener('abort',runtime.cancel,{once:true});
+    if(signal?.aborted)runtime.cancel();
+    try{await runtime.ready;}finally{signal?.removeEventListener('abort',runtime.cancel);}
     if(!current())throw fault('TV_MIC_CANCELLED','采集已结束');
     worker.onmessage=({data})=>{
       if(!current())return;
@@ -99,7 +121,20 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       if(data.type==='stream-ready'){streamWait?.resolve();streamWait=null;return;}
       if(data.type==='metrics'){console.info('VTVAudio stats '+JSON.stringify(data));return;}
       if(data.type==='configured'){if(Array.isArray(data.warmup))console.info('VTVAudio stats '+JSON.stringify({warmup:data.warmup}));configured=`${data.channels}:${data.sampleRate??48000}`;configureWait?.resolve();configureWait=null;return;}
-      if(data.type==='pcm'){if(submitted.has(data.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(data.sequence)));submitted.delete(data.sequence);}metrics.renderMs=Math.round(data.renderMs??0);metrics.dspFrames++;if(Number.isFinite(data.processMs)){metrics.dspMs+=Math.round(data.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(data.processMs));}if(metadata?.version!==4)outstanding--;if(metadata?.channelLayout)inputGain.process(data.buffer);if(pcmSink)pcmSink(data.buffer);else node?.port.postMessage(data.buffer,[data.buffer]);if(metadata?.version===4)worker.postMessage({type:'consumed',sequence:data.sequence});else if(metadata?.version>=2&&outstanding<=4)schedulePull(0);}
+      if(data.type==='pcm'||data.type==='pcm-batch'){
+        const batched=data.type==='pcm-batch',frames=batched?data.frames:[data];
+        if(batched&&(metadata?.version!==4||!Array.isArray(frames)||frames.length!==3)){fail(fault('TV_MIC_FORMAT','电视收音格式异常，请重试'));return;}
+        for(const frame of frames){
+          if(submitted.has(frame.sequence)){metrics.maxRoundtripMs=Math.max(metrics.maxRoundtripMs,Math.round(performance.now()-submitted.get(frame.sequence)));submitted.delete(frame.sequence);}
+          metrics.renderMs=Math.round(frame.renderMs??0);metrics.dspFrames++;
+          if(Number.isFinite(frame.processMs)){metrics.dspMs+=Math.round(frame.processMs);metrics.maxDspMs=Math.max(metrics.maxDspMs,Math.round(frame.processMs));}
+          if(metadata?.version!==4)outstanding--;
+          if(!batched&&metadata?.channelLayout)inputGain.process(frame.buffer);
+          if(pcmSink)pcmSink(frame.buffer,frame===frames[frames.length-1]);else node?.port.postMessage(frame.buffer,[frame.buffer]);
+        }
+        if(metadata?.version===4)worker.postMessage({type:'consumed',sequence:frames[frames.length-1].sequence});
+        else if(metadata?.version>=2&&outstanding<=4)schedulePull(0);
+      }
     };
     worker.onerror=()=>fail(fault('TV_DSP_PROCESS','电视音频处理中断，请重试'));
     signal?.addEventListener('abort',dispose,{once:true});
@@ -110,8 +145,11 @@ export async function captureTvArray({context,signal,isCurrent=()=>true,onDiagno
       metadata=JSON.parse(bridge.start(token,id));
       if(metadata.error)throw fault('TV_MIC_START',metadata.error);
       if(![2,3,4].includes(metadata.version)||![16000,48000].includes(metadata.sampleRate)||![4,6].includes(metadata.channels))throw fault('TV_MIC_FORMAT','电视阵列不支持当前格式');
-      await configure(metadata.channels,metadata.sampleRate);
-      if(metadata.version===4)await openWorkerStream();
+      const format={channels:metadata.channels,sampleRate:metadata.sampleRate,channelLayout:metadata.channelLayout};
+      // The new microphone grant determines the actual hardware route on every call.
+      if(metadata.version!==4||!runtime.format||JSON.stringify(runtime.format)!==JSON.stringify(format))
+        await configure(metadata.channels,metadata.sampleRate);
+      if(metadata.version===4){await openWorkerStream();lastFormat=format;}
     }else await configure(4);
     if(!directPcm){
     const worklet=`const PcmPlaybackQueue=${PcmPlaybackQueue.toString()};\nclass ArrayInput extends AudioWorkletProcessor {constructor(){super();this.q=new PcmPlaybackQueue(sampleRate,20,24000);this.tick=0;this.peak=0;this.port.onmessage=({data})=>{try{this.q.push(new Int16Array(data));this.peak=Math.max(this.peak,this.q.frames);}catch{this.port.postMessage({type:'overflow',frames:this.q.frames,consumed:this.q.consumed,at:currentTime});}};}process(i,o){if(o[0]?.[0])this.q.render(o[0][0],currentTime);if(++this.tick%375===0){this.port.postMessage({type:'queue',frames:this.q.frames,peak:this.peak,consumed:this.q.consumed,at:currentTime,underflows:this.q.underflows});this.peak=0;}return true;}}registerProcessor('v-tv-array-input',ArrayInput);`;

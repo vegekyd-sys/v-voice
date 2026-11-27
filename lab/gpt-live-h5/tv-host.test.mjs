@@ -157,7 +157,7 @@ test('native full window changes viewport scale without changing call owner, the
   window.document.querySelector=selector=>selector==='meta[name="viewport"]'?{getAttribute:()=>content,setAttribute:(key,value)=>{content=value;}}:null;
   view.set({call:'connected'});const owner=api.snapshot;
   api.setLayout('full',owner);assert.equal(api.commitLayout('full',owner,{width:912}),true);
-  assert.equal(content,'width=1600,initial-scale=0.57,viewport-fit=cover');
+  assert.equal(content,'width=1200,initial-scale=0.76,viewport-fit=cover');
   api.setLayout('medium',owner);api.commitLayout('medium',owner,{width:420});
   assert.equal(content,'width=420,initial-scale=1,viewport-fit=cover');
   assert.equal(api.commitLayout('medium',{...owner,owner:'stale'},{width:500}),false);
@@ -219,4 +219,85 @@ test('overlay layout changes preserve call ownership and avoid blank intermediat
   assert.equal(window.document.documentElement.dataset.tvRevealed,undefined);
   api.reveal();assert.equal(window.document.documentElement.dataset.tvRevealed,'true');
   assert.deepEqual(calls,['dial']);
+});
+
+test('Back closes enlarged media before collapsing the connected overlay to the desktop',()=>{
+  const {api, view, window, calls} = fixture('?tv=1&tvShell=1&tvOverlay=1');
+  view.set({call:'connected'});
+  const owner = api.snapshot;
+  api.setLayout('full', owner);
+  let viewerOpen = true;
+  window.document.querySelector = selector => selector === '.board-viewer .board-enlarged-close' && viewerOpen
+    ? {click(){viewerOpen = false;}} : null;
+  assert.equal(api.back(), 'handled');
+  assert.equal(viewerOpen, false);
+  assert.equal(api.snapshot.layout, 'full');
+  assert.equal(api.back(), 'handled');
+  assert.equal(api.snapshot.layout, 'compact');
+  assert.equal(api.snapshot.owner, owner.owner);
+  assert.equal(api.snapshot.generation, owner.generation);
+  assert.deepEqual(calls, []);
+});
+
+test('full layout waits for the resized overlay and animates from the actual desktop portrait',()=>{
+ const {api,window}=fixture('?tv=1&tvShell=1&tvOverlay=1');
+ const compact={width:264,x:630,y:100}, full={width:920,x:0,y:0};
+ let rect={left:40,top:12,width:192}, animations=[];
+ const face={getBoundingClientRect:()=>rect,animate:frames=>{animations.push(frames);return {cancel(){}};}};
+ window.document.querySelector=selector=>selector==='.call-page .avatar'?face:null;
+ window.innerWidth=1200;window.requestAnimationFrame=fn=>fn();
+ api.commitLayout('medium',undefined,compact);api.setLayout('full');
+ assert.equal(window.document.documentElement.dataset.tvLayout,'medium');
+ assert.equal(api.commitLayout('full',undefined,compact),false);
+ rect={left:100,top:90,width:320};
+ api.commitLayout('full',undefined,full);api.commitLayout('full',undefined,full);
+ assert.equal(window.document.documentElement.dataset.tvLayout,'full');
+ assert.equal(animations.length,1);assert.match(animations[0][0].transform,/translate/);
+});
+
+test('first expansion retains the decoded portrait until the fullscreen viewport settles',async()=>{
+ const {api,window}=fixture('?tv=1&tvShell=1&tvOverlay=1');
+ const {document}=window,jobs=[];
+ let rect={left:40,top:12,width:192},finish,removed=false,frames;
+ const face={getBoundingClientRect:()=>rect,animate(){throw Error('the destination must stay hidden');}};
+ const ghost={style:{},setAttribute(){},getContext:()=>({drawImage(){}}),remove(){removed=true;},
+   animate(value){frames=value;return {cancel(){},finished:new Promise(resolve=>{finish=resolve;})};}};
+ document.querySelector=selector=>selector==='.call-page .avatar'?face:null;
+ document.getElementById=()=>({naturalWidth:300});
+ document.createElement=()=>ghost;document.body={appendChild(){}};
+ window.requestAnimationFrame=fn=>jobs.push(fn);window.innerWidth=264;
+ api.commitLayout('medium',undefined,{x:620,y:100,width:264});
+ api.setLayout('full');
+ assert.equal(document.documentElement.dataset.tvEntering,'true');
+ assert.equal(ghost.style.left,'40px');
+ assert.equal(api.commitLayout('full',undefined,{x:620,y:100,width:264}),false);
+ api.commitLayout('full',undefined,{x:0,y:0,width:900});
+ rect={left:100,top:80,width:320};
+ for(let i=0;i<4;i++)jobs.shift()();
+ assert.equal(frames,undefined);
+ window.innerWidth=1200;
+ while(jobs.length)jobs.shift()();
+ assert.equal(ghost.style.left,'880px');assert.equal(ghost.style.width,'256px');
+ assert.deepEqual(frames.map(frame=>frame.transform),['none','translate3d(-780px,'+(80-112*(1200/900))+'px,0) scale(1.25)']);
+ finish();await Promise.resolve();assert(removed);assert.equal(document.documentElement.dataset.tvEntering,undefined);
+});
+
+test('going idle on a lesson keeps the full window until the portrait reaches Home',async()=>{
+ const {api,window,view}=fixture('?tv=1&tvShell=1&tvOverlay=1');
+ const {document}=window, jobs=[];let arrived,removed=false;
+ const face={getBoundingClientRect:()=>({left:625,top:93,width:74,height:74})};
+ document.querySelector=s=>s==='.call-page .avatar'?face:null;
+ document.getElementById=()=>({animate(){}});
+ const ghost={style:{},setAttribute(){},getContext:()=>({drawImage(){}}),remove(){removed=true;},
+   animate:frames=>{assert.match(frames[1].transform,/translate3d/);return {finished:new Promise(resolve=>{arrived=resolve;})};}};
+ document.createElement=()=>ghost;document.body={appendChild(){}};
+ window.innerWidth=1200;window.requestAnimationFrame=fn=>jobs.push(fn);window.setTimeout=()=>{};
+ api.commitLayout('medium',undefined,{x:630,y:100,width:264});
+ api.setLayout('full');api.commitLayout('full',undefined,{x:0,y:0,width:920});
+ view.set({call:'connected'});api.landPortrait();view.set({call:'idle'});api.setLayout('compact');
+ assert.equal(api.snapshot.layout,'full');assert.equal(api.snapshot.landing,true);
+ while(jobs.length)jobs.shift()();
+ arrived();await Promise.resolve();
+ assert.equal(api.snapshot.layout,'compact');assert.equal(api.snapshot.landing,false);
+ api.commitLayout('compact',undefined,{x:630,y:100,width:264});assert.equal(removed,true);
 });

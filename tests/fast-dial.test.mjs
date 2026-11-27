@@ -18,7 +18,7 @@ async function fixture(t,options={}){
  const bridge=createLiveH5Server({basePath:'/voice',publicOrigin:origin,accessToken:'legacy'.repeat(8),conversationEntries:entries,phoneInputPolicy:'native',speakerRouting:{close(){},dispose(){},snapshot:()=>({})},directVoice:direct,avatarEvaluate:null,
   gateway:{ready:true,request:async(method,args)=>{calls.push([method,args]);if(method==='sessions.describe'){await options.describe?.();return {session:options.missing?null:{key:args.key,agentId:'makaron'}};}return {};}}});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
- const request=(entry,route,cookie,body)=>new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:'/voice/api/'+route+'?phone='+entry.id,method:body?'POST':'GET',headers:{host:new URL(origin).host,origin,...cookie?{cookie}:{},'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);});
+ const request=(entry,route,cookie,body)=>new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port:bridge.server.address().port,path:'/voice/api/'+route+(entry?'?phone='+entry.id:''),method:body?'POST':'GET',headers:{host:new URL(origin).host,origin,...cookie?{cookie}:{},'content-type':'application/json'}},res=>resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers:res.headers})));req.on('error',reject);req.end(body?JSON.stringify(body):undefined);});
  const login=async entry=>(await request(entry,'access','',{access:entry.accessToken})).headers.get('set-cookie').split(';')[0];
  const connect=(entry,cookie,extra='',headers={})=>{
   const ws=new WebSocket(`ws://127.0.0.1:${bridge.server.address().port}/voice/api/dial?phone=${entry.id}&model=${options.model??'seeduplex'}&dialVersion=${options.web?'2':'1&nativeRuntimeVersion=1'}${extra}`,{headers:{host:new URL(origin).host,origin,cookie,...headers},handshakeTimeout:2000});
@@ -111,4 +111,31 @@ test('an old Grok fast-dial preference cannot allocate or close a call in the or
  const result=await f.connect(entries[0],cookie).done;
  assert.equal(result.messages[0].type,'dial.error');assert.equal(result.messages[0].status,409);
  assert.equal(f.calls.length,0);assert.equal(f.sessions.size,0);
+});
+
+
+test('TV standby holds only a transport until one authenticated dial',async t=>{
+ const f=await fixture(t);
+ const cookie=(await f.request(null,'access','',{access:'legacy'.repeat(8)})).headers.get('set-cookie').split(';')[0];
+ const url=`ws://127.0.0.1:${f.bridge.server.address().port}/voice/api/dial-standby`;
+ const open=async()=>{
+  const ws=new WebSocket(url,{headers:{host:new URL(origin).host,origin,cookie}});
+  t.after(()=>ws.terminate());
+  await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
+  return ws;
+ };
+ const abandoned=await open();
+ abandoned.close();await new Promise(resolve=>abandoned.once('close',resolve));
+ assert.equal(f.calls.length,0);
+ const other=await open();other.send('dialVersion=2&model=seeduplex&phone=other');
+ await new Promise(resolve=>other.once('close',resolve));
+ assert.equal(f.calls.length,0);
+ const ws=await open();
+ assert.equal(f.sessions.size,0);assert.equal(f.calls.length,0);
+ const result=createDialConnection({url:new URL('https://voice.example.com/voice/api/dial?model=seeduplex&dialVersion=2&greeting=1'),standby:ws});
+ const reservation=await result.reservation;
+ assert.equal(reservation.transport,'gateway-relay');
+ assert.equal(f.calls.filter(c=>c[0]==='reserve').length,1);
+ assert.equal(f.calls.filter(c=>c[0]==='attach').length,1);
+ result.dispose();
 });

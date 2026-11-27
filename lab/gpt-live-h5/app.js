@@ -1,7 +1,7 @@
 import {createImprovPlayer} from "./improv-player.mjs";
 import {phoneModelOptions} from "./model-options.mjs";
 import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
-import {captureTvArray,hasTvArrayCapture,tvArraySupportsModel} from "./tv-array-capture.mjs";
+import {captureTvArray,hasTvArrayCapture,warmTvAudio,tvArraySupportsModel} from "./tv-array-capture.mjs";
 import {createFeishuConfirmation} from "./feishu-confirmation-client.mjs";
 import {browserDeviceActions,createBrowserDeviceAdapter} from "./device-location.mjs";
 import { createCallerContext } from "./caller-context.mjs";
@@ -31,12 +31,13 @@ const $ = (id) => document.getElementById(id);
 // app.js is the call engine; everything the page shows is written to this view
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
-const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
+const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),primeDial:primeTvDial,dialFromHome:id=>startCall({homeRequest:id}),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
+if(tvHost)warmTvAudio();
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
   // With the call board on, a delivered document stays a card in the
   // conversation: the reader would cover the picture V is talking over.
-  if (contentView) contentView.render(target, item, { auto: item.document === true && !call?.board && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost });
+  if (contentView) contentView.render(target, item, { auto: item.document === true && !call?.board && (!tvHost || view.get().tvLayout==='full'), inline: !tvHost || view.get().tvLayout === 'full' });
   else renderMarkdown(target, item.text, document);
 };
 if (document.querySelector) mountCallUi(document, view, {
@@ -92,7 +93,54 @@ let boardAvailable = false, improvAvailable = false;
 let entryError = null;
 let callerEntry = "tianyi";
 let preferredPhoneInputPolicy = null;
-let webDialVersion = null;
+let webDialVersion = null, dialGreeting = false, standbyEnabled = false;
+let standbySocket, standbyRetry, desktopRequest, desktopDeviceActions, expiredDesktopId;
+const standbyStats={opens:0,closes:0,lastCode:0,prime:false};
+function dialEndpoint(params,resumed,greeting){
+      const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
+      endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:params.model,dialVersion:'2',...(greeting?{greeting:'1'}:{}),...(params.improvLive?{improvLive:'1'}:{}),...(resumed?{resumed:JSON.stringify(resumed)}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:JSON.stringify(params.nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
+      return endpoint;
+}
+function discardDesktopRequest(){
+  if(!desktopRequest)return;
+  clearTimeout(desktopRequest.timeout);
+  desktopRequest.connection.dispose();
+  desktopRequest=null;
+}
+function primeTvDial(id){
+  if(desktopRequest)return desktopRequest.id===id;
+  const state=view.get();
+  if(!liveReady||call||starting||state.confirmation||state.confirmOnDial||standbySocket?.readyState!==1||
+      !desktopDeviceActions||state.model!=='seeduplex'||webDialVersion!==2)return false;
+  // The permission-checked Home click owns this dial. Only the socket starts
+  // here. Recording and playback still belong to the foreground service.
+  const params={model:state.model,voice:state.doubao.voice,nativeDeviceActions:desktopDeviceActions};
+  standbyStats.prime=true;
+  const connection=createDialConnection({url:dialEndpoint(params,null,dialGreeting),standby:takeTvTransport()});
+  desktopRequest={id,connection,timeout:setTimeout(()=>{expiredDesktopId=id;discardDesktopRequest();},8000)};
+  return true;
+}
+function warmTvTransport(){
+  if(!standbyEnabled||standbySocket||phoneEntry||location.protocol!=='https:')return;
+  clearTimeout(standbyRetry);
+  const url=new URL('./api/dial-standby',document.baseURI);
+  url.protocol='wss:';
+  const socket=standbySocket=new WebSocket(url);
+  socket.onopen=()=>{standbyStats.opens++;};
+  socket.onclose=event=>{
+    if(standbySocket!==socket)return;
+    standbyStats.closes++;standbyStats.lastCode=event.code;standbySocket=null;
+    standbyRetry=setTimeout(warmTvTransport,Math.min(60000,4000*2**Math.min(4,standbyStats.closes-1)));
+  };
+}
+function takeTvTransport(){
+  clearTimeout(standbyRetry);
+  const socket=standbySocket;
+  standbySocket=null;
+  if(socket?.readyState===1)return socket;
+  socket?.close();
+}
+window.addEventListener('pagehide',()=>{standbyEnabled=false;discardDesktopRequest();clearTimeout(standbyRetry);takeTvTransport()?.close();});
 const speakerCandidate=()=>document.body?.dataset?.speakerRouting==='true';
 function speakerEvent(value){
   if(!speakerCandidate())return;
@@ -182,7 +230,7 @@ async function greetWhenReady(active) {
   if(active.fixture||active.speakerGate||active.callerContext?.pending)return;
   if (call !== active || active.greetingPending || active.greetingRequested || active.greetingSuppressed
     || active.greetingExpired || active.ending
-    || active.pc.connectionState !== "connected" || active.context?.state !== "running"
+    || active.pc?.connectionState !== "connected" || active.context?.state !== "running"
     || $("remoteAudio").paused || active.playbackNeedsGesture) return;
   // WebRTC may be connected before the backend's native sideband sees
   // session.started. Bound elapsed readiness time, not a handful of retries.
@@ -657,6 +705,7 @@ function providerMessage(event) {
 }
 async function stopCall({failure}={}) {
   const active = call; call = null;
+  if (active && !failure && tvHost) {tvHost.landPortrait?.();warmTvAudio();warmTvTransport();}
   if (starting === active) starting = null;
   if (active) {
     active.improv?.finish('call');
@@ -725,6 +774,7 @@ async function redialLostCall(active, failure, closed = {}) {
 }
 async function startCall(options = {}) {
   if (starting || call || view.get().confirmation) return;
+  if(options.homeRequest&&options.homeRequest===expiredDesktopId){setStatus('拨号已超时，请重新拨号。',{tone:'error'});return;}
   if (view.get().confirmOnDial) { await confirmation.start(); return; }
   if(tvHost&&hasTvArrayCapture()&&!tvArraySupportsModel(view.get().model)){setStatus("当前电视阵列输入支持豆包和 Grok，请选择豆包。",{tone:"error"});return;}
   if (!liveReady) { setStatus(entryError ?? "当前页面仅作预览，真实通话还未连接 VLab 候选服务。"); return; }
@@ -734,8 +784,14 @@ async function startCall(options = {}) {
   view.set(state => ({ dial: { ...state.dial, disabled: true }, stopLabel: "取消拨号", badge: "连接中", modelDisabled: true }));
   setCallState("dialing"); setStatus(options.resumed ? "连接断了一下，正在接回…" : "正在连接 V…");
   resetTranscript();view.set({failureCode:null});
-  const active = { pc: new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
   const chosenModel = view.get().model;
+  const active = { pc:tvHost&&tvArraySupportsModel(chosenModel)?null:new RTCPeerConnection(), captureAbort: new AbortController(), dialStartedAt:performance.now() }; call = active; starting = active;
+  if(tvHost)console.info('VTVAudio stats '+JSON.stringify({standby:standbyStats,transportState:standbySocket?.readyState??null,claimed:desktopRequest?.id===options.homeRequest}));
+  if(desktopRequest&&desktopRequest.id===options.homeRequest){
+    clearTimeout(desktopRequest.timeout);
+    active.dialConnection=desktopRequest.connection;
+    desktopRequest=null;
+  }
   if (speakerCandidate()||['seeduplex','grok','gpt-live-11'].includes(chosenModel)) {
     // Create/resume in the dial gesture, before microphone and network awaits.
     active.context = options.context ?? new AudioContext({latencyHint:"interactive"});
@@ -797,14 +853,15 @@ async function startCall(options = {}) {
     const withCapture=async pending=>captureReady?(await Promise.all([pending,captureReady]))[0]:pending;
     const selectedModel = ['seeduplex','grok','gpt-live-11'].includes(chosenModel)?chosenModel:'gpt-live';
     const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
-    const nativeDeviceActions=await browserDeviceActions();
+    const nativeDeviceActions=active.dialConnection?desktopDeviceActions:await browserDeviceActions();
     const improvLive = improvAvailable && selectedModel !== 'gpt-live';
     const params={model:selectedModel,...(improvLive?{improvLive:true}:{}),nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:selectedModel==='seeduplex'&&view.get().doubao.voice?{voice:view.get().doubao.voice}:{})};
     let reservation;
-    if(webDialVersion===2&&phoneEntry&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
-      const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-      endpoint.search=new URLSearchParams({phone:phoneEntry,model:selectedModel,dialVersion:'2',...(improvLive?{improvLive:'1'}:{}),...(options.resumed?{resumed:JSON.stringify(options.resumed)}:{}),...(nativeDeviceActions?{nativeDeviceActions:JSON.stringify(nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
-      active.dialConnection=createDialConnection({url:endpoint,signal:active.captureAbort.signal});
+    if(webDialVersion===2&&(phoneEntry||tvHost&&location.protocol==='https:')&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
+      if(!active.dialConnection){
+        const endpoint=dialEndpoint(params,options.resumed,tvHost&&dialGreeting&&!fixtureId);
+        active.dialConnection=createDialConnection({url:endpoint,standby:standbyEnabled?takeTvTransport():null,signal:active.captureAbort.signal});
+      }
       reservation=await withCapture(active.dialConnection.reservation);
     }else reservation=await withCapture(api('session',options.resumed?{...params,resumed:options.resumed}:params));
     active.provider=reservation.provider;
@@ -969,6 +1026,7 @@ async function startCall(options = {}) {
     }
     if(reservation.speakerRouting){active.speakerGate=await createSpeakerGate({context:active.context,stream:active.stream,reservation:reservation.speakerRouting,channel:()=>active.channel,isCurrent:()=>call===active,onEvent:speakerEvent});}
     const outgoing=active.speakerGate?.stream??active.stream;
+    active.pc??=new RTCPeerConnection();
     for (const track of outgoing.getAudioTracks()) active.pc.addTrack(track, outgoing);
     active.channel = active.pc.createDataChannel("oai-events"); active.channel.onmessage = (event) => { if (call === active) providerMessage(event); };
     active.callerContext=createCallerContext({context:reservation.callerContext,voiceSessionId:active.voiceSessionId,channel:active.channel,tracks:outgoing.getAudioTracks(),isCurrent:()=>call===active,
@@ -1175,10 +1233,13 @@ function applyEntryStatus(status) {
     view.set({returnToAccountHref:status.returnToAccountHref??null});
     preferredPhoneInputPolicy = status.phoneInputPolicy;
     webDialVersion = status.webDialVersion;
+    dialGreeting = status.dialGreeting===true;
+    standbyEnabled=Boolean(tvHost&&window.VTVArray&&status.tvDialStandby);
+    if(standbyEnabled){void browserDeviceActions().then(value=>{desktopDeviceActions=value;});warmTvTransport();}
     liveReady = status.ready === true;
     improvAvailable = status.improvLive === true && !tvHost && typeof RTCPeerConnection === 'function';
     view.set({referenceUpload:status.referenceUpload === true && !tvHost});
-    boardAvailable = status.board === true && !tvHost;
+    boardAvailable = status.board === true;
     const phoneOptions = phoneModelOptions(status, view.get().model);
     const models = phoneOptions.models.map(choice => ({...choice, available:choice.available&&(!tvHost||!hasTvArrayCapture()||tvArraySupportsModel(choice.id))}));
     const model = tvHost ? tvDefaultModel(models).model : phoneOptions.model;

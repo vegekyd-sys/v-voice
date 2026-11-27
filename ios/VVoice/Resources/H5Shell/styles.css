@@ -1207,7 +1207,10 @@ html[data-tv="true"] #app{transition:opacity .16s ease}
 html[data-tv-transition="true"] #app{opacity:0}
 html[data-tv="true"] .settings-trigger{display:none}
 html[data-tv="true"][data-tv-layout="full"] .call-page:is([data-call="connected"],[data-call="ending"]){padding-top:64px}
-.tv-return{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:6px;border:0;background:#ebe6efb3;color:#796c87;border-radius:24px;padding:9px 16px;font:inherit;font-size:13px;cursor:pointer}
+.tv-return{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:6px;border:0;border-radius:22px;padding:8px 18px;background:#f4eef6;color:#584660;font:inherit;font-size:18px;cursor:pointer}
+.tv-board-pages{display:flex;gap:8px}
+.tv-board-pages button{border:0;border-radius:16px;background:#f1eaf6;color:#594761;font:inherit;padding:6px 14px;white-space:nowrap}
+html[data-tv-layout="full"] .chat-panel .turns .turn-text{font-size:21px}
 .tv-return svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none}
 html[data-tv="true"] :is(button,a[href],input,select,textarea,[tabindex]):focus-visible{outline:2px solid #b9cddd;outline-offset:4px}
 :root[data-tv="true"] #readerBack,:root[data-tv="true"] #readerDownload{border-radius:14px}
@@ -2314,6 +2317,11 @@ video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 /* The large picture of a list is larger on a wide panel. */
 .board-body[data-lay] :is(.board-list, .board-steps) { --open: 320px; }
 
+/* Keep small print legible on the software-rendered TV WebView. */
+html[data-tv-layout="full"] .board-block{transform:none;animation:none}
+html[data-tv-layout="full"] .board-item .board-key{font-size:25px}
+html[data-tv-layout="full"] .board-item > span{font-size:20px}
+html[data-tv-layout="full"] .board{mask-image:none;-webkit-mask-image:none}
 /* The live picture sits where a made picture sits: the page's own body, centred. */
 .board-live-media { justify-items: center; }
 .improv-stage { gap: 10px; }
@@ -2336,3 +2344,11 @@ video.board-work-print[data-loaded] { animation: board-in .7s ease-out both; }
 .improv-rec time { font-variant-numeric: tabular-nums; }
 @keyframes improv-rec { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .improv-rec i { animation: none; } }
+
+/* Home already enlarges the portrait during dialing. Its first WebView frame is at that final size. */
+html[data-tv-overlay="true"][data-tv-layout="medium"]:not([data-tv-revealed="true"]) .call-page .avatar{transform:none;transition:none!important}
+.tv-landing-portrait{will-change:transform;position:fixed;z-index:100;object-fit:cover;border-radius:50%;transform-origin:0 0;pointer-events:none}
+html[data-tv-landing],html[data-tv-landing] body{background:transparent!important}
+html[data-tv-landing] #app{opacity:0;pointer-events:none}
+
+html[data-tv-entering="true"] .call-page .avatar{visibility:hidden!important}

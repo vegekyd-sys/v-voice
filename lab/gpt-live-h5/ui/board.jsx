@@ -786,7 +786,13 @@ function useFit(scroller, page, key) {
   useLayoutEffect(() => {
     const outer = scroller.current, inner = page.current;
     if (!outer || !inner) return;
+    // Measuring at zoom 1 and fitting again forces layout. Remember the fitted
+    // geometry so the observer notification from our own resize does not refit it.
+    let fitted;
+    const geometry = () => [outer.clientWidth, outer.clientHeight,
+      ...Array.from(inner.children, child => child.offsetWidth + 'x' + child.offsetHeight)].join('/');
     const fit = () => {
+      if (fitted === geometry()) return;
       const wide = outer.clientWidth >= 640, least = wide ? .62 : .78, edge = getComputedStyle(outer), room = outer.clientHeight - (parseFloat(edge.paddingTop) || 0) - (parseFloat(edge.paddingBottom) || 0);
       let zoom = 1;
       // How a page with a canvas is laid out, by the panel's own shape (not the window's: on a desktop the
@@ -809,6 +815,7 @@ function useFit(scroller, page, key) {
         zoom = Math.max(least, zoom * Math.max(.72, Math.sqrt(room / height) * .99));
         inner.style.zoom = String(zoom); inner.style.setProperty('--zoom', String(zoom));
       }
+      fitted = geometry();
     };
     fit();
     if (typeof ResizeObserver !== 'function') return;
@@ -820,8 +827,22 @@ function useFit(scroller, page, key) {
     const observer = new ResizeObserver(later);
     observer.observe(outer);
     for (const child of inner.children) observer.observe(child);
-    return () => { observer.disconnect(); if (frame) cancelAnimationFrame(frame); };
-  });
+    // An incremental board can add or replace pieces while the call is running.
+    // Keep listening to those pieces without reinstalling on every speech update.
+    let pieces;
+    if (typeof MutationObserver === 'function') {
+      pieces = new MutationObserver(records => {
+        for (const record of records) {
+          for (const node of record.removedNodes) if (node.nodeType === 1) observer.unobserve(node);
+          for (const node of record.addedNodes) if (node.nodeType === 1) observer.observe(node);
+        }
+        fitted = null;
+        later();
+      });
+      pieces.observe(inner, {childList:true});
+    }
+    return () => { pieces?.disconnect(); observer.disconnect(); if (frame) cancelAnimationFrame(frame); };
+  }, [scroller, page, key, dense.key, dense.on]);
   return dense.key === key && dense.on;
 }
 
@@ -956,7 +977,7 @@ function Recorded({clip, save}) {
     {clip.caption && <p className="improv-cue">{clip.caption}</p>}
   </figure></div></div>;
 }
-function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
+function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canvas, spoken, caption = '', loadPhoto, onClose, onReport = null, works = null}) {
   const pages = canvas?.zones?.length ? canvas.zones.map(zone => zone.serial === scene.serial ? scene : zone) : [scene];
   if (liveId || recordings.length) {
     if (pages.length === 1 && !scene.title && !scene.blocks.length) pages.pop();
@@ -1022,6 +1043,10 @@ function Canvas({scene, recordings = [], liveMedia, liveId, liveFocus, canvas, s
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
         {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
+        {tv && pages.length > 1 && <div className="tv-board-pages" aria-label="讲解翻页">
+          {[-1, 1].map(step => <button key={step} type="button" disabled={!pages[inView + step]}
+            onClick={() => track.current?.scrollTo({left: track.current.clientWidth * (inView + step)})}>{step < 0 ? '上一页' : '下一页'}</button>)}
+        </div>}
         {onReport && !page.clip && page.serial !== liveId && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>

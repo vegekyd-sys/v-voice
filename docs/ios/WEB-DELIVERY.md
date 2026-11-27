@@ -24,7 +24,7 @@ V Voice 当前的 `CallCoordinator` / `VoiceAudio` 和 AudioRecordingIntent / Li
 ## 一次壳升级后的日常流程
 
 1. 修改拥有源 `lab/gpt-live-h5`（DOM/CSS、React UI、阅读器、Markdown、Reaction）；如果交互编排位于 web 专用 `app.js`，同时在 `ios/H5/native-h5.mjs` 使用现有 bridge 动作适配，不能假设浏览器音频逻辑也能直接进入原生。
-2. `npm run build:ui` 会生成 React bundle，并同步包内 fallback 与 `lab/gpt-live-h5/ios-shell-release.json`。只改非 React H5 资源可运行 `npm run build:ios-shell`。这两步不编译 Swift、不生成/安装 binary。
+2. `npm run build:ui` 会构建共享 React 界面、网页与电视入口，并同步包内 fallback 与 `lab/gpt-live-h5/ios-shell-release.json`。只改非 React H5 资源可运行 `npm run build:ios-shell`。这两步不编译 Swift、不生成/安装 binary。
 3. 运行 `npm run check:ios-shell`、相关网页测试与隔离 WK 验证；CI 的 freshness test 会阻止网页与 iOS 界面包漂移。提交生成物和变更，经 PR 合入 main。
 4. 实际发布前按仓库规则更新首页 `changelog.mjs`、CHANGELOG 和版本登记，再重新生成资源包。只记录当次真实交付内容。本次正式发布已包含首页更新条目，真人语音异常单独记录。
 5. 从通过检查的 main 运行 `npm run package -- <artifact-directory>`。发布 artifact 明确携带 `ios-shell-release.json`，由现有 Voice 静态服务使用 `no-store` 返回；生产不需要 Xcode 或编译器。沿用现有 Voice 发布、等通话结束、校验原服务、保留回滚产物的流程，不重启 Gateway。

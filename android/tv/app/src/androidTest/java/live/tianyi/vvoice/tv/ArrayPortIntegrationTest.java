@@ -34,7 +34,7 @@ public class ArrayPortIntegrationTest {
                 if(!this.token.equals(token))throw new IllegalStateException();this.id=id;stopped=false;
                 // Placeholder owns a valid lifecycle but is never startRecording'ed.
                 AudioRecord record=new AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION).setAudioFormat(new AudioFormat.Builder().setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_IN_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build()).setBufferSizeInBytes(6400).build();
-                field("record").set(capture,record);field("captureId").set(capture,id);
+                field("captureChannels").setInt(capture,4);field("record").set(capture,record);field("captureId").set(capture,id);
                 return "{\"version\":"+version+",\"sampleRate\":16000,\"channels\":4,\"source\":\"instrumented-synthetic\",\"channelLayout\":{\"version\":1,\"microphones\":[0,1],\"references\":[2,3]}}";
             }catch(Exception e){return "{\"error\":\"test source preparation failed\"}";}
         }
@@ -48,12 +48,11 @@ public class ArrayPortIntegrationTest {
             if(stopped)return;
             synchronized(capture){try{
                 if(stopped)return;
-                @SuppressWarnings("unchecked") ArrayDeque<String> queue=(ArrayDeque<String>)field("frames").get(capture);
-                peak=Math.max(peak,queue.size()+1);
-                if(queue.size()>=25){field("captureError").set(capture,"TV_MIC_BACKPRESSURE");Method m=TvArrayCapture.class.getDeclaredMethod("notifyPortError");m.setAccessible(true);m.invoke(capture);timer.shutdown();return;}
+                CaptureQueue queue=(CaptureQueue)field("frames").get(capture);
                 byte[] bytes=new byte[2560];int sequence=++produced;
                 for(int i=0;i<320;i++){short sample=(short)(Math.sin((sequence*320+i)*2*Math.PI*230/16000)*1200);for(int c=0;c<2;c++){int offset=(i*4+c)*2;bytes[offset]=(byte)sample;bytes[offset+1]=(byte)(sample>>8);}}
-                queue.add("{\"sequence\":"+sequence+",\"channels\":4,\"pcm\":\""+Base64.encodeToString(bytes,Base64.NO_WRAP)+"\"}");
+                queue.add(Base64.encodeToString(bytes,Base64.NO_WRAP));
+                peak=Math.max(peak,queue.size());
                 if(version==4){Method m=TvArrayCapture.class.getDeclaredMethod("pumpPort",AudioRecord.class);m.setAccessible(true);m.invoke(capture,field("record").get(capture));}
             }catch(Exception e){result="native producer: "+e;done.countDown();}}
         }

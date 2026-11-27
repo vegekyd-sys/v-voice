@@ -7,7 +7,7 @@ test('TV bundle matches shared sources and preserves the single entry startup ow
  assert.ok(Buffer.from(built).equals(committed),'Run node scripts/build-tv-entry.mjs');
  assert.ok(Buffer.from(await buildTvStartup()).equals(await readFile(TV_STARTUP_BUNDLE)));
  const text=committed.toString();
- assert.match(text,/from[ ]*"\.\/tv-startup\.bundle\.mjs"/);
+ assert.match(text,/from[ ]*"\.\/tv-startup\.bundle\.mjs\?v=[a-f0-9]{64}"/);
  assert.match(text,/const PcmPlaybackQueue=/,'Generated speaker worklet binds bundled class expressions');
  assert.match(text,/new URL\("\.\/tv-array-worker.js",import.meta.url\)/,'Worker stays relative to the same served directory');
 });

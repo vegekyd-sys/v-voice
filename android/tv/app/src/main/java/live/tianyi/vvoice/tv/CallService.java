@@ -18,17 +18,19 @@ import android.os.Handler;
 import android.view.*;
 import android.webkit.*;
 import org.json.*;
-import java.nio.file.Files;
-import java.io.File;
 
 /** Window, input and lifecycle adapter. Every visible call control lives in shared H5. */
 public final class CallService extends Service {
     private static CallService current;
     private static boolean entryVisible;
     static void entryStarted(){entryVisible=true;if(current!=null&&current.attached){current.windows.removeView(current.surface);current.attached=false;}}
-    static void entryFinished(){entryVisible=false;if(current!=null)current.handler.postDelayed(()->{if(current!=null&&!entryVisible)current.resize(current.mode);},250);}
+    static void entryFinished(){entryVisible=false;if(current!=null)current.handler.postDelayed(()->{if(current!=null&&!current.standby&&!entryVisible)current.resize(current.mode);},current.adopted?0:250);}
     private WindowManager windows;
     private WindowManager.LayoutParams window;
+    private boolean standby, configChanged;
+    private final Runnable expireStandby=()->{if(standby)stopSelf();};
+    static boolean running(){return current!=null;}
+    static void configChanging(){new Handler(android.os.Looper.getMainLooper()).post(DesktopPage::discard);CallService s=current;if(s!=null)s.handler.post(()->{s.configChanged=true;if(s.standby)s.stopSelf();});}
     private boolean attached,interactive=true,hadCall,closing,startupCueFinished;
     private String lastCall="idle";
     private long idleSince;
@@ -37,13 +39,15 @@ public final class CallService extends Service {
     private final String launcherPackage="live.tianyi.familytv.dev";
     private final Handler handler=new Handler();
     private WebView web;
+    private PortraitFlight flight;
+    private boolean adopted;
     private android.widget.FrameLayout surface;
     private TvArrayCapture arrayCapture;
     private boolean visible,personal,surfaceAnnounced,visualPending,hostPresented,audioPageProvisioned,nativeMicReady,nativeFocusPending,pageFocusReady;
     private String personalUrl,projectionOwner,mode="medium";
     private long generation=-1,revision=-1,pageVersion;
     private String pendingLaunch;
-    private static final String START_CALL="live.tianyi.vvoice.tv.action.START_CALL";
+    static final String START_CALL="live.tianyi.vvoice.tv.action.START_CALL";
     private final String local="http://127.0.0.1:26326/?tv=1&tvShell=1&tvSurface=1&tvOverlay=1";
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
@@ -61,30 +65,21 @@ public final class CallService extends Service {
         };
         surface.setBackgroundColor(Color.TRANSPARENT);surface.setDefaultFocusHighlightEnabled(false);
         surface.setFocusableInTouchMode(true);
-        web=new WebView(this){
-            @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){super.onSizeChanged(w,h,oldw,oldh);post(()->acknowledgeLayout());}
-        };
+        personalUrl=DesktopPage.configured(this);
+        personal=personalUrl!=null;
+        DesktopPage.Page page=DesktopPage.take(personalUrl);
+        boolean preloaded=adopted=page!=null;
+        if(!preloaded)page=new DesktopPage.Page(this,personalUrl);
+        flight=page.flight=new PortraitFlight(windows,page);
+        page.resized=this::acknowledgeLayout;
+        page.finishCue=this::finishStartupCue;
+        web=page;arrayCapture=page.capture;
         surface.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));
-        web.addJavascriptInterface(new Object(){
-            @JavascriptInterface public void finish(){handler.post(()->finishStartupCue());}
-        },"VTVStartupCue");
-        arrayCapture=new TvArrayCapture(this,web);
-        web.addJavascriptInterface(arrayCapture,"VTVArray");
-        // This TV's WebView hardware layer becomes transparent after protected
-        // Settings windows. Rasterize the small companion view in software; the
-        // shared page and its worker/audio session remain unchanged.
-        web.setLayerType(View.LAYER_TYPE_SOFTWARE,null);
         web.setAlpha(0);web.setBackgroundColor(Color.TRANSPARENT);web.setFocusable(false);web.setDefaultFocusHighlightEnabled(false);
         web.setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,android.graphics.Outline outline){outline.setRoundRect(0,0,v.getWidth(),v.getHeight(),dp(28));}});
         web.setClipToOutline(true);
         arrayCapture.foreground(true);
         web.setSystemUiVisibility(5894);
-        WebSettings s=web.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(true);
-        s.setSupportZoom(false);s.setTextZoom(100);s.setUseWideViewPort(true);
-        // The trusted native home entry supplies the explicit gesture across navigation.
-        s.setMediaPlaybackRequiresUserGesture(false);s.setAllowFileAccess(false);s.setAllowContentAccess(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean onRenderProcessGone(WebView view,RenderProcessGoneDetail detail){stopSelf();return true;}
             @Override public void onPageStarted(WebView w,String u,android.graphics.Bitmap icon){arrayCapture.invalidate();surfaceAnnounced=false;visualPending=false;hostPresented=false;nativeFocusPending=false;pageFocusReady=false;pageVersion++;audioPageProvisioned=false;nativeMicReady=false;web.setAlpha(0);web.setFocusable(false);surface.requestFocus();web.setBackgroundColor(Color.TRANSPARENT);}
@@ -124,26 +119,22 @@ public final class CallService extends Service {
                 else p.deny();
             });}
         });
-        try{
-            JSONObject c=new JSONObject(new String(Files.readAllBytes(new File(getFilesDir(),"entry.json").toPath()),java.nio.charset.StandardCharsets.UTF_8));
-            String p=c.optString("personalUrl");
-            if(EntryPolicy.trusted(p)&&p.startsWith("https://"))personalUrl=android.net.Uri.parse(p).buildUpon().appendQueryParameter("tv","1").appendQueryParameter("tvShell","1").appendQueryParameter("tvSurface","1").appendQueryParameter("tvOverlay","1").build().toString();
-        }catch(Exception ignored){}
         resize("medium");
-        web.loadUrl(local);
+        if(preloaded)prepareAudioPage(web.getUrl());
+        else web.loadUrl(personal?personalUrl:local);
         IntentFilter filter=new IntentFilter(Intent.ACTION_SCREEN_OFF);filter.addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
         registerReceiver(systemEvents,filter,Context.RECEIVER_NOT_EXPORTED);
         IntentFilter query=new IntentFilter("live.tianyi.vvoice.tv.QUERY_SURFACE");
         registerReceiver(surfaceQuery,query,"live.tianyi.familytv.permission.VOICE_SURFACE",null,Context.RECEIVER_EXPORTED);
         handler.post(poll);
-        handler.postDelayed(()->{if(!surfaceAnnounced){getSharedPreferences("diagnostics",0).edit().putString("failure_code","TV_SURFACE_TIMEOUT").apply();android.widget.Toast.makeText(this,"V 暂时连接不上，请稍后重试",android.widget.Toast.LENGTH_LONG).show();stopSelf();}},30000);
+        handler.postDelayed(()->{if(!standby&&!surfaceAnnounced){getSharedPreferences("diagnostics",0).edit().putString("failure_code","TV_SURFACE_TIMEOUT").apply();android.widget.Toast.makeText(this,"V 暂时连接不上，请稍后重试",android.widget.Toast.LENGTH_LONG).show();stopSelf();}},30000);
     }
     private void prepareAudioPage(String url){
         if(audioPageProvisioned||!EntryPolicy.trusted(url))return;
         audioPageProvisioned=true;long page=pageVersion;
         String token=arrayCapture.newPage();
         web.evaluateJavascript(personal?"window.vTvAudioCapability=Object.freeze({version:1,pageToken:"+JSONObject.quote(token)+"})":"delete window.vTvAudioCapability",value->{
-            if(visible&&page==pageVersion)nativeMicReady=true;
+            if(visible&&page==pageVersion){nativeMicReady=true;dialWarmPage();}
         });
     }
     // Keep the old Home portrait visible until this page has a committed visual frame.
@@ -183,22 +174,30 @@ public final class CallService extends Service {
     private void acknowledgeLayout(){
         if(web==null)return;
         web.scrollTo(0,0);web.invalidateOutline();
-        float cssWidth=web.getWidth()/getResources().getDisplayMetrics().density;
-        web.evaluateJavascript("window.vVoiceTV?.commitLayout("+JSONObject.quote(mode)+",undefined,{width:"+cssWidth+"})",null);
+        float density=getResources().getDisplayMetrics().density;
+        float cssWidth=web.getWidth()/density;
+        int[] origin=new int[2];web.getLocationOnScreen(origin);
+        web.evaluateJavascript("window.vVoiceTV?.commitLayout("+JSONObject.quote(mode)+",undefined,{width:"+cssWidth+",x:"+origin[0]/density+",y:"+origin[1]/density+"})",null);
     }
     private void resize(String value){
         if(!java.util.Arrays.asList("compact","medium","full").contains(value))return;
+        if(!"full".equals(value)&&flight!=null)flight.cancel();
         mode=value;
         getSharedPreferences("diagnostics",0).edit().putString("window_mode",value).apply();
-        int screenW=getResources().getDisplayMetrics().widthPixels,screenH=getResources().getDisplayMetrics().heightPixels;
+        boolean full = value.equals("full");
+        // The small transparent companion needs software rasterization over protected apps.
+        // Let the GPU draw the full page so layout and painting cannot stall microphone delivery.
+        web.setLayerType(full ? View.LAYER_TYPE_NONE : View.LAYER_TYPE_SOFTWARE, null);
+        web.setClipToOutline(!full);
         if(window==null)window=new WindowManager.LayoutParams();
         window.type=WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
         window.format=PixelFormat.TRANSLUCENT;
         window.gravity=Gravity.TOP|Gravity.RIGHT;
-        window.width=value.equals("full")?screenW-dp(48):dp(264);
-        window.height=value.equals("full")?screenH-dp(40):dp(300);
-        window.x=value.equals("full")?dp(24):dp(30);window.y=value.equals("full")?dp(16):dp(100);
+        window.width=full?WindowManager.LayoutParams.MATCH_PARENT:dp(264);
+        window.height=full?WindowManager.LayoutParams.MATCH_PARENT:dp(300);
+        window.x=value.equals("full")?0:dp(30);window.y=value.equals("full")?0:dp(100);
         interactive=!value.equals("compact");
+        if (android.os.Build.VERSION.SDK_INT >= 30) window.setFitInsetsTypes(full ? 0 : WindowInsets.Type.systemBars());
         window.flags=WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             |WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN|WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             |(interactive?0:WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
@@ -211,6 +210,41 @@ public final class CallService extends Service {
         getSharedPreferences("diagnostics",0).edit().putBoolean("interactive",interactive).apply();
         web.post(this::acknowledgeLayout);
     }
+    private void park(){
+        if(!personal || configChanged){stopSelf();return;}
+        standby=true;hadCall=false;closing=false;interactive=false;
+        surfaceAnnounced=hostPresented=visualPending=pageFocusReady=false;
+        lastCall="idle";pageVersion++;pendingLaunch=null;
+        arrayCapture.invalidate();arrayCapture.foreground(false);
+        audioPageProvisioned=nativeMicReady=false;
+        handler.removeCallbacks(poll);
+        if(attached){windows.removeView(surface);attached=false;}
+        web.onPause();
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",false).putBoolean("interactive",false)
+            .putString("mic_driver","none").putInt("mic_channels",0).apply();
+        handler.postDelayed(expireStandby,120000);
+    }
+    private void resumeStandby(){
+        handler.removeCallbacks(expireStandby);standby=false;startupCueFinished=false;
+        startNotification();web.onResume();web.setAlpha(0);arrayCapture.foreground(true);
+        prepareAudioPage(web.getUrl());web.evaluateJavascript("window.vVoiceTV?.setLayout('medium')",null);
+        resize("medium");lastDiagnostics="";
+        getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",true).putString("failure_code","").apply();
+        handler.removeCallbacks(poll);handler.post(poll);
+    }
+    private void dialWarmPage(){
+        if(!adopted||!nativeMicReady||pendingLaunch==null||checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)return;
+        String request=pendingLaunch;
+        web.evaluateJavascript("window.vVoiceTV?.requestDial("+JSONObject.quote(request)+")",accepted->{
+            if("true".equals(accepted)&&request.equals(pendingLaunch))pendingLaunch=null;
+        });
+    }
+    private void showCall(){
+        String target = "connected".equals(lastCall) ? "full" : "medium";
+        web.evaluateJavascript("window.vVoiceTV?.setLayout("+JSONObject.quote(target)+")",null);
+        if(!"full".equals(target))resize(target);
+    }
     private void collapse(){
         if(web!=null)web.evaluateJavascript("window.vVoiceTV?.setLayout('compact')",null);
         resize("compact");
@@ -219,10 +253,10 @@ public final class CallService extends Service {
     private void announce(boolean active){
         sendBroadcast(new Intent("live.tianyi.vvoice.tv.SURFACE_READY").setPackage(launcherPackage).putExtra("active",active));
     }
-    private final BroadcastReceiver surfaceQuery=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(surfaceAnnounced){if(i.getBooleanExtra("expand",false)){web.evaluateJavascript("window.vVoiceTV?.setLayout('medium')",null);resize("medium");}announce(true);web.evaluateJavascript("window.vVoiceTV?.passiveFocus?.("+i.getBooleanExtra("focused",false)+")",null);}}};
+    private final BroadcastReceiver surfaceQuery=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(surfaceAnnounced){if(i.getBooleanExtra("expand",false)){showCall();}announce(true);web.evaluateJavascript("window.vVoiceTV?.passiveFocus?.("+i.getBooleanExtra("focused",false)+")",null);}}};
     private final BroadcastReceiver systemEvents=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){
         if(Intent.ACTION_SCREEN_OFF.equals(i.getAction())){action("end");stopSelf();}
-        else if("homekey".equals(i.getStringExtra("reason")))collapse();
+        else if(!standby&&"homekey".equals(i.getStringExtra("reason")))collapse();
     }};
     private void startNotification(){
         NotificationManager manager=getSystemService(NotificationManager.class);
@@ -236,10 +270,12 @@ public final class CallService extends Service {
     @Override public IBinder onBind(Intent intent){return null;}
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent==null){stopSelf();return START_NOT_STICKY;}
+        if(standby)resumeStandby();
         if("END".equals(intent.getAction())){action("end");handler.postDelayed(this::stopSelf,300);return START_NOT_STICKY;}
         closing=false;idleSince=0;
-        if(START_CALL.equals(intent.getAction())&&"idle".equals(lastCall)){hadCall=false;pendingLaunch="launch-"+java.util.UUID.randomUUID();}
-        if(surfaceAnnounced){web.evaluateJavascript("window.vVoiceTV?.setLayout('medium')",null);resize("medium");}
+        if(START_CALL.equals(intent.getAction())&&"idle".equals(lastCall)){hadCall=false;pendingLaunch=intent.getStringExtra("launch");if(pendingLaunch==null)pendingLaunch="launch-"+java.util.UUID.randomUUID();}
+        dialWarmPage();
+        if(surfaceAnnounced){showCall();}
         return START_NOT_STICKY;
     }
 
@@ -249,9 +285,9 @@ public final class CallService extends Service {
         web.evaluateJavascript("window.vVoiceTV?.action("+JSONObject.quote(name)+","+expected+")",null);
     }
     private final Runnable poll=new Runnable(){public void run(){
-        if(!visible)return;
+        if(!visible||standby)return;
         web.evaluateJavascript("JSON.stringify(window.vVoiceTV?{...window.vVoiceTV.snapshot,surfaceReady:Boolean(document.querySelector('.call-page .avatar #avatar')?.naturalWidth&&!document.documentElement.dataset.tvTransition)}:null)",value->{
-            if(!visible)return;
+            if(!visible||standby)return;
             try{
                 Object raw=new JSONTokener(value).nextValue();if(!(raw instanceof String))return;
                 JSONObject p=new JSONObject((String)raw);String owner=p.getString("owner");
@@ -264,10 +300,10 @@ public final class CallService extends Service {
                 String call=p.optString("call");
                 if(!"idle".equals(call))finishStartupCue();
                 if(!"idle".equals(call)){hadCall=true;idleSince=0;closing=false;}
-                if(hadCall&&"idle".equals(call)&&!closing){
+                if(hadCall&&"idle".equals(call)&&!closing&&!p.optBoolean("landing")){
                     closing=true;pendingLaunch=null;
                     if(!p.optString("failureCode","").isEmpty()&&!"null".equals(p.optString("failureCode")))handler.postDelayed(()->{if(closing)stopSelf();},12000);
-                    else{collapse();handler.postDelayed(()->{if(closing){announce(false);handler.postDelayed(()->{if(closing)stopSelf();},120);}},500);}
+                    else{collapse();handler.postDelayed(()->{if(closing){announce(false);handler.postDelayed(()->{if(closing)park();},120);}},500);}
                 }
                 if(!hadCall&&pendingLaunch==null&&"idle".equals(call)){
                     if(idleSince==0)idleSince=android.os.SystemClock.elapsedRealtime();
@@ -286,7 +322,9 @@ public final class CallService extends Service {
                     .putString("meter_source",meter==null?"none":meter.optString("source","none"))
                     .putInt("meter_peak",meter==null?0:meter.optInt("peak",0))
                     .putInt("viewport_width",viewport==null?0:viewport.optInt("width",0)).putInt("viewport_height",viewport==null?0:viewport.optInt("height",0)).apply();}
-                String next=p.optString("layout","full");if(!next.equals(mode))resize(next);
+                String next=p.optString("layout","full");if(!closing&&!next.equals(mode)){
+                    if(!"full".equals(next)||!flight.begin(p.optJSONObject("portraitOrigin"),()->{if(visible&&!closing)resize("full");}))resize(next);
+                }
                 prepareNativeFocus();
                 JSONObject actions=p.optJSONObject("actions");
                 if(pendingLaunch!=null&&!"idle".equals(p.optString("call")))pendingLaunch=null;
@@ -302,10 +340,12 @@ public final class CallService extends Service {
         try{unregisterReceiver(systemEvents);unregisterReceiver(surfaceQuery);}catch(Exception ignored){}
         if(arrayCapture!=null)arrayCapture.foreground(false);
         finishStartupCue();announce(false);
-        if(web!=null){web.stopLoading();web.loadUrl("about:blank");if(attached)windows.removeView(surface);web.destroy();}
+        if(flight!=null)flight.cancel();
+        if(web!=null){if(attached)windows.removeView(surface);surface.removeView(web);web.destroy();web=null;}
         getSharedPreferences("diagnostics",0).edit().putBoolean("foreground",false).putBoolean("interactive",false).putString("projected_call","idle")
           .putString("mic_driver","none").putInt("mic_channels",0).putString("meter_source","none").putInt("meter_peak",0).apply();
         stopForeground(STOP_FOREGROUND_REMOVE);super.onDestroy();
+        if(standby&&!configChanged)DesktopPage.warm(getApplicationContext());
     }
     private boolean handleKey(KeyEvent e){
         int key=e.getKeyCode();

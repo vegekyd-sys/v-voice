@@ -24,10 +24,10 @@ function harness({model='seeduplex',catalog=async()=>({groups:[{tools:[{id:'web_
  const service=createDirectVoiceService({gateway,loadContext:async()=>{reads.context++;return context(reads.context);},wsModule:{WebSocket:WS,WebSocketServer:Server},
   apiKeys:{grok:'fixture-key',seeduplex:'fixture-key'},audit:event=>audit.push(event),...options});
  const client=()=>{const c=new EventEmitter();c.readyState=1;c.sent=[];c.send=raw=>c.sent.push(JSON.parse(raw));c.close=()=>{c.readyState=3;c.emit('close');};return c;};
- const dial=async({prefetched,sessionKey=SESSION,agentId='makaron',beforeAttach,afterAttach}={})=>{
+ const dial=async({prefetched,sessionKey=SESSION,agentId='makaron',beforeAttach,afterAttach,greeting=false}={})=>{
   const reservation=await service.reserve({model,gateway,sessionKey,agentId,actorScoped:true,sessionBound:true,inputPolicy:'native',...(prefetched?{prefetched}:{})});
   const c=client();await beforeAttach?.(c);
-  assert.equal(service.attach(reservation.voiceSessionId,reservation.relayTicket,c),true);
+  assert.equal(service.attach(reservation.voiceSessionId,reservation.relayTicket,c,{greeting}),true);
   afterAttach?.(c);
   assert(await until(()=>c.sent.some(e=>e.type==='ready')||c.readyState===3));
   return {reservation,client:c};
@@ -135,6 +135,15 @@ test('a greeting requested while the model connects is spoken once, at ready',as
  // The page repeats its request at ready for servers that ignore the early one.
  client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
  await delay(5);assert.equal(greetings().length,1);
+});
+
+test('an admitted TV dial can request its greeting with the reservation',async t=>{
+ const h=harness();t.after(()=>h.service.dispose());
+ const {client}=await h.dial({greeting:true});
+ const greetings=()=>h.peers.flatMap(peer=>peer.sent).filter(frame=>frame.type==='speech_text_buffer.commit');
+ assert(await until(()=>greetings().length===1));
+ client.emit('message',Buffer.from(JSON.stringify({type:'greeting'})),false);
+ assert.equal(greetings().length,1);
 });
 
 test('a greeting requested after ready is still spoken',async t=>{

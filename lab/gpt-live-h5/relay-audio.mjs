@@ -100,13 +100,14 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
   let chunks=[],offset=0,frames=0,scheduled=[],consumed=0,epoch=0,nextAt=null,firstAt=null;
   let paused=false,held=false,complete=false,muted=false,ducked=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
+  let firstAudibleAt=null,reportedFirstRender=false;
   const level=()=>{if(muted)output.gain.value=0;else output.gain.setTargetAtTime?.(ducked?DUCK_GAIN:1,context.currentTime,.02)??(output.gain.value=ducked?DUCK_GAIN:1);};
-  const rate=24000,blockFrames=2400,lead=.16;
+  const rate=24000,blockFrames=2400,lead=.72;
   const port={onmessage:null,postMessage:command,close:dispose};output.port=port;
   const futureFrames=(block,now)=>Math.max(0,block.pcm.length-Math.max(0,Math.min(block.pcm.length,Math.floor((now-block.at)*rate+1e-5))));
   function trim(now){scheduled=scheduled.filter(b=>b.at+b.pcm.length/rate>now);}
   function reclaim(){
-    const now=context.currentTime,rest=[];let count=0;
+    const now=context.currentTime,rest=[];let count=0;firstAudibleAt=null;
     for(const b of scheduled){const n=futureFrames(b,now);if(n){rest.push(b.pcm.subarray(b.pcm.length-n));count+=n;}try{b.node.stop();b.node.disconnect();}catch{}}
     if(offset&&chunks.length)chunks[0]=chunks[0].subarray(offset);
     chunks=rest.concat(chunks);offset=0;frames+=count;consumed-=count;scheduled=[];nextAt=null;firstAt=context.currentTime-prefillMs/1000;
@@ -115,7 +116,7 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   function notify(data){port.onmessage?.({data:{epoch,...data}});}
   function command(e){if(closed)return;
     if(e.type==='clear'){reclaim();chunks=[];offset=frames=consumed=underflows=0;epoch=e.epoch;nextAt=firstAt=lastPlayedAt=null;paused=held=complete=starved=false;if(ducked){ducked=false;level();}return;}
-    if(e.type==='output-mute'){muted=e.muted===true;output.gain.value=muted?0:ducked?DUCK_GAIN:1;return;}
+    if(e.type==='output-mute'){muted=e.muted===true;if(muted)firstAudibleAt=null;output.gain.value=muted?0:ducked?DUCK_GAIN:1;return;}
     if(e.epoch!==epoch)return;
     if(e.type==='pause'){if(e.paused===true&&!paused)reclaim();paused=e.paused===true;return;}
     if(e.type==='duck'){ducked=e.ducked===true;level();return;}
@@ -129,16 +130,23 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
     }
   }
   function tick(){if(closed)return;const now=context.currentTime;
+    if(!reportedFirstRender&&!muted&&!paused&&context.state==='running'&&firstAudibleAt!==null&&now>=firstAudibleAt){
+      reportedFirstRender=true;notify({type:'first-render',contextTime:firstAudibleAt});
+    }
     let pending=0,playing=false;
     for(const b of scheduled){const left=futureFrames(b,now);pending+=left;if(now>=b.at&&left>0)playing=true;if(now>=b.at)lastPlayedAt=Math.min(now,b.at+b.pcm.length/rate);}
     trim(now);
     if(playing)starved=false;
-    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;if(growMs)prefillMs=Math.min(Math.max(prefillMs,maxMs),prefillMs+growMs);}
+    if(nextAt!==null&&now>nextAt+.005&&!paused&&!held&&(frames>0||!complete)&&!starved){underflows++;starved=true;if(growMs){prefillMs=Math.min(maxMs,prefillMs+growMs);firstAt=now;}}
     if(!paused&&!held&&context.state==='running'&&frames){
       if(nextAt===null||nextAt<now){nextAt=Math.max(now+.02,(firstAt??now)+(complete?0:prefillMs/1000));}
       while(frames&&nextAt<now+lead){
         const pcm=take(Math.min(blockFrames,frames)),buffer=context.createBuffer(1,pcm.length,rate),out=buffer.getChannelData(0);
         for(let i=0;i<pcm.length;i++)out[i]=pcm[i]/32768;
+        if(!reportedFirstRender&&firstAudibleAt===null&&!muted){
+          const first=pcm.findIndex(value=>value!==0);
+          if(first>=0)firstAudibleAt=nextAt+first/rate;
+        }
         const node=context.createBufferSource();node.buffer=buffer;node.connect(output);node.start(nextAt);
         node.onended=()=>{try{node.disconnect();}catch{}};
         scheduled.push({node,pcm,at:nextAt});nextAt+=pcm.length/rate;consumed+=pcm.length;pending+=pcm.length;
@@ -299,7 +307,9 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     // Only a transport identity can establish duplication. Never compare PCM:
     // identical silence and repeated syllables are valid audio.
     if(Number.isSafeInteger(e.sequence)&&e.sequence>0){if(e.sequence<=lastSequence){stats.duplicateFrames++;return;}lastSequence=e.sequence;}
-    const bytes=Uint8Array.from(atob(e.audio),c=>c.charCodeAt(0));
+    // Avoid allocating a JavaScript element for every byte of the lecture audio.
+    const binary=atob(e.audio),bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
     if(!bytes.length||bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
     if(stats.dialToFirstPcmMs===undefined){stats.dialToFirstPcmMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.received');}
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
@@ -358,7 +368,10 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     if(context.state!=='running')throw Error('麦克风和声音已暂停，请轻点页面后重新拨号。');
     const buffered=bufferedOutput&&typeof subscribePcm==='function'&&typeof renderReference!=='function';
     stats.bufferedOutput=buffered?1:0;
-    if(buffered)speaker=createBufferedPcmSpeaker(context,{prefillMs:startBufferMs,growMs:bufferGrowMs,maxMs:bufferMaxMs});
+    if(buffered){
+      stats.startBufferMs=Math.max(startBufferMs,240);
+      speaker=createBufferedPcmSpeaker(context,{prefillMs:stats.startBufferMs,growMs:bufferGrowMs||100,maxMs:Math.max(bufferMaxMs,640)});
+    }
     else {
       const url=URL.createObjectURL(new Blob([relayWorkletSource()],{type:'text/javascript'}));
       try{await context.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
@@ -370,7 +383,9 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       if(closed)return;
       // A render-thread nonzero PCM receipt excludes pickup cues and silent
       // packets. This is an observation upper bound, not physical audibility.
-      if(e.type==='first-render'&&stats.dialToFirstRenderObservedMs===undefined){stats.dialToFirstRenderObservedMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.rendered');reportStats();return;}
+      if(e.type==='first-render'&&stats.dialToFirstRenderObservedMs===undefined){stats.dialToFirstRenderObservedMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.rendered');
+        if(buffered)console.info('VTVAudio stats '+JSON.stringify({firstVoiceRenderMs:stats.dialToFirstRenderObservedMs,readyMs:stats.dialToReadyMs,firstPcmMs:stats.dialToFirstPcmMs,preconnected:connection?.preconnected===true}));
+        reportStats();return;}
       if(e.epoch!==epoch)return;
       if(e.type==='render-reference'){renderReference?.(e.buffer,e.sampleRate);return;}
       if(e.type==='error'){onError(Error('语音缓存过大，请重新拨号'));return;}
@@ -380,7 +395,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       activity(e.playing&&context.state==='running');reportBusy();
     };
     for(const buffer of pendingOutput)transfer(buffer);pendingOutput.length=0;if(outputComplete)speaker.port.postMessage({type:'done',epoch});
-    const receiveInput=buffer=>{if(closed||uploadFailed)return;
+    const receiveInput=(buffer,lastInBatch=true)=>{if(closed||uploadFailed)return;
       if(!(buffer instanceof ArrayBuffer)||buffer.byteLength!==960){onError(Error('麦克风音频帧格式无效'));return;}
       // The hardware adapter already supplies 24 kHz PCM. Do not play it into
       // a MediaStream and capture it again on the output audio clock.
@@ -405,9 +420,9 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
         }
         uploadStalledAt=null;
         inputBatch.push(frame);inputBatchBytes+=frame.byteLength;
-        // Preserve the native 20ms uplink cadence across hosted proxies.
-        // A speaker decision still owns interruption; batching does not.
-        flushInput();}
+        // All three frames of a hardware packet arrive in the same callback.
+        // Keep the per-frame speech detector, then send these samples together.
+        if(lastInBatch||inputBatch.length>=3)flushInput();}
     };
     if(typeof subscribePcm==='function')stopPcm=subscribePcm(receiveInput);
     else {

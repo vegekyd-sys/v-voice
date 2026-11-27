@@ -25,7 +25,7 @@ final class TvArrayCapture {
     private volatile AudioRecord record;
     private volatile String captureId;
     private Thread worker;
-    private final java.util.ArrayDeque<String> frames=new java.util.ArrayDeque<>();
+    private final CaptureQueue frames=new CaptureQueue();
     private volatile String captureError;
     private int captureChannels,captureRate;
     private long beganAt,captured,pulled,pullCount,firstFrameAt,maxReadMs;
@@ -33,9 +33,14 @@ final class TvArrayCapture {
     private WebMessagePort audioPort;
     private HandlerThread portThread;
     private boolean portRequested,portReady;
+    private int batchSize=1;
     private final CaptureCredits credits=new CaptureCredits();
     private long lastPullAt,maxPullGapMs;
     TvArrayCapture(Context context,WebView web){this.context=context;this.web=web;}
+    @JavascriptInterface public String formatHint(){
+        String layout=ArrayLayout.forCapture(android.os.Build.MODEL,4,16000);
+        return layout==null?"null":"{\"channels\":4,\"sampleRate\":16000,\"channelLayout\":"+layout+"}";
+    }
     void foreground(boolean value){foreground=value;if(!value)stopInternal();}
     String newPage(){stopInternal();pageToken=UUID.randomUUID().toString();return pageToken;}
     void invalidate(){pageToken="";stopInternal();}
@@ -89,8 +94,9 @@ final class TvArrayCapture {
                             try{
                                 String raw=message.getData();if(raw==null||raw.length()>160)throw new IllegalArgumentException();
                                 JSONObject command=new JSONObject(raw);String type=command.optString("type");
-                                if("ready".equals(type)&&!portReady){portReady=true;port.postMessage(new WebMessage("{\"type\":\"ready\"}"));}
-                                else if("consumed".equals(type)&&portReady){credits.acknowledge(command.getLong("sequence"));pumpPort(active);}
+                                if("ready".equals(type)&&!portReady){batchSize=command.optInt("batchSize",1)==3?3:1;portReady=true;port.postMessage(new WebMessage("{\"type\":\"ready\",\"batchSize\":"+batchSize+"}"));}
+                                else if("consumed".equals(type)&&portReady){credits.acknowledge(command.getLong("sequence"),batchSize);
+                                    pumpPort(active);}
                                 else throw new IllegalArgumentException();
                             }catch(Exception error){android.util.Log.w("VTVAudio","stream error "+error.getClass().getSimpleName());markError(active,"TV_MIC_STREAM");}
                         }
@@ -105,9 +111,15 @@ final class TvArrayCapture {
     private void pumpPort(AudioRecord active){
         if(record!=active||audioPort==null||!portReady||captureError!=null)return;
         try{
-            while(!frames.isEmpty()&&credits.available()){
-                String payload=frames.remove();credits.sent();pulled++;
-                audioPort.postMessage(new WebMessage(payload));
+            while(frames.size()>=batchSize && credits.remaining()>=batchSize){
+                StringBuilder payload=new StringBuilder();
+                if(batchSize>1)payload.append('[');
+                for(int i=0;i<batchSize;i++){
+                    if(i>0)payload.append(',');
+                    payload.append(frames.remove(captureChannels));credits.sent();pulled++;
+                }
+                if(batchSize>1)payload.append(']');
+                audioPort.postMessage(new WebMessage(payload.toString()));
             }
         }catch(Exception error){android.util.Log.w("VTVAudio","stream error "+error.getClass().getSimpleName());markError(active,"TV_MIC_STREAM");}
     }
@@ -121,19 +133,19 @@ final class TvArrayCapture {
         worker=new Thread(()->read(active,channels,token,id),"v-tv-array");worker.start();return "ok";
     }
     // One bounded pull replaces 50 evaluateJavascript calls/callbacks per second.
-    // No sample is dropped or retained on disk; sustained lag is a visible failure.
+    // Pull and port share the same bounded real-time queue.
     @JavascriptInterface public synchronized String pull(String token,String id){
         if(!allowed(token)||id==null||!id.equals(captureId))return "{\"error\":\"TV_MIC_OWNER\"}";
         if(captureError!=null)return "{\"error\":\""+captureError+"\"}";
         if(portRequested)return "{\"error\":\"TV_MIC_STREAM\"}";
         long now=android.os.SystemClock.elapsedRealtime();if(lastPullAt>0)maxPullGapMs=Math.max(maxPullGapMs,now-lastPullAt);lastPullAt=now;
         pullCount++;StringBuilder out=new StringBuilder("{\"frames\":[");
-        for(int n=0;n<4&&!frames.isEmpty();n++){if(n>0)out.append(',');out.append(frames.remove());pulled++;}
+        for(int n=0;n<4&&!frames.isEmpty();n++){if(n>0)out.append(',');out.append(frames.remove(captureChannels));pulled++;}
         return out.append("]}").toString();
     }
     private void read(AudioRecord active,int channels,String token,String id){
         Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
-        short[] samples=new short[(active.getSampleRate()/50)*channels];int filled=0;long sequence=0;
+        short[] samples=new short[(active.getSampleRate()/50)*channels];int filled=0;
         while(record==active&&allowed(token)){
             long beforeRead=android.os.SystemClock.elapsedRealtime();int count;try{count=active.read(samples,filled,samples.length-filled,AudioRecord.READ_BLOCKING);}catch(IllegalStateException stopped){break;}
             if(count<=0){markError(active,"TV_MIC_READ");break;}
@@ -141,12 +153,12 @@ final class TvArrayCapture {
             AudioDeviceInfo routed=active.getRoutedDevice();if(routed!=null&&routed.getType()!=AudioDeviceInfo.TYPE_BUILTIN_MIC){markError(active,"TV_MIC_ROUTE");break;}
             byte[] bytes=new byte[samples.length*2];
             for(int i=0;i<samples.length;i++){bytes[i*2]=(byte)samples[i];bytes[i*2+1]=(byte)(samples[i]>>8);}
-            String encoded=Base64.encodeToString(bytes,Base64.NO_WRAP);long seq=++sequence;
+            String encoded=Base64.encodeToString(bytes,Base64.NO_WRAP);
             synchronized(this){
                 if(record!=active)break;
-                captured++;if(firstFrameAt==0)firstFrameAt=android.os.SystemClock.elapsedRealtime();queuePeak=Math.max(queuePeak,frames.size()+1);
-                if(frames.size()>=25){captureError="TV_MIC_BACKPRESSURE";logSummary();notifyPortError();break;}
-                frames.add("{\"sequence\":"+seq+",\"channels\":"+channels+",\"pcm\":"+JSONObject.quote(encoded)+"}");
+                captured++;if(firstFrameAt==0)firstFrameAt=android.os.SystemClock.elapsedRealtime();
+                frames.add(encoded);
+                queuePeak=Math.max(queuePeak,frames.size());
                 pumpPort(active);
             }
             filled=0;
@@ -155,11 +167,11 @@ final class TvArrayCapture {
         // The page owns teardown; retain only the bounded error code until pulled.
         try{active.stop();}catch(Exception ignored){}
     }
-    private synchronized void logSummary(){if(beganAt>0)android.util.Log.i("VTVAudio","summary elapsedMs="+(android.os.SystemClock.elapsedRealtime()-beganAt)+" firstFrameMs="+(firstFrameAt-beganAt)+" captured="+captured+" pulled="+pulled+" pullCount="+pullCount+" queuePeak="+queuePeak+" maxReadMs="+maxReadMs+" error="+captureError+" transport="+(portRequested?"worker-port":"ui-pull")+" inFlightPeak="+credits.peak()+" maxPullGapMs="+maxPullGapMs);}
+    private synchronized void logSummary(){if(beganAt>0)android.util.Log.i("VTVAudio","summary elapsedMs="+(android.os.SystemClock.elapsedRealtime()-beganAt)+" firstFrameMs="+(firstFrameAt-beganAt)+" captured="+captured+" pulled="+pulled+" pullCount="+pullCount+" dropped="+frames.dropped()+" queuePeak="+queuePeak+" maxReadMs="+maxReadMs+" error="+captureError+" transport="+(portRequested?"worker-port":"ui-pull")+" inFlightPeak="+credits.peak()+" maxPullGapMs="+maxPullGapMs);}
     private synchronized void markError(AudioRecord active,String code){if(record==active){captureError=code;notifyPortError();}}
     @JavascriptInterface public synchronized void stop(String token,String id){if(pageToken.equals(token)&&id!=null&&id.equals(captureId))stopInternal();}
     private synchronized void stopInternal(){logSummary();beganAt=0;AudioRecord old=record;record=null;
         if(audioPort!=null){try{audioPort.close();}catch(Exception ignored){}audioPort=null;}
-        if(portThread!=null){portThread.quitSafely();portThread=null;}portRequested=portReady=false;credits.reset();
+        if(portThread!=null){portThread.quitSafely();portThread=null;}portRequested=portReady=false;batchSize=1;credits.reset();
         captureId=null;frames.clear();captureError=null;if(old!=null){try{old.stop();}catch(Exception ignored){}old.release();}worker=null;}
 }

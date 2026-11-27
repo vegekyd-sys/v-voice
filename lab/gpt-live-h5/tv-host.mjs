@@ -23,7 +23,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   let inputLevels=[],outputLevels=[],inputEnvelope=0,outputEnvelope=0,inputEnergy=0,outputEnergy=0,observations=0,wasMuted=false,wasOutputMuted=false;
   document.documentElement.dataset.tvLayout = layout;
   const validOwner = expected => expected === undefined || Boolean(expected && expected.owner === owner && expected.generation === generation);
-  const focusable = () => [...((document.querySelector?.('dialog[open]') ?? (view.get().reading?document.getElementById?.('contentReader'):document))?.querySelectorAll?.('button,a[href],input,select,textarea,[tabindex]') ?? [])].filter(e => {
+  const focusable = () => [...((document.querySelector?.('dialog[open], .board-viewer[aria-modal="true"]') ?? (view.get().reading?document.getElementById?.('contentReader'):document))?.querySelectorAll?.('button,a[href],input,select,textarea,[tabindex]') ?? [])].filter(e => {
     const r = e.getBoundingClientRect();
     return !e.disabled && e.tabIndex >= 0 && r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth && !e.closest('[inert]');
   });
@@ -39,12 +39,48 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     view.set({tvLayout:layout});
     window.requestAnimationFrame?.(focusPrimary);
   };
+  let hostBounds, companionBounds, enteringAvatar, flight, avatarAnimation, landing;
+  const avatar = () => document.querySelector?.('.call-page .avatar');
+  function finishFlight() {
+    avatarAnimation?.cancel();
+    avatarAnimation = null;
+    flight?.remove();
+    flight = null;
+    delete document.documentElement.dataset.tvEntering;
+  }
   const setLayout = (value, expected) => {
     if (!validOwner(expected) || !['compact','medium','full'].includes(value)) return false;
+    // The call UI requests compact as soon as it sees idle. Keep the full native
+    // surface until the on-screen portrait reaches the desktop, including on a slow TV.
+    if(value==='compact'&&landing&&document.documentElement.dataset.tvLanding==='moving')return true;
     if(value===layout&&view.get().tvLayout===value)return true;
+    finishFlight();
+    enteringAvatar = null;
+    if (overlay && shell && value === 'full' && hostBounds && layout !== 'full') {
+      const rect = avatar()?.getBoundingClientRect();
+      if (rect?.width && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        const toScreen = hostBounds.width / window.innerWidth;
+        enteringAvatar = {x:hostBounds.x+rect.left*toScreen, y:hostBounds.y+rect.top*toScreen,
+          size:rect.width*toScreen, windowWidth:hostBounds.width};
+        const image=document.getElementById?.('avatar');
+        if (!window.VTVPortrait&&image?.naturalWidth) {
+          const ghost=document.createElement('canvas');
+          ghost.width=ghost.height=Math.min(512,image.naturalWidth);
+          try {
+            ghost.getContext('2d').drawImage(image,0,0,ghost.width,ghost.height);
+            ghost.className='tv-landing-portrait';
+            ghost.setAttribute('aria-hidden','true');
+            Object.assign(ghost.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.width+'px'});
+            document.body.appendChild(ghost);
+            flight=ghost;
+            document.documentElement.dataset.tvEntering='true';
+          } catch { ghost.remove(); }
+        }
+      }
+    }
     layout = value;
     if(shell&&!overlay){document.activeElement?.blur?.();document.documentElement.dataset.tvTransition='true';}
-    else commitLayout();
+    else if (!enteringAvatar) commitLayout();
     update();
     return true;
   };
@@ -59,6 +95,10 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     end: state.call !== 'idle',
   });
   const api = Object.freeze({
+    primeDial(requestId){
+      if(!/^launch-[a-zA-Z0-9-]{8,64}$/.test(requestId)||view.get().call!=='idle'||!available(view.get()).dial)return false;
+      return actions.primeDial?.(requestId)===true;
+    },
     requestDial(requestId, expected) {
       if(typeof requestId!=='string'||!/^launch-[a-zA-Z0-9-]{8,64}$/.test(requestId)||!validOwner(expected))return false;
       if(launchRequests.has(requestId))return true;
@@ -66,6 +106,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       if(!available(view.get()).dial)return false;
       launchRequests.add(requestId);
       if(launchRequests.size>128)launchRequests.delete(launchRequests.values().next().value);
+      if(actions.dialFromHome){Promise.resolve(actions.dialFromHome(requestId)).catch(onError);return true;}
       return api.action('dial',expected);
     },
     get snapshot() {
@@ -73,7 +114,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const focus=element?.getAttribute?.('data-tv-control')??({textToggle:'compose',steerText:'input',steer:'send',readerBack:'reader-back',readerBody:'reader-body',mute:'mute',stop:'end'})[element?.id];
       const state=view.get();
       const mic=window.__gptLiveDuplexDiagnostics?.microphone;
-      return Object.freeze({...snapshot,reading:state.reading===true,
+      return Object.freeze({...snapshot,portraitOrigin:enteringAvatar??null,landing:document.documentElement.dataset.tvLanding==='moving',reading:state.reading===true,
         microphone:Object.freeze({driver:state.call==='idle'?'none':mic?.kind==='tv-array-microphone'?'tv-array':'browser',
           channels:mic?.kind==='tv-array-microphone'&&[4,6].includes(mic.channels)?mic.channels:null,
           acousticEchoTestPassed:false}),
@@ -93,15 +134,97 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       // Android density otherwise gives a 1080p TV only ~912 CSS pixels.
       // Full pages use the original desktop layout at a wider CSS viewport;
       // compact/medium windows retain their established island scale.
+      if (enteringAvatar && bounds?.width === enteringAvatar.windowWidth) return false;
+      if (Number.isFinite(bounds?.x) && Number.isFinite(bounds?.y)) {
+        hostBounds = bounds;
+        if(value!=='full') companionBounds = bounds;
+      }
+      if(value==='compact' && landing){landing.remove();landing=null;delete document.documentElement.dataset.tvLanding;}
       if(shell&&Number.isFinite(bounds?.width)&&bounds.width>=48&&bounds.width<=7680) {
-        const width=value==='full'?Math.max(1600,bounds.width):bounds.width;
+        const width=value==='full'?Math.max(1200,bounds.width):bounds.width;
         const scale=value==='full'?bounds.width/width:1;
         const viewport=document.querySelector?.('meta[name="viewport"]');
         const content=`width=${Math.round(width)},initial-scale=${scale},viewport-fit=cover`;
         if(viewport&&viewport.getAttribute('content')!==content)viewport.setAttribute('content',content);
       }
-      commitLayout();return true;
+      const from = enteringAvatar;
+      if(from&&window.VTVPortrait)document.documentElement.dataset.tvEntering='true';
+      enteringAvatar = null;
+      commitLayout();
+      if (from && bounds) {
+        const ghost=flight;
+        const expectedWidth=Math.max(1200,bounds.width);
+        function start(width) {
+          const scale=width/bounds.width;
+          return {x:(from.x-bounds.x)*scale,y:(from.y-bounds.y)*scale,size:from.size*scale};
+        }
+        if(ghost){
+          const origin=start(expectedWidth);
+          Object.assign(ghost.style,{left:origin.x+'px',top:origin.y+'px',width:origin.size+'px',height:origin.size+'px'});
+        }
+        let frames=0;
+        const animate=()=>{
+          if(layout!=='full'||flight!==ghost)return;
+          // The meta viewport and the React layout commit on different compositor frames.
+          if(++frames<3 || (Math.abs(window.innerWidth-expectedWidth)>2 && frames<12)){
+            window.requestAnimationFrame(animate);return;
+          }
+          const face=avatar(), rect=face?.getBoundingClientRect();
+          if(!rect?.width||!face.animate){finishFlight();return;}
+          if(window.VTVPortrait){
+            window.VTVPortrait.move(rect.left/window.innerWidth,rect.top/window.innerWidth,rect.width/window.innerWidth);
+            // An older native window can already have collapsed before its callback.
+            window.setTimeout(()=>{if(layout==='full'&&document.documentElement.dataset.tvEntering)finishFlight();},3000);
+            return;
+          }
+          const origin=start(window.innerWidth);
+          const translate=(x,y,scale)=>`translate3d(${x}px,${y}px,0) scale(${scale})`;
+          const frameset=ghost ? [
+            {transform:'none'},{transform:translate(rect.left-origin.x,rect.top-origin.y,rect.width/origin.size)},
+          ] : [
+            {transformOrigin:'0 0',transform:translate(origin.x-rect.left,origin.y-rect.top,origin.size/rect.width)},
+            {transformOrigin:'0 0',transform:'none'},
+          ];
+          avatarAnimation=(ghost??face).animate(frameset,{duration:380,easing:'cubic-bezier(.32,0,.2,1)',fill:'both'});
+          if(ghost)avatarAnimation.finished.then(()=>{if(flight===ghost)finishFlight();},()=>{});
+          document.querySelector?.('.chat-panel')?.animate?.([{opacity:0},{opacity:1}],{duration:270});
+        };
+        window.requestAnimationFrame?.(animate);
+      }
+      return true;
     },
+    landPortrait() {
+      if (!overlay || layout!=='full' || !companionBounds || !hostBounds || landing ||
+          window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      finishFlight();
+      const rect=avatar()?.getBoundingClientRect(),picture=document.getElementById('avatar');
+      if(!rect?.width || !picture?.animate) return;
+      // Keep only the current portrait while the call releases its media and the board unmounts.
+      const ghost=document.createElement('canvas');
+      ghost.className='tv-landing-portrait';ghost.setAttribute('aria-hidden','true');
+      // Keep the decoded frame that is actually on screen. Reopening an animated WebP
+      // here can leave the overlay empty while the desktop already shows through.
+      const pixels=Math.min(512,Math.ceil(rect.width*(window.devicePixelRatio||1)));
+      ghost.width=ghost.height=pixels;
+      try{ghost.getContext('2d').drawImage(picture,0,0,pixels,pixels);}catch{return;}
+      Object.assign(ghost.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
+      document.body.appendChild(ghost);landing=ghost;
+      document.documentElement.dataset.tvLanding='moving';
+      const scale=window.innerWidth/hostBounds.width;
+      const x=(companionBounds.x+companionBounds.width-80-hostBounds.x)*scale-rect.left;
+      const y=(companionBounds.y+30-hostBounds.y)*scale-rect.top;
+      const target=`translate3d(${x}px,${y}px,0) scale(${64*scale/rect.width})`;
+      const finish=()=>{if(landing===ghost){ghost.style.transform=target;document.documentElement.dataset.tvLanding='arrived';setLayout('compact');}};
+      // Let Chromium composite the starting circle before releasing the layer to its animator.
+      window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>{
+        if(landing!==ghost||document.documentElement.dataset.tvLanding!=='moving')return;
+        const motion=ghost.animate([{transform:'translate3d(0,0,0) scale(1)'},{transform:target}],
+          {duration:440,easing:'cubic-bezier(.35,0,.2,1)',fill:'forwards'});
+        motion.finished.then(finish,finish);
+      }));
+      window.setTimeout(finish,1100);
+    },
+    finishEnter:finishFlight,
     focusPrimary,
     passiveFocus(focused){if(overlay)document.documentElement.dataset.tvPassiveFocused=String(focused===true);},
     reveal(){if(overlay)document.documentElement.dataset.tvRevealed='true';return true;},
@@ -116,9 +239,11 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     back() {
       const dialog = document.querySelector?.('dialog[open]');
       if (dialog) { dialog.dispatchEvent(new window.Event('cancel', {cancelable:true})); dialog.close(); return 'handled'; }
+      const viewerClose = document.querySelector?.('.board-viewer .board-enlarged-close');
+      if (viewerClose) { viewerClose.click(); return 'handled'; }
       if (view.get().reading) { document.getElementById?.('readerBack')?.click(); return 'handled'; }
       if (shell && view.get().call === 'idle' && layout !== 'full') return 'exit';
-      if (layout === 'full') { setLayout('medium'); return 'handled'; }
+      if (layout === 'full') { setLayout(overlay ? 'compact' : 'medium'); return 'handled'; }
       if (layout === 'medium') { setLayout('compact'); return 'handled'; }
       return 'exit';
     },
@@ -142,6 +267,14 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
         }
         if((direction==='up'&&inDock&&active?.tagName!=='INPUT')||(direction==='down'&&['readerBack','readerDownload'].includes(active?.id))) {
           document.getElementById?.('readerBody')?.focus({preventScroll:true});return true;
+        }
+      }
+      const scroller = document.activeElement;
+      if (scroller?.matches?.('.turns[role="log"], .board-scroll') && ['up','down'].includes(direction)) {
+        const down = direction === 'down';
+        if (down ? scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1 : scroller.scrollTop > 1) {
+          scroller.scrollBy({top: (down ? 1 : -1) * scroller.clientHeight * .8});
+          return true;
         }
       }
       const items=focusable(), active=document.activeElement;

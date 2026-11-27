@@ -1,7 +1,7 @@
 // A call owns this socket from admission to hangup. Never retry an ambiguous
 // allocation on the HTTP path: the first attempt may already own a live call.
-export function createDialConnection({url,signal,Socket=WebSocket,timeoutMs=30000}) {
-  const socket=new Socket(url);socket.binaryType='arraybuffer';
+export function createDialConnection({url,signal,Socket=WebSocket,standby,timeoutMs=30000}) {
+  const socket=standby??new Socket(url);socket.binaryType='arraybuffer';
   let settled=false,adopted=false,failure=null,resolveReservation,rejectReservation;
   const pending=[];let pendingBytes=0;
   const reservation=new Promise((resolve,reject)=>{resolveReservation=resolve;rejectReservation=reject;});
@@ -15,6 +15,7 @@ export function createDialConnection({url,signal,Socket=WebSocket,timeoutMs=3000
     try {
       if(typeof event.data!=='string'||event.data.length>1024*1024)throw Error('拨号响应无效');
       const value=JSON.parse(event.data);
+      if(standby&&!settled&&value.type==='standby.pulse')return;
       if(value.type==='dial.error')throw Error('暂时无法接通，请重新拨号');
       if(!settled){
         if(value.type!=='reservation'||value.dialVersion!==2||value.transport!=='gateway-relay'||typeof value.voiceSessionId!=='string'||!value.voiceSessionId)throw Error('拨号响应无效');
@@ -30,7 +31,8 @@ export function createDialConnection({url,signal,Socket=WebSocket,timeoutMs=3000
   socket.onerror=()=>fail(Error('实时语音连接失败'));
   socket.onclose=()=>{failure??=Error('实时语音连接已关闭');cleanup();if(!settled){settled=true;rejectReservation(failure);}};
   if(signal?.aborted)abort();
-  return {socket,reservation,
+  else if(standby){try{socket.send(url.searchParams.toString());}catch(error){fail(error);}}
+  return {socket,reservation,preconnected:Boolean(standby),
     adopt(){
       if(adopted)throw Error('拨号连接已被接管');adopted=true;cleanup();
       if(failure){socket.onclose?.({});return;}
