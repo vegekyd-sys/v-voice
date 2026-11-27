@@ -1450,6 +1450,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const {gptLiveFromEnv}=await import('../realtime-direct-tools/gpt-live-auth.mjs');
+    const {replyJudgeFromEnv,routerCompletionFromEnv}=await import('../realtime-direct-tools/gpt-live-router.mjs');
     const wsModule=await import('ws');
     transcriptLog=createVoiceTranscriptLog({
       directory:process.env.RTC_H5_TRANSCRIPT_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-transcripts'),
@@ -1515,7 +1516,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // Whether speech over a lesson still playing is said to V: the Decisions API (floor-judge.mjs),
     // with the board's text model as the fallback. VOICE_FLOOR_JUDGE=0 leaves it to the voice model.
     const floorJudge=process.env.VOICE_FLOOR_JUDGE==='0'?null:(floorJudgeFromEnv(process.env)??(()=>{const completion=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'8'});return completion?createFloorJudge({complete:completion}):null;})());
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,floorJudge,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,floorJudge,
+      endingJudge:replyJudgeFromEnv(process.env,{complete:routerCompletionFromEnv(process.env)}),videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({accounts:createMediaAccounts(

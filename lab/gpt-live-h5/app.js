@@ -984,7 +984,7 @@ async function startCall(options = {}) {
             return;
           }
           if(active.deviceAdapter?.handle(value))return;
-          if(value.type==='end.after-playback')active.remoteEnding=true;
+          if(value.type==='end.accepted'||value.type==='end.after-playback')active.remoteEnding=true;
           if(value.type==='end.cancelled')active.remoteEnding=false;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.

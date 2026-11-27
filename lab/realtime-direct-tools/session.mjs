@@ -1,4 +1,4 @@
-import {createOpusDownlink} from './opus-downlink.mjs';
+import {createMicDecoder,createOpusDownlink} from './opus-downlink.mjs';
 import {IMPROV_TOOL,improvArguments} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
@@ -117,7 +117,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,endingJudge=gptLive?.judge,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -288,6 +288,11 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     else throw Error('执行会话退出尚未确认');
   };
   const clearEnding=s=>{clearTimeout(s.ending?.fallbackTimer);clearTimeout(s.ending?.noAudioTimer);clearTimeout(s.ending?.backstopTimer);s.ending=null;};
+  const finishPlayedEnding = (s, ending) => {
+    if (!current(s) || s.ending !== ending || !ending.drained || ending.pendingVerdicts) return;
+    audit({type:'speaker.end-played',voiceSessionId:s.id});
+    void close(s.id,'end-played').catch(()=>{});
+  };
   const cancel=async(s,{includeBackend=true}={})=>{s.epoch++;for(const [id,c] of s.pending)if(includeBackend||id!==s.backgroundCallId)c.abort();clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();
     // (A call that lost its connection and may be connected again: what it was making is made all the same.)
     await s.localExecutions?.cancelAll(metadata=>Boolean(s.lost&&metadata?.outlives));
@@ -333,7 +338,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // Retire local tools/audio only; the admitted Agent retains its controller.
       const result=await cancel(s,{includeBackend:false});
       for(const id of s.pending.keys())if(id!==s.backgroundCallId)s.pending.delete(id);
-      s.outputEncoder?.close();clearInterval(s.progressTimer);s.interruptDetector?.close();if(!s.unidentified)speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
+      s.outputEncoder?.close();s.micDecoder?.close();clearInterval(s.progressTimer);s.interruptDetector?.close();if(!s.unidentified)speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
       sessions.delete(id);audit({type:'call.closed',voiceSessionId:id,why:s.closeWhy});
@@ -469,7 +474,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
   const acceptEnding=(s,callId)=>{
-    clearEnding(s);const ending=s.ending={callId,hasAudio:false,priorResponseId:s.bridge.audioResponseId??null};
+    clearEnding(s);const ending=s.ending={callId,hasAudio:false,history:s.latestUserTurn?[{role:'user',text:s.latestUserTurn.text}]:[],priorResponseId:s.bridge.audioResponseId??null};
     emit(s,{type:'end.accepted',callId});
     if(!s.nativeDuplex)return;
     const valid=()=>current(s)&&s.ending===ending;
@@ -1109,8 +1114,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         // can tell that it is only their own goodbye (a judgement it makes, never a list of words).
         if(role==='user'&&final&&s.ending){
           const ending=s.ending,undo=()=>{if(current(s)&&s.ending===ending){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}};
-          const keeps=s.bridge?.keepsEnding?.(text);
-          if(typeof keeps?.then==='function')void keeps.then(yes=>{if(yes!==true)undo();},undo);else undo();
+          const keeps = s.bridge?.keepsEnding?.(text) ?? (s.nativeDuplex && !s.speakerRouting && endingJudge
+            ? endingJudge({userText:text, history:ending.history ?? []}).then(result => result.stays >= .5) : null);
+          if (keeps) {
+            ending.pendingVerdicts = (ending.pendingVerdicts ?? 0) + 1;
+            Promise.resolve(keeps).then(yes => { if (yes !== true) undo(); }, undo).finally(() => {
+              ending.pendingVerdicts--; finishPlayedEnding(s, ending);
+            });
+          } else undo();
         }
         emit(s,{type:'transcript',role,text,final,...(source?{source}:{}),...(role==='user'&&metadata.turnId?{turnId:metadata.turnId}:{})});audit({type:'transcript',voiceSessionId:s.id,role,text,final,...(source?{source}:{}),responseId:metadata.responseId,turnId:metadata.turnId});
         };
@@ -1179,18 +1190,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     }
     const greet=()=>{if(s.greeted)return;s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');};
     client.removeListener('message',earlyGreeting);
+    const inputAudio = pcm => {
+      if (s.speakerRouting) {
+        if (!speakerRouting.has(s.id)) throw Error('说话人识别已中断，请结束后重拨');
+        speakerRouting.audio(s.id, Buffer.from(pcm));
+      } else { s.bridge.sendAudio(pcm); s.interruptDetector?.append(pcm); }
+    };
     client.on('message',(data,binary)=>{
       if(!current(s))return;
       if(binary){
         try{
           if(data.length%2||data.length>24000){client.close(1008);return;}
-          if(s.speakerRouting){if(!speakerRouting.has(s.id))throw Error('说话人识别已中断，请结束后重拨');speakerRouting.audio(s.id,Buffer.from(data));}
-          else {s.bridge.sendAudio(data);s.interruptDetector?.append(data);}
+          inputAudio(data);
         }catch(error){emit(s,{type:'error',message:error.message});void close(s.id,'input-error').catch(()=>{});}
         return;
       }
       try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'||e.type==='device.result'){receiveDeviceFrame(s,e);return;}if(e.type==='greeting'){if(s.readyAnnounced)greet();else s.greetingWanted=true;}
       else if(e.type==='output.codec' && e.codec==='opus24-v1' && s.surface==='phone' && !s.nativeRuntime){s.outputEncoder ??= createOpusDownlink();}
+      else if(e.type==='input.codec' && e.codec==='opus24-v1' && s.surface==='phone' && !s.nativeRuntime){
+        s.micDecoder ??= createMicDecoder();
+        emit(s,{type:'input.codec.ready',codec:'opus24-v1'});
+      }
+      else if(e.type==='input.opus' && s.micDecoder)inputAudio(s.micDecoder.decode(e.audio));
       else if(e.type==='barge-in') {
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
@@ -1198,14 +1219,14 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;if(!e.speaking){s.playback.drained();if(s.floor?.state==='dropped')s.floor=null;}audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
-        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','stretchedMs','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','droppedInputFrames','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','opusChunks','audioPayloadChars','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','stretchedMs','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','droppedInputFrames','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','inputOpusPackets','inputOpusChars','opusChunks','audioPayloadChars','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         for(const key of ['dialToReadyMs','dialToFirstPcmMs','dialToFirstRenderObservedMs'])if(Number.isFinite(e[key])&&e[key]>=0&&e[key]<=120000)stats[key]=Math.round(e[key]);
         for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof e[key]==='boolean')stats[key]=e[key];
         if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;
         if(Number.isFinite(stats.queuedOutputBytes))s.playback.queued(stats.queuedOutputBytes);
         audit({type:'client.playback-stats',voiceSessionId:s.id,stats});
       }
-      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){audit({type:'speaker.end-played',voiceSessionId:s.id});void close(s.id,'end-played').catch(()=>{});}
+      else if(e.type==='playback.drained'&&s.ending?.callId===e.callId&&s.ending.hasAudio&&s.ending.completed){s.ending.drained=true;finishPlayedEnding(s,s.ending);}
       }catch{client.close(1008);}
     });
     connectionStage('provider-connecting');

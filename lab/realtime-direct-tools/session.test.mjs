@@ -2347,3 +2347,25 @@ test('Seeduplex exposes revisable input captions without persisting or admitting
   assert.deepEqual(f.client.sent.filter(e => e.type === 'input.caption').map(e => e.text), ['月香','月相','','上弦','','待确认','']);
   assert.deepEqual(audit.filter(e => e.type === 'transcript' && e.role === 'user').map(e => e.text), ['上弦月']);
 });
+
+test('a second goodbye and a change of mind race safely with the TV playback receipt', async t => {
+ for (const stays of [true, false]) {
+  let decide;
+  const endingJudge = () => new Promise(resolve => { decide = resolve; });
+  const f = await fixture(undefined, 'seeduplex', {endingJudge});
+  t.after(() => f.service.dispose());
+  await nativeEnd(f);
+  nativeFarewellAudio(f, 'bye');
+  assert(await until(() => f.client.sent.some(e => e.type === 'end.after-playback')));
+  f.event({type:'conversation.item.input_audio_transcription.completed', transcript:stays ? '拜拜。拜拜。' : '等一下，我还有问题。'});
+  assert(await until(() => decide));
+  f.client.emit('message', Buffer.from(JSON.stringify({type:'playback.drained', callId:'native-end'})), false);
+  assert.equal(f.client.readyState, 1);
+  decide({stays:stays ? 1 : 0});
+  if (stays) assert(await until(() => f.audit.some(e => e.type === 'call.closed' && e.why === 'end-played')));
+  else {
+   assert(await until(() => f.client.sent.some(e => e.type === 'end.cancelled')));
+   assert.equal(f.client.readyState, 1);
+  }
+ }
+});

@@ -43,3 +43,22 @@ export function createTvOpusDecoder(module) {
     close() { module.OpusScriptHandler.destroy_handler(codec); module._free(input); module._free(output); },
   };
 }
+
+// The microphone supplies one to three 20 ms frames per callback. Keep one
+// encoder for the call so syllables carry across packet boundaries.
+export function createTvMicEncoder(module) {
+  const codec = new module.OpusScriptHandler(24000, 1, 2048);
+  codec._encoder_ctl(4002, 24000);
+  const input = module._malloc(1440 * 2 * 2), output = module._malloc(3828);
+  return {
+    encode(bytes) {
+      const samples = bytes.length / 2;
+      if (![480, 960, 1440].includes(samples)) throw Error('麦克风数据长度异常');
+      module.HEAPU16.set(bytes, input / 2);
+      const length = codec._encode(input, bytes.length, output, samples);
+      if (length < 1 || length > 1275) throw Error('麦克风编码失败');
+      return btoa(String.fromCharCode(...module.HEAPU8.subarray(output, output + length)));
+    },
+    close() { module.OpusScriptHandler.destroy_handler(codec); module._free(input); module._free(output); },
+  };
+}

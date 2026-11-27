@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import instantiate from 'opusscript/build/opusscript_native_wasm.js';
-import {createOpusDownlink} from '../realtime-direct-tools/opus-downlink.mjs';
-import {createTvOpusDecoder} from './tv-opus.mjs';
+import {createMicDecoder, createOpusDownlink} from '../realtime-direct-tools/opus-downlink.mjs';
+import {createTvMicEncoder, createTvOpusDecoder} from './tv-opus.mjs';
 
 test('TV Opus chunks preserve PCM timing across arbitrary boundaries and independent interrupts', t => {
   const encoder = createOpusDownlink(), decoder = createTvOpusDecoder(instantiate());
@@ -20,4 +20,25 @@ test('TV Opus chunks preserve PCM timing across arbitrary boundaries and indepen
     assert.deepEqual(decoder.decode(encoded), new Uint8Array(received.buffer));
   }
   assert.throws(() => decoder.decode({samples:1000, packets:[]}));
+});
+
+test('TV microphone delivers continuous 20, 40 and 60 ms frames through the relay', t => {
+  const encoder = createTvMicEncoder(instantiate()), decoder = createMicDecoder();
+  t.after(() => { encoder.close(); decoder.close(); });
+  let position = 0;
+  for (const length of [480, 960, 1440, 1440]) {
+    const signal = Int16Array.from({length}, (_, i) => 12000 * Math.sin((position + i) * .075));
+    const packet = encoder.encode(new Uint8Array(signal.buffer));
+    const received = decoder.decode(packet);
+    assert.equal(received.length, signal.byteLength);
+    assert.ok(packet.length < signal.byteLength / 3);
+    let correlation = 0, power = 0, reference = 0;
+    for (let i = 180; i < length; i++) {
+      const decoded = received.readInt16LE(i * 2), input = signal[i - 156];
+      correlation += decoded * input; power += decoded ** 2; reference += input ** 2;
+    }
+    assert.ok(correlation / Math.sqrt(power * reference) > .90);
+    position += length;
+  }
+  assert.throws(() => decoder.decode(''));
 });

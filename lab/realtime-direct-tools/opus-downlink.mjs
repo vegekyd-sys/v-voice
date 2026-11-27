@@ -1,6 +1,7 @@
 // Self-contained speech chunks: a queued response can be discarded immediately
 // on interrupt, without making the following chunk depend on its decoder state.
 import OpusScript from 'opusscript';
+import instantiate from 'opusscript/build/opusscript_native_wasm.js';
 const FRAME = 480; // 20 ms at 24 kHz
 const LOOKAHEAD = 156; // libopus VOIP at 24 kHz, 6.5 ms
 
@@ -24,5 +25,26 @@ export function createOpusDownlink() {
       return {codec:'opus24-v1', packets, samples};
     },
     close() { encoder.delete(); },
+  };
+}
+
+// Use explicitly sized buffers for the byte-in-uint16 PCM binding. Validate
+// the decoded duration before feeding the normal capture/admission pipeline.
+let micModule;
+export function createMicDecoder() {
+  const module = micModule ??= instantiate();
+  const codec = new module.OpusScriptHandler(24000, 1, 2048);
+  const input = module._malloc(1275), output = module._malloc(2880 * 2 * 2);
+  return {
+    decode(packet) {
+      if (typeof packet !== 'string' || !packet.length || packet.length > 1700) throw Error('麦克风语音包格式异常');
+      const bytes = Buffer.from(packet, 'base64');
+      if (!bytes.length) throw Error('麦克风语音包为空');
+      module.HEAPU8.set(bytes, input);
+      const samples = codec._decode(input, bytes.length, output);
+      if (![480, 960, 1440].includes(samples)) throw Error('麦克风语音包时长异常');
+      return Buffer.from(module.HEAPU16.subarray(output / 2, output / 2 + samples * 2));
+    },
+    close() { module.OpusScriptHandler.destroy_handler(codec); module._free(input); module._free(output); },
   };
 }

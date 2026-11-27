@@ -474,9 +474,9 @@ function TvIsland({state,actions,status}) {
   const error=status&&['error','warn','action'].includes(status.kind)||state.homeNoteTone==='error';
   return <section className="tv-island tv-avatar-dock" aria-label="V 通话">
     {connected&&<TvWaveform orbit/>}
-    <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={connected||!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
+    <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
     {(active||latestDocument||error)&&<div className="tv-dock-actions">
-      {connected&&<button type="button" className="tv-round" data-tv-control="expand" aria-label="进入全屏" onClick={()=>expand()}><Icon d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></button>}
+      {connected&&<button type="button" className="tv-round" data-tv-control="expand" data-tv-primary aria-label="进入全屏" onClick={()=>expand()}><Icon d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></button>}
       {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
       {connected&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" aria-label="挂断通话" onClick={actions.hangup}><Icon d={HANG}/></button>}
       {active&&!connected&&<button className="tv-text-action" type="button" data-tv-control="end" data-tv-primary onClick={actions.hangup}>取消呼叫</button>}
