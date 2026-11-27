@@ -313,6 +313,10 @@ export class SeeduplexRealtimeVoiceBridge {
     this.seenEvents = new Map();
     this.pendingToolCalls = new Map();
     this.backgroundTools = new Map();
+    // Typed messages committed as speech whose recognised words are still to come (sendTypedSpeech).
+    this.typedTurns = 0;
+    this.typedTranscript = false;
+    this.typedFlush = null;
     this.toolNoticeUsed = false;
     this.completedResponses = new Set();
     this.connectPromise = null;
@@ -647,6 +651,57 @@ export class SeeduplexRealtimeVoiceBridge {
     });
   }
 
+  /**
+   * A message the caller typed, as their turn: `audio` is its words said aloud (16 kHz PCM16LE,
+   * typed-speech.mjs). This service answers speech only; text items are history and are never
+   * answered, and it has no `response.create` (probed 11/27: an unknown event that ends the session).
+   * The exact words go first as a documented history pair, so what recognition hears differently
+   * (a link, a name) is still there. History added mid-call is read only from the turn after next
+   * (probed 11/28: a fact added, then asked about, was unknown; asked again, it was known), so an
+   * empty turn is committed first, which the service answers with nothing (about a second); the
+   * message's own turn then reads the words and whatever was put on the screen before it. Then the
+   * speech is the caller's input, and committing it ends the turn at once, without waiting for
+   * silence. Its transcript is the typed text, which the session has already recorded, so the
+   * recognised one is not reported again. `audio` may still be on its way (a promise): the empty
+   * turn runs meanwhile. Resolves whether the message was given; a failed `audio` rejects.
+   */
+  async sendTypedSpeech(text, audio) {
+    const normalized = optionalString(text);
+    if (!normalized || !this.ready || this.terminal) return false;
+    this.#send({type:"conversation.item.create",event_id:`event_${randomUUID()}`,items:[
+      // (A notice, as the screen's are, not a request: written as the caller asking, it was acted on again
+      // in the turns after the real one, 11/28: a typed "画一张" ran the drawing command three times.)
+      {role:"user",content:[{type:"input_text",text:`打字原文通知（不是新的请求，不要求回复，也不要为它做任何事）：用户下一句话是打字发来的，念出来给你听。听到的字和这份原文有出入时（链接、名字、数字），以原文为准：${normalized}`}]},
+      {role:"assistant",content:[{type:"input_text",text:"好，下一句以这份原文为准，只回应那一句。"}]},
+    ]});
+    // Typing while V talks is talking over V.
+    if (this.responseActive) this.handleBargeIn({ confirmed: true });
+    // The microphone's held-back frames would run into the message: they are older than it.
+    const quiet = () => { this.pendingInput = Buffer.alloc(0); if (this.inputMuted) { this.inputMuted = false; this.#send({type:"input_audio_unmute.commit"}); } };
+    quiet();
+    await new Promise(resolve => {
+      // (Kept referenced: a message is waiting on it, and it is short.)
+      const timer = setTimeout(() => { this.typedFlush = null; resolve(); }, this.options.typedFlushMs ?? 2_500);
+      this.typedFlush = {committed: false, done: () => { clearTimeout(timer); this.typedFlush = null; resolve(); }};
+      this.#send({ type: "input_audio_buffer.commit" });
+    });
+    const pcm = await audio;
+    if (!this.ready || this.terminal || !Buffer.isBuffer(pcm) || pcm.length < INPUT_FRAME_BYTES) return false;
+    if (this.responseActive) this.handleBargeIn({ confirmed: true });
+    quiet();
+    if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(normalized);
+    for (let at = 0; at + 1 < pcm.length; at += INPUT_FRAME_BYTES) {
+      this.#send({ type: "input_audio_buffer.append", audio: pcm.subarray(at, Math.min(at + INPUT_FRAME_BYTES, pcm.length - pcm.length % 2)).toString("base64") });
+    }
+    this.#send({ type: "input_audio_buffer.commit" });
+    this.lastFrameAt = Date.now();
+    this.typedTurns += 1;
+    this.responseOwnerAnnounced = false;
+    this.responseOwnerId = undefined;
+    this.outputClosed = false;
+    return true;
+  }
+
   triggerGreeting(instructions) {
     if (this.reconnecting && !this.terminal && !this.greetingRequested) return void (this.greetAfterReconnect = true);
     if (!this.ready || this.terminal || this.greetingRequested) return;
@@ -831,6 +886,11 @@ export class SeeduplexRealtimeVoiceBridge {
   #handleEvent(event, replay=false) {
     const type = event?.type;
     const responseId = optionalString(event.response_id) ?? optionalString(event.response?.id);
+    // The empty turn before a typed message (sendTypedSpeech): committed, then answered with nothing.
+    if (this.typedFlush && !replay) {
+      if (type === "input_audio_buffer.committed") this.typedFlush.committed = true;
+      else if (type === "response.done" && this.typedFlush.committed) this.typedFlush.done();
+    }
     if (responseId && this.retiredResponses.has(responseId) && type?.startsWith("response.")) return;
     if(this.request.nativeDuplex){
       // response.done carries usage and can arrive after the next turn starts.
@@ -930,6 +990,8 @@ export class SeeduplexRealtimeVoiceBridge {
       this.ready = true;
       this.reconnecting = false;
       this.inputMuted = false;
+      // A typed message committed on the connection that dropped is never recognised now.
+      this.typedTurns = 0;
       this.lastInputAt = Date.now();
       this.cancelledOutputPending = false;
       this.outputClosed = false;
@@ -969,9 +1031,10 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     if (type === "conversation.item.input_audio_transcription.started") {
       this.#clearInputCaption();
-      this.captionItem = event.item_id;
+      // (A typed message is already shown as typed: what recognition makes of its speech is not a caption.)
+      this.captionItem = this.typedTurns > 0 ? null : event.item_id;
       this.playbackEchoAt = null;
-      if(this.request.nativeDuplex)this.request.onInputSpeech?.(true);
+      if(this.request.nativeDuplex)this.request.onInputSpeech?.(true,this.typedTurns>0?{typed:true}:undefined);
       // Speech the service speaks for us (a board lesson) does not stop for the caller by
       // itself. On a native duplex call the phone already holds playback while someone talks;
       // the speech is cancelled only once the utterance is recognised and is not V's own voice
@@ -992,10 +1055,13 @@ export class SeeduplexRealtimeVoiceBridge {
       // right to tear the upstream generation down. This runs after the reset
       // above so the fresh suppression is not immediately cleared.
       const spoken = optionalString(event.transcript) ?? optionalString(event.text);
-      if(this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:Boolean(spoken?.trim())});
+      // The first utterance recognised after a typed message was committed is that message.
+      this.typedTranscript = this.typedTurns > 0;
+      if (this.typedTranscript) this.typedTurns -= 1;
+      if(this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:Boolean(spoken?.trim()),...(this.typedTranscript?{typed:true}:{})});
       // V's own voice, heard again from a loud phone speaker while its reply still plays: the
       // reply goes on, and the model's answer to the echo is never played.
-      if(this.request.nativeDuplex&&spoken&&this.request.isPlaybackEcho?.(spoken)){
+      if(this.request.nativeDuplex&&spoken&&!this.typedTranscript&&this.request.isPlaybackEcho?.(spoken)){
         this.playbackEchoAt=Date.now();
         this.request.onEvent?.({direction:'server',type:'native.playback-echo',preservedResponseId:this.audioResponseId});
       }
@@ -1003,7 +1069,7 @@ export class SeeduplexRealtimeVoiceBridge {
         this.injectedCancelPending = false;
         if (spoken?.trim() && this.playbackEchoAt === null && this.injectedSpeech && this.responseActive) this.#cancelUpstreamResponse(true);
       }
-      if(this.request.nativeDuplex)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(spoken??'');
+      if(this.request.nativeDuplex&&!this.typedTranscript)this.nativeLiteralRead=/朗读|复述|念出|读出|原样|逐字/u.test(spoken??'');
       // A finished utterance after an earlier cancel opens the next turn, whose
       // reply text arrives before its first audio. Retired response ids still
       // filter the cancelled tail.
@@ -1011,7 +1077,7 @@ export class SeeduplexRealtimeVoiceBridge {
       if (spoken && this.bargeInPending && this.playbackEchoAt === null) this.#cancelUpstreamResponse();
       this.bargeInPending = false;
     }
-    if(type === "conversation.item.input_audio_transcription.failed")this.injectedCancelPending = false;
+    if(type === "conversation.item.input_audio_transcription.failed"){this.injectedCancelPending = false;if(this.typedTurns>0)this.typedTurns -= 1;}
     if(type === "conversation.item.input_audio_transcription.failed" && this.request.nativeDuplex)this.request.onInputSpeech?.(false,{recognized:false});
     const continuingBatch = this.toolBatches.find((batch) => batch.continuing);
     const internalContinuationResponse =
@@ -1077,7 +1143,8 @@ export class SeeduplexRealtimeVoiceBridge {
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const text = optionalString(event.transcript) ?? optionalString(event.text);
-      if (text) {
+      if (this.typedTranscript) { this.typedTranscript = false; this.toolNoticeUsed = false; }
+      else if (text) {
         this.toolNoticeUsed = false;
         this.request.onTranscript?.("user", text, true, undefined, {turnId: event.item_id ?? event.turn_id, ...(this.playbackEchoAt !== null ? {playbackEcho: true} : {})});
       }

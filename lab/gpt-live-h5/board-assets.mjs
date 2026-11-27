@@ -33,7 +33,7 @@ const bounded = (value, limit) => Array.from(String(value ?? '').replace(/\s+/gu
 const https = value => { try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 
 // What the voice model is told once, wherever a shelf exists for the call.
-export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也可以当参考图，现状里列着它们的编号和名字（p1「名字」…）。用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它；写的时候对着名字选，也可以直接写名字（--ref "基格尔德 完全体形态"），不要凭印象写编号。标着“搜错了”的照片不是那样东西，不能当参考：告诉用户这张搜得不对，换一张或者重新找。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。两个以上的角色或东西同框时，每一个都带上它自己的参考图：出图用 --image 写主图、其余每张各写一个 --ref；做视频最稳的是先出一张同框的图，用户认可后让这张图动起来（--image 写这张图），也可以带多个 --image，脚本里用 <<<media_1>>>、<<<media_2>>> 分别指它们。用户认可了一张图后说“做成视频”“动起来”，就是让这张图动：--image 写它。用户说造型不像、不对，就换上或加上屏幕上那张对的照片当参考重做，不要只改文字描述；屏幕上没有对的照片就先找。做视频时 --script 只写一两句话：谁、要发生什么、什么风格、结果如何。不要写分镜、秒数、镜头和运镜，导演会按用户的要求补写成分镜；你写得越长，用户等得越久。completionLine 是事先写的，只说做好了，不说“样子对了”“造型全对”这类你还没看到的话。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
+export const ASSET_POLICY = '屏幕素材：用户屏幕的画面上摆着本通话生成的图片和视频，每个有编号（a1、a2…）。下面「屏幕素材现状」会随时更新，里面写的是图里真实看得到的东西。现状里列出的作品都已经做好、用户已经在屏幕上看到了，不用再查询进度或说“我看看好了没”；写着“正在做”的才是还没好的。用户说“这张”“它”“刚才那张”“那个视频”，指用户正点着的那个；没有点着的就是最新的那个；仍然分不清再问。用户自己从手机发来的图片也列在现状里（名字里写着“我上传的”），描述是替你看过这张图写下的：用户问起它，就按描述回答，不要说你看不到图片或让用户再描述一遍；描述还没写出来时，说正在看，马上回答。用户问图里有什么、谁在哪边，按现状里的描述回答，不编造没写的细节。屏幕上搜到的照片也可以当参考图，现状里列着它们的编号和名字（p1「名字」…）。用户说“把那张海报改成 Q 版”“照这张画一个”，指的是搜到的照片时就用它；写的时候对着名字选，也可以直接写名字（--ref "基格尔德 完全体形态"），不要凭印象写编号。标着“搜错了”的照片不是那样东西，不能当参考：告诉用户这张搜得不对，换一张或者重新找。要改图、换风格、让图动起来、拿它当参考时，创作命令里 --image 和 --ref 直接写编号（例如 --image a1 或 --image p2），系统会换成真实链接；不要抄写、朗读或编造链接。编号只写在命令和交给后台的 context 里：对用户说话、写给用户的消息里不说编号，说它的名字，或者“第一张”“刚才那个视频”。交给后台处理屏幕上的东西时，在 context 里写清它的编号。两个以上的角色或东西同框时，每一个都带上它自己的参考图：出图用 --image 写主图、其余每张各写一个 --ref；做视频最稳的是先出一张同框的图，用户认可后让这张图动起来（--image 写这张图），也可以带多个 --image，脚本里用 <<<media_1>>>、<<<media_2>>> 分别指它们。用户认可了一张图后说“做成视频”“动起来”，就是让这张图动：--image 写它。用户说造型不像、不对，就换上或加上屏幕上那张对的照片当参考重做，不要只改文字描述；屏幕上没有对的照片就先找。做视频时 --script 只写一两句话：谁、要发生什么、什么风格、结果如何。不要写分镜、秒数、镜头和运镜，导演会按用户的要求补写成分镜；你写得越长，用户等得越久。completionLine 是事先写的，只说做好了，不说“样子对了”“造型全对”这类你还没看到的话。生成中的东西已经显示在画面上，做好会自己显影，不用另外展示。';
 export const ASSET_CONTEXT_EMPTY = '屏幕素材现状：画面上还没有生成的图片或视频。';
 // What the illustrator is told (appended to its instructions by the service).
 export const ASSET_NOTES = `
@@ -142,7 +142,7 @@ export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024
   if (!complete) return null;
   // `check`: a photograph the board found under a name ({name, query}). The answer is short: what is
   // really in it, and whether that is the thing it is named for. `bytes`/`type`: the picture itself, when held.
-  return async function see({url = '', bytes = null, type = '', prompt = '', check = null, signal} = {}) {
+  return async function see({url = '', bytes = null, type = '', prompt = '', check = null, uploaded = false, signal} = {}) {
     const controller = new AbortController(), abort = () => controller.abort();
     if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once: true});
     const timer = setTimeout(abort, timeoutMs);
@@ -167,7 +167,7 @@ export function createAssetEye({complete, fetchImpl = fetch, maxBytes = 4 * 1024
         return shows ? {see: shows, fits: told.fits !== false} : null;
       }
       const content = [{type: 'image_url', image_url: {url: image}},
-        {type: 'text', text: prompt ? `这张图是按这段要求生成的（图里实际画成什么样，以你看到的为准）：${bounded(prompt, 300)}` : '这张图是 V 的后台刚做出来的。'}];
+        {type: 'text', text: prompt ? `这张图是按这段要求生成的（图里实际画成什么样，以你看到的为准）：${bounded(prompt, 300)}` : uploaded ? '这张图是用户自己从手机里发来的。' : '这张图是 V 的后台刚做出来的。'}];
       let text = '';
       for await (const chunk of complete({messages: [{role: 'system', content: lookInstructions(wanted)}, {role: 'user', content}], signal: controller.signal})) text += chunk;
       const value = json(text);
@@ -244,7 +244,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
   const look = (owner, value, asset) => {
     if (!see || asset.kind !== 'image' || !asset.url) return Promise.resolve(null);
     const started = now();
-    asset.looking = Promise.resolve().then(() => see({url: asset.url, prompt: asset.prompt})).then(found => {
+    asset.looking = Promise.resolve().then(() => see({url: asset.url, prompt: asset.prompt, uploaded: asset.source === 'upload'})).then(found => {
       asset.looking = null;
       audit({type: 'board.asset-look', voiceSessionId: owner, asset: asset.id, found: Boolean(found), parts: found?.parts.length ?? 0, durationMs: now() - started});
       owner = heirOf(owner);
@@ -518,6 +518,11 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     /** What the illustrator is told is there to use. */
     digest(owner) {
       return (owners.get(owner)?.assets ?? []).filter(asset => asset.state !== 'failed').slice(-8).map(asset => ({id: asset.id, kind: asset.kind, ...(asset.name ? {name: asset.name} : {}), ...(asset.see ? {see: bounded(asset.see, 100)} : asset.prompt ? {asked: bounded(asset.prompt, 60)} : {}), ...(asset.state === 'making' ? {making: true} : {})}));
+    },
+    /** Waits, at most `ms`, for the pictures still being looked at: a question about one is asked once V knows what is in it. */
+    async settled(owner, ms = 0) {
+      const looking = (owners.get(owner)?.assets ?? []).map(asset => asset.looking).filter(Boolean);
+      if (looking.length && ms > 0) await wait(Promise.all(looking), ms);
     },
     /** Whether something the caller asked for is still being made. */
     busy(owner) { return Boolean(owners.get(owner)?.assets.some(asset => asset.state === 'making' && asset.source === 'made')); },

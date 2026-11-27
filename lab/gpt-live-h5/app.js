@@ -53,13 +53,17 @@ if (document.querySelector) mountCallUi(document, view, {
       if (!active?.voiceSessionId || !file) return;
       if (file.size>8*1024*1024) return setStatus('请选择小于 8 MB 的图片',{tone:'problem'});
       setStatus('正在添加参考图');
-      try {
+      // (A message typed meanwhile waits for this: a question about the picture is asked once it is there.)
+      const upload=(async()=>{try {
         const url=new URL(apiUrl('reference-image'),document.baseURI);
         url.searchParams.set('call',active.voiceSessionId);
         const response=await fetch(url,{method:'POST',body:file,headers:{'content-type':file.type}});
         if (!response.ok) throw Error((await response.json()).error);
         if(call===active){active.boardAssets?.poke?.();setStatus('参考图已放到画布上',{tone:'success'});}
-      } catch(error){if(call===active)setStatus(error.message||'添加参考图失败',{tone:'problem'});}
+      } catch(error){if(call===active)setStatus(error.message||'添加参考图失败',{tone:'problem'});}})();
+      active.referenceUpload=upload;
+      await upload;
+      if(active.referenceUpload===upload)active.referenceUpload=null;
     },
     toggleImprovSound: () => call?.improv?.toggleSound(),
     endImprov: () => call?.improv?.finish(),
@@ -1188,6 +1192,8 @@ async function sendSteer(value) {
   const text = String(value ?? "").trim(); if (!text || !call) return false;
   const active = call;
   try {
+    if (active.referenceUpload) await Promise.race([active.referenceUpload, new Promise(resolve => setTimeout(resolve, 15000))]);
+    if (call !== active) return false;
     const receipt = await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" });
     if (call !== active) return false;
     view.set(state => ({ composer: { ...state.composer, open: false } }));

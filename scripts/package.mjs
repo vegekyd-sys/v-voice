@@ -43,6 +43,8 @@ names.push('lab/realtime-direct-tools/idle-hangup.mjs');
 names.push(...['peer','provider','router','auth'].map(n=>`lab/realtime-direct-tools/gpt-live-${n}.mjs`));
 // What differs between voice models, asked by session.mjs and the GPT Live bridge (docs/model-capabilities.md).
 names.push('lab/realtime-direct-tools/capabilities.mjs');
+// What the caller types, said aloud for a model that answers speech only (typedInput).
+names.push('lab/realtime-direct-tools/typed-speech.mjs');
 names.push('lab/realtime-direct-tools/playback-echo.mjs');
 names.push('lab/realtime-direct-tools/floor-judge.mjs','lab/realtime-direct-tools/playback-position.mjs');
 names.push('lab/gpt-live-h5/upload-backpressure.mjs');

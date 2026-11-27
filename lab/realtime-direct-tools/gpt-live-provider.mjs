@@ -247,8 +247,17 @@ export class GptLiveBridge {
     const until=this.now()+HOLD_MAX_MS;
     return new Promise(resolve=>{const check=()=>{if(!held()||this.now()>=until)return resolve();const t=setTimeout(check,120);t.unref?.();};check();});
   }
-  // Typed text from the page: the user's own words.
-  sendUserMessage(text){this.userText=String(text??'').trim();this.muted=false;this.request.onClearAudio?.('barge-in',{retiredResponseId:this.turnId});this.append(text);}
+  // Typed text from the page: the user's own words, and a finished turn of theirs like a spoken one: it is
+  // remembered and routed ahead (`speculate`). The model does not delegate for typed words (11/28: a typed
+  // weather question twice got "好,我去看看" and nothing; the same question spoken was delegated), so what
+  // the router chose for them is started when no delegation has come (`typed`).
+  sendUserMessage(text){
+    const words=String(text??'').trim();
+    this.userText=words;this.muted=false;this.userDoneAt=this.now();clearTimeout(this.netTimer);this.nudged=false;
+    this.request.onClearAudio?.('barge-in',{retiredResponseId:this.turnId});
+    if(words){this.remember('user',words);this.speculate(words,{typed:true});}
+    this.append(text);
+  }
   // The opening line. The model may let the request pass in silence, so it is asked
   // again until V has spoken or the caller has; never once the conversation has begun.
   triggerGreeting(text='电话已接通。请用中文简短打个招呼，然后听对方说话。'){
@@ -493,7 +502,7 @@ export class GptLiveBridge {
   get native(){return !(this.request.tools??[]).some(tool=>tool.name==='explain_on_board');}
   // The delegation for what the caller just said arrives up to a second after their words do.
   // Choosing the tool starts with the words; nothing is executed until the model delegates.
-  speculate(text){
+  speculate(text,{typed=false}={}){
     // Already routed for the delegation that came first.
     if(Array.from(text).length<4||this.closed||this.routedText&&same(this.routedText,text))return;
     const working=this.working,guess={text,working,at:this.now()};
@@ -501,15 +510,16 @@ export class GptLiveBridge {
     guess.choice.catch(()=>{});this.guess=guess;
     // The model sometimes answers "好，我讲讲" and never delegates. When the caller's own words ask for an
     // explanation, the lesson is prepared anyway; a delegation that still comes for them is already served.
+    // Typed words are never delegated by the model: whatever tool the router chose for them is started.
     void guess.choice.then(choice=>{
-      if(choice?.name!=='explain_on_board'||choice.via==='fallback')return;
+      if(!choice||choice.via==='fallback'||!(choice.name==='explain_on_board'||typed&&![GPT_LIVE_SELF_TOOL.name,'end_call'].includes(choice.name)))return;
       const timer=setTimeout(()=>{
         if(this.closed||this.guess!==guess)return;
         this.guess=null;this.served={text,at:this.now()};
         const id=`host_${++this.ownCalls}`;
         this.delegations.set(id,{text,state:'running',polls:0,name:choice.name,own:true});
-        this.remember('tool','',{name:choice.name,query:String(choice.args?.topic??'')});
-        this.request.onDiagnostic?.({stage:'lesson-unprompted',elapsedMs:Math.round(this.now()-this.startedAt)});
+        this.remember('tool','',{name:choice.name,query:String(choice.args?.topic??choice.args?.query??choice.args?.question??choice.args?.url??'')});
+        this.request.onDiagnostic?.({stage:choice.name==='explain_on_board'?'lesson-unprompted':'typed-unprompted',elapsedMs:Math.round(this.now()-this.startedAt)});
         this.request.onToolCall?.({callId:id,name:choice.name,args:choice.args});
       },UNPROMPTED_MS);timer.unref?.();
     }).catch(()=>{});

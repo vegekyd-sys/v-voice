@@ -16,10 +16,11 @@ test('every model a call can choose has its traits, and every trait has a known 
     assert(traits,`${id} has no traits in capabilities.mjs`);
     assert(['function','delegation'].includes(traits.tools));
     assert(['lesson','speech'].includes(traits.explains));
+    assert(['text','speech'].includes(traits.typedInput),`${id}.typedInput`);
     for(const key of ['hostToolSpeech','typedTurns','compactResults','nativeDuplex'])assert.equal(typeof traits[key],'boolean',`${id}.${key}`);
   }
   // A model this file does not know takes part in nothing model-specific.
-  assert.deepEqual(modelTraits('a-new-model'),{tools:'function',explains:'lesson',hostToolSpeech:false,typedTurns:true,compactResults:false,nativeDuplex:false});
+  assert.deepEqual(modelTraits('a-new-model'),{tools:'function',explains:'lesson',hostToolSpeech:false,typedTurns:true,typedInput:'text',compactResults:false,nativeDuplex:false});
 });
 
 test('a tool a call can be offered is either told to delegation models or left out on purpose',()=>{
