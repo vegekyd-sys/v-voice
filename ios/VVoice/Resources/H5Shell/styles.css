@@ -1244,7 +1244,9 @@ html[data-tv="true"] .tv-compact:focus-visible{outline:0}
 .tv-dock-status.is-error{font-size:11px;color:#e4d6d9}
 .tv-dock-actions{position:absolute;right:112px;top:184px;transform:translateX(50%);display:flex;gap:14px;padding:5px;border:1px solid #d9edf522;border-radius:28px;background:#16233299;box-shadow:0 8px 20px #0003,inset 0 1px #fff08;backdrop-filter:blur(20px);animation:tv-controls-arrive .28s .18s ease-out both}
 .tv-avatar-dock .tv-round{display:flex;align-items:center;justify-content:center;width:38px;height:38px;padding:10px;border-radius:50%;background:#ffffff0b;color:#e6eef6;transition:background .18s,transform .18s}
-html[data-tv="true"] .tv-avatar-dock .tv-round:focus-visible{outline:1px solid #dceaf2;outline-offset:3px}
+/* The native overlay owns the D-pad, so its initial programmatic focus
+   need not match Chromium's keyboard-only :focus-visible heuristic. */
+html[data-tv="true"] .tv-avatar-dock .tv-round:focus{outline:2px solid #edf6ff;outline-offset:2px;box-shadow:0 0 0 2px #162332}
 .tv-avatar-dock .tv-round:active{transform:scale(.94)}
 .tv-avatar-dock .tv-end{background:#c94862;color:#fff;box-shadow:inset 0 1px #ffffff20}
 .tv-text-action{height:36px;padding:0 18px;border-radius:22px!important;background:transparent;color:#e6eef6;font-size:12px!important;white-space:nowrap}
