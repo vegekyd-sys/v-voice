@@ -1,0 +1,43 @@
+{
+  "version": "voice-typed-images.20261128.1",
+  "verifiedAt": "2026-11-28T04:11:39+08:00",
+  "sourceCommit": "ee2bc5369d82eeaaa1efe6b3ffafba92a56577a4",
+  "mergePRs": [
+    286,
+    287,
+    291,
+    292
+  ],
+  "previousRunningCommit": "0652c97bb35d2e9f2f5726a0e11a127d21c2a976",
+  "filesSha256": "967caa0562eb3e77a9357f03d01bac556cfd6296920684406e5aa123964205d4",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/46060192386",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "122a7cfb133c553daaf81a4778c4ddae6acd0389ad8d4f3725213d2dc5c9c44c",
+  "changes": [
+    "讲解已有照片时不再另画 AI 图，照片一时没取到不再整通电话缺图（#286）。",
+    "通话里打字和发图：豆包把打的字说给模型听，GPT Live 1.1 按打字直接办事；先发图再问会先看清图（#287）。",
+    "通话出图换回 GPT Image 2.6 Flare，参考图最多 15 张（#291）。",
+    "GPT Live 1.1 的工具路由能看到屏幕上的图片列表，可以改刚画好的图（#292）。"
+  ],
+  "acceptance": [
+    "正式网页个人入口，无头 Chrome 加合成麦克风和输入框打字，豆包与 GPT Live 1.1 各两通。",
+    "打字“查今天上海天气”：两个模型都调用 web_search 并回答；先加图片 0.3 秒后打字问图里的形状，两个模型都答出蓝色正方形、红色圆形、黄色三角形。",
+    "打字画图并改图：正式服务的 Makaron 回执均为 gpt-image-2.6-flare，共 4 张 20 积分（主账号）；豆包画 9.8 秒、改 12.9 秒，GPT Live 1.1 画 9.4 秒、改 12.7 秒，改图沿用上一张。",
+    "语音讲解“天空为什么是蓝的”：两个模型都上画布讲完。",
+    "GPT Live 1.1 回复判断在正式环境返回概率，不再 401。"
+  ],
+  "notVerified": [
+    "真实手机的键盘、选图、真实麦克风与打字同时进行；iOS App；电视与设备节点只做了服务同步，没有实际通话。",
+    "已知：豆包打字改图时偶尔重复调用 exec（同一次生成只扣一次费），完成提示会说两遍，其中一遍可能落在随后的讲解里。"
+  ]
+}

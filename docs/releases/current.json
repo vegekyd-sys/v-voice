@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-tv-dial-policy-20261128",
-  "version": "voice-tv-dial-policy.20261128.1",
-  "entryCommit": "0652c97bb35d2e9f2f5726a0e11a127d21c2a976",
-  "deviceEntryCommit": "0652c97bb35d2e9f2f5726a0e11a127d21c2a976",
-  "filesSha256": "f50fa3acb1848e6965b7112351d55b9040112e5c66f231909dff25713871dccb",
-  "registration": "voice-tv-dial-policy-20261128/release.json",
-  "previousEntryCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
+  "release": "voice-typed-images-20261128",
+  "version": "voice-typed-images.20261128.1",
+  "entryCommit": "ee2bc5369d82eeaaa1efe6b3ffafba92a56577a4",
+  "deviceEntryCommit": "ee2bc5369d82eeaaa1efe6b3ffafba92a56577a4",
+  "filesSha256": "967caa0562eb3e77a9357f03d01bac556cfd6296920684406e5aa123964205d4",
+  "registration": "voice-typed-images-20261128/release.json",
+  "previousEntryCommit": "0652c97bb35d2e9f2f5726a0e11a127d21c2a976",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-28T02:40:15+08:00",
-  "runtimeDifference": "电视桌面预热拨号与网页共用语音设置，豆包默认使用原生双工。"
+  "validatedAt": "2026-11-28T04:11:39+08:00",
+  "runtimeDifference": "打字和发图两个模型都会回、讲解不再无故缺图、出图换回 GPT Image 2.6 Flare、GPT Live 1.1 能改刚画的图。"
 }
