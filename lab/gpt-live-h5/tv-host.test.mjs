@@ -301,3 +301,35 @@ test('going idle on a lesson keeps the full window until the portrait reaches Ho
  assert.equal(api.snapshot.layout,'compact');assert.equal(api.snapshot.landing,false);
  api.commitLayout('compact',undefined,{x:630,y:100,width:264});assert.equal(removed,true);
 });
+
+test('lesson remote scrolls the current sheet, reaches both edges and returns to the call', () => {
+  const {view, window, api} = fixture();
+  view.set({call: 'connected'});
+  const doc = window.document;
+  window.innerWidth = 1200; window.innerHeight = 720;
+  const make = (selector, parent = '') => ({
+    tabIndex: 0, matches: s => s.includes(selector),
+    closest: s => s === parent ? board : null,
+    focus() { doc.activeElement = this; },
+    getBoundingClientRect: () => ({x: 24, y: 48, top: 48, bottom: 448, left: 24, right: 424, width: 400, height: 400}),
+  });
+  const board = {contains: item => [region, header, dot].includes(item)};
+  const region = make('.board-scroll', '.board'), chat = make('.turns[role="log"]');
+  const header = make('.board-close', '.board-top'), dot = make('[aria-current="page"]', '.board-dots');
+  const nextPage = make('.board-dots button', '.board-dots');
+  dot.nextElementSibling = nextPage; nextPage.previousElementSibling = dot;
+  const fold = make('.tv-return');
+  Object.assign(region, {clientHeight: 400, scrollHeight: 850, scrollTop: 0, contains: item => item === region,
+    scrollBy({top}) { this.scrollTop = Math.max(0, Math.min(450, this.scrollTop + top)); }});
+  doc.querySelectorAll = () => [fold, header, region, dot, nextPage, chat];
+  const step = (dir, target, top) => {
+    api.navigate(dir); assert.equal(doc.activeElement, target); assert.equal(region.scrollTop, top);
+  };
+  fold.focus(); step('down', region, 0); step('down', region, 320); step('down', region, 450);
+  step('down', dot, 450); step('up', region, 450); step('up', region, 130); step('up', region, 0);
+  step('up', header, 0); step('down', region, 0); step('right', chat, 0); step('left', region, 0);
+  step('left', dot, 0); step('left', dot, 0); step('right', nextPage, 0); step('left', dot, 0);
+  step('right', nextPage, 0); step('right', chat, 0); step('left', region, 0);
+  window.requestAnimationFrame = run => run();
+  api.commitLayout('full'); assert.equal(doc.activeElement, region);
+});

@@ -1,3 +1,4 @@
+import {warmTvOpus} from "./tv-opus.mjs";
 import {createImprovPlayer} from "./improv-player.mjs";
 import {phoneModelOptions} from "./model-options.mjs";
 import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
@@ -32,6 +33,7 @@ const $ = (id) => document.getElementById(id);
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
 const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),primeDial:primeTvDial,dialFromHome:id=>startCall({homeRequest:id}),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
+if (tvHost && hasTvArrayCapture()) void warmTvOpus();
 if(tvHost)warmTvAudio();
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
@@ -181,7 +183,7 @@ function setMuted(muted) {
   if (!call?.stream) return;
   for (const track of call.stream.getAudioTracks()) track.enabled = !muted;
   document.body.dataset.microphoneMuted = String(muted);
-  view.set({ muted });
+  view.set({muted, ...(muted ? {callerCaption: ''} : {})});
 }
 function setOutputMuted(outputMuted) {
   if (!call) return;
@@ -606,6 +608,7 @@ function renderTranscript(snapshot) {
 }
 function resetTranscript() {
   contentView?.reset(); presentation.reset();
+  view.set({callerCaption: ''});
   if(speakerCandidate())delete document.body.dataset.speakerState;
   view.set({ speaker: { multi: false, people: [], lastSpeakerId: null, listenOnly: false, status: null }, thinkingAt: null });
   renderTranscript(presentation.snapshot());
@@ -976,8 +979,12 @@ async function startCall(options = {}) {
         onPlaybackActivity:speaking=>{if(call===active){active.improv?.setHostSpeaking(speaking);setVoiceState(speaking?'speaking':'listening');if(speakerCandidate())speakerEvent({type:'playback.activity',speaking});}},
         onEvent:value=>{
           if(call!==active)return;
+          if (value.type === 'input.caption') {
+            if (!reservation.speakerRouting && !view.get().muted && typeof value.text === 'string') view.set({callerCaption: value.text});
+            return;
+          }
           if(active.deviceAdapter?.handle(value))return;
-          if(value.type==='end.after-playback')active.remoteEnding=true;
+          if(value.type==='end.accepted'||value.type==='end.after-playback')active.remoteEnding=true;
           if(value.type==='end.cancelled')active.remoteEnding=false;
           // An interrupted native reply may never send its final transcript.
           // Its caption row must not be reused for the answer to the next turn.

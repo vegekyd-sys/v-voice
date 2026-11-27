@@ -143,7 +143,7 @@ function Conversation({state, options, history, setHistory, onOverflow, wide}) {
     const el = scroller.current;
     pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
   };
-  if (!all.length) return <div className="conversation" />;
+  if (!all.length && !state.callerCaption) return <div className="conversation" />;
   return (
     <div className="conversation" data-history={String(history)}>
       {!wide && (all.length > turns.now.length || history)
@@ -156,6 +156,7 @@ function Conversation({state, options, history, setHistory, onOverflow, wide}) {
       )}
       <div ref={scroller} tabIndex={state.tvHost && state.tvLayout === 'full' ? 0 : undefined} onScroll={onScroll} className={history ? 'turns all' : 'turns now'} role="log" aria-live="polite" aria-label={history ? '全部对话' : '当前这一轮'}>
         {(history ? all : turns.now).map(row => <Turn key={row.key} row={row} options={options} />)}
+        {state.callerCaption && <article className="turn user" data-streaming="true"><span className="turn-who">你</span><div className="turn-text">{state.callerCaption}</div></article>}
       </div>
     </div>
   );
@@ -473,9 +474,9 @@ function TvIsland({state,actions,status}) {
   const error=status&&['error','warn','action'].includes(status.kind)||state.homeNoteTone==='error';
   return <section className="tv-island tv-avatar-dock" aria-label="V 通话">
     {connected&&<TvWaveform orbit/>}
-    <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={connected||!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
+    <button type="button" className="tv-avatar-action tv-avatar-large" data-tv-control={active?'expand':'dial'} data-tv-primary={!active&&!error||undefined} aria-label={connected?'展开对话':state.dial.disabled?'正在准备连接':error?'重新呼叫 V':'和 V 直接通话'} disabled={active&&!connected||!active&&state.dial.disabled} onClick={connected?expand:actions.dial}/>
     {(active||latestDocument||error)&&<div className="tv-dock-actions">
-      {connected&&<button type="button" className="tv-round" data-tv-control="expand" aria-label="进入全屏" onClick={()=>expand()}><Icon d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></button>}
+      {connected&&<button type="button" className="tv-round" data-tv-control="expand" data-tv-primary aria-label="进入全屏" onClick={()=>expand()}><Icon d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></button>}
       {connected&&<button type="button" className={`tv-round tv-speaker ${state.outputMuted?'is-muted':''}`} data-tv-control="speaker" aria-label={state.outputMuted?'恢复 V 的声音':'关闭 V 的声音'} aria-pressed={state.outputMuted} onClick={actions.speaker}><Icon d={state.outputMuted?SPEAKER_OFF:SPEAKER}/></button>}
       {connected&&<button className="tv-round tv-call tv-end" type="button" data-tv-control="end" aria-label="挂断通话" onClick={actions.hangup}><Icon d={HANG}/></button>}
       {active&&!connected&&<button className="tv-text-action" type="button" data-tv-control="end" data-tv-primary onClick={actions.hangup}>取消呼叫</button>}

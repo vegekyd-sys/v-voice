@@ -54,6 +54,7 @@ import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs
 import {createMaterialCheck} from '../realtime-direct-tools/material-check.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+const opusAssets = dirname(fileURLToPath(import.meta.resolve('opusscript/build/opusscript_native_wasm.js')));
 // Dialing is how a known caller retries; only anonymous callers keep the tight limit.
 // Page features reachable as /api/page/<name> (see the request handler). Each maps to the route the web
 // page uses, answered as JSON: the board's whole run at once, a photograph as base64.
@@ -788,6 +789,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         return json(res, 401, {error:'请从飞书电话入口登录后拨号。'});
       }
       const staticFiles = new Map([
+        ["/tv-opus.mjs", [join(here, "tv-opus.mjs"), "text/javascript; charset=utf-8"]],
+        ["/assets/opus-0.1.1/decoder.mjs", [join(opusAssets, "opusscript_native_wasm.js"), "text/javascript; charset=utf-8"]],
+        ["/assets/opus-0.1.1/decoder.wasm", [join(opusAssets, "opusscript_native_wasm.wasm"), "application/wasm"]],
+        ["/assets/opus-0.1.1/LICENSE", [join(opusAssets, "../LICENSE"), "text/plain"]],
+        ["/assets/opus-0.1.1/COPYING.libopus", [join(opusAssets, "COPYING.libopus"), "text/plain"]],
         ["/ios-shell-release.json", [join(here, "ios-shell-release.json"), "application/json; charset=utf-8"]],
         ["/", [join(here, "index.html"), "text/html; charset=utf-8"]],
         ["/compare", [join(here, "comparison.html"), "text/html; charset=utf-8"]],
@@ -824,6 +830,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         const [file, type] = staticFiles.get(pathname);
         const bundled = ['/app-bundle.mjs','/tv-entry.bundle.mjs','/tv-startup.bundle.mjs'].includes(pathname) ? await browserBundle(pathname.slice(1)) : null;
         let contents = bundled?.bytes ?? await readFile(file);
+        if (pathname === "/assets/opus-0.1.1/decoder.mjs") contents = Buffer.concat([contents, Buffer.from("\nexport default Module;\n")]);
         if (pathname === "/") {
           // The first frame needs this CSS, so return the exact release bytes
           // in the HTML instead of requiring another mobile-network round trip.
@@ -871,7 +878,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           }
           contents = Buffer.from(html);
         }
-        res.writeHead(200, { "content-type": type, "cache-control": pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
+        res.writeHead(200, { "content-type": type, "cache-control": (pathname.startsWith("/assets/tv-aec/webrtcaec3-0.3.0.") || pathname.startsWith("/assets/opus-0.1.1/")) ? "public, max-age=31536000, immutable" : bundled && url.searchParams.get("v") === bundled.revision ? "private, max-age=31536000, immutable" : pathname.startsWith("/assets/v-operator-") ? "public, max-age=86400" : "no-store" }); res.end(contents); return;
       }
       if(binding.permissionProfile==='unidentified'&&!pathname.startsWith('/api/page/')&&!new Set(['/api/board','/api/board-image','/api/board-assets','/api/status','/api/session','/api/presentation','/api/events','/api/content-shown','/api/avatar','/api/avatar-events','/api/heartbeat','/api/close','/api/ios-binding','/api/ios-binding/redeem','/api/ios-binding/access','/api/ios-binding/revoke',...(binding.cliManaged?['/api/access']:[])]).has(pathname))return json(res,403,{error:'当前是身份未确认的临时通话。'});
       const readBody = async () => {
@@ -1443,6 +1450,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     },{onConnectError:error=>console.warn(JSON.stringify({type:"voice.gateway-connection-error",code:/^[A-Z0-9_]{1,80}$/.test(error.code??"")?error.code:"CONNECT_ERROR"}))});
     const {createDirectVoiceService}=await import('../realtime-direct-tools/session.mjs');
     const {gptLiveFromEnv}=await import('../realtime-direct-tools/gpt-live-auth.mjs');
+    const {endingJudgeFromEnv}=await import('../realtime-direct-tools/gpt-live-router.mjs');
     const wsModule=await import('ws');
     transcriptLog=createVoiceTranscriptLog({
       directory:process.env.RTC_H5_TRANSCRIPT_DIR??join(process.env.OPENCLAW_STATE_DIR??dirname(configPath),'state','voice-transcripts'),
@@ -1508,7 +1516,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // Whether speech over a lesson still playing is said to V: the Decisions API (floor-judge.mjs),
     // with the board's text model as the fallback. VOICE_FLOOR_JUDGE=0 leaves it to the voice model.
     const floorJudge=process.env.VOICE_FLOOR_JUDGE==='0'?null:(floorJudgeFromEnv(process.env)??(()=>{const completion=boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'8'});return completion?createFloorJudge({complete:completion}):null;})());
-    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,floorJudge,videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
+    const directVoice=createDirectVoiceService({gateway,wsModule,lesson,assets,floorJudge,
+      endingJudge:endingJudgeFromEnv(process.env),videoScript,materialCheck,backendDeviceBundle:backendDeviceBundleFromEnv(),idleHangup:idleHangupFromEnv(process.env),speakerRouting,nativeInterrupt,nativePlaybackPolicy:process.env.VOICE_NATIVE_PLAYBACK_POLICY??'courtesy',playbackEchoGuard:process.env.VOICE_PLAYBACK_ECHO_GUARD!=='0',
       // Shared phone policy; explicit off remains available for rollback.
       searchAcknowledgment:process.env.VOICE_SEARCH_ACK==='off'?'off':'model',
       mediaCli:process.env.VOICE_MEDIA_CLI==='1'?createVoiceMediaCli({accounts:createMediaAccounts(

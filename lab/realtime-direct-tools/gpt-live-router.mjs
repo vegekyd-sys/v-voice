@@ -141,6 +141,20 @@ export function createReplyJudge({apiKey='',model='gpt-6-luna',complete=null,fet
   };
 }
 export const replyJudgeFromEnv=(env=process.env,{fetchImpl,complete=null}={})=>createReplyJudge({apiKey:env.VOICE_GPT_LIVE_DECISIONS_API_KEY??'',complete,...(env.VOICE_GPT_LIVE_DECISIONS_MODEL?{model:env.VOICE_GPT_LIVE_DECISIONS_MODEL}:{}),...(fetchImpl?{fetchImpl}:{})});
+// Once a hang-up is accepted, a repeated farewell and a change of mind need
+// different outcomes. Use the configured text judge if Decisions is unavailable.
+export function endingJudgeFromEnv(env = process.env, {fetchImpl, complete = routerCompletionFromEnv(env, {fetchImpl})} = {}) {
+  const primary = replyJudgeFromEnv(env, {fetchImpl, complete});
+  if (!env.VOICE_GPT_LIVE_DECISIONS_API_KEY || !complete) return primary;
+  const fallback = createReplyJudge({complete});
+  return async input => {
+    try { return await primary(input); }
+    catch (error) {
+      if (input.signal?.aborted) throw error;
+      return fallback(input);
+    }
+  };
+}
 const takesNothing=tool=>Object.keys(tool?.parameters?.properties??{}).length===0;
 const SURE=0.5;
 export function createDelegationRouter({complete=null,choose=null,now=()=>new Date(),audit=()=>{}}={}){
