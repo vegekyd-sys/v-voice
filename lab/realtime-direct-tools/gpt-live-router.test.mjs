@@ -110,3 +110,11 @@ test('an unavailable Decisions endpoint still distinguishes a farewell from a ne
   assert.equal((await judge({userText:'好的，拜拜。拜拜。'})).stays, 1);
   assert.equal((await judge({userText:'等一下，我还有问题。'})).stays, 0);
 });
+
+test('the router reads the screen beside the words, so a picture is named by its number',async()=>{
+  const seen=[];
+  const route=createDelegationRouter({complete:async request=>{seen.push(request);return {name:'exec',args:{command:"makaron edit --image a1 'x'"}};}});
+  await route({text:'把刚才这张改成夜晚',tools:[tool('exec')],notes:'规则',screen:'屏幕素材现状：a1 图片「橘猫看雨」。最新的是 a1。'});
+  assert.match(seen[0].user,/屏幕素材现状：a1 图片「橘猫看雨」。最新的是 a1。（编号以此为准）\n后台任务/u);
+  await route({text:'你好',tools:[tool('exec')]});assert(!/屏幕素材/u.test(seen[1].user));
+});

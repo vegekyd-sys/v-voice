@@ -158,7 +158,7 @@ export function endingJudgeFromEnv(env = process.env, {fetchImpl, complete = rou
 const takesNothing=tool=>Object.keys(tool?.parameters?.properties??{}).length===0;
 const SURE=0.5;
 export function createDelegationRouter({complete=null,choose=null,now=()=>new Date(),audit=()=>{}}={}){
-  return async function route({text,userText,tools,notes='',history=[],running=false,speculative=false,signal}){
+  return async function route({text,userText,tools,notes='',screen='',history=[],running=false,speculative=false,signal}){
     const names=new Set(tools.map(tool=>tool.name)),startedAt=performance.now();
     // `ahead`: chosen from the caller's words before the model delegated; used only if it does.
     // (What the model handed over goes to the call's private record with the choice, as the caller's words do.
@@ -170,7 +170,7 @@ export function createDelegationRouter({complete=null,choose=null,now=()=>new Da
       if(signal?.aborted)stop();else signal?.addEventListener('abort',stop,{once:true});
       try{
         const request={tools,system:[ROUTER_PROMPT,`当前上海时间：${now().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'})}。`,notes].filter(Boolean).join('\n'),
-          user:[recent(history),`后台任务：${running?'有一件正在执行':'没有正在执行的'}`,`要办的事：${String(text).slice(0,2000)}`,userText&&userText!==text?`用户刚才的原话：${String(userText).slice(0,600)}`:''].filter(Boolean).join('\n')};
+          user:[recent(history),screen&&`${String(screen).slice(0,4000)}（编号以此为准）`,`后台任务：${running?'有一件正在执行':'没有正在执行的'}`,`要办的事：${String(text).slice(0,2000)}`,userText&&userText!==text?`用户刚才的原话：${String(userText).slice(0,600)}`:''].filter(Boolean).join('\n')};
         const filled=complete({...request,signal:full.signal});filled.catch(()=>{});
         if(choose){
           const picked=await choose({...request,signal}).catch(()=>null),tool=picked&&tools.find(item=>item.name===picked.name);

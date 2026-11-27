@@ -32,6 +32,7 @@ A phone call can be spoken by Doubao (`seeduplex`), Grok or GPT Live 1.1. They t
 
 - **Result wording (budget).** Every model is given a tool result whole up to `TOOL_RESULT_MAX_BYTES` (32 KB, `search-result.mjs`); GPT Live used to get 2,400 characters (#268, released 11-24). Doubao and Grok keep their JSON; GPT Live keeps plain text — the format follows the `tools` trait, the amount does not.
 - **Tool-choice policy.** `toolChoicePolicy` in `session.mjs` (task routing and hand-off, task control, consent, calendar service) is what a function-tool model reads in its instructions *and* what GPT Live's router reads as notes (`routerNotes`, with `LESSON_ROUTING` when the call has the lesson tool). The router prompt keeps only its own job — one tool, its arguments — and is given each tool's whole description (it used to be cut at 320 characters).
+- **The screen.** How pictures on the screen are named and used (`screenPolicy()`) is in a function-tool model's instructions and in the router's notes; the screen's current list (a1, p2…) is in the model's context and is given to the router each time it routes.
 - **Check.** `scripts/candidate/router-eval.mjs` runs the real routing model over invented cases (`router-cases.json`) for the production version and a candidate side by side; a router change ships only if it chooses at least as well.
 
 ## What still forks (next steps)

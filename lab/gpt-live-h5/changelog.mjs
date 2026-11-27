@@ -229,6 +229,14 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-gpt-live-screen.20261128.1',date:'2026-11-28',
+    title:'GPT Live 1.1 能改刚画好的图了',
+    items:[
+      '用 GPT Live 1.1 通话时说“把刚才这张改成……”，V 会照着屏幕上那张图去改；以前这样说会被拦下，图没有改。',
+      'GPT Live 1.1 现在和豆包一样知道屏幕上有哪些图，带参考图做新图时也能用对。',
+    ],
+  },
+  {
     version:'voice-call-images-flare.20261128.1',date:'2026-11-28',
     title:'通话出图换回 GPT Image 2.6 Flare',
     items:[

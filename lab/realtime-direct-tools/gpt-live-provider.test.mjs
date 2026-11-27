@@ -19,7 +19,7 @@ const judge=async({tools,user})=>{
   return null;
 };
 class Socket extends EventEmitter{constructor(){super();this.readyState=1;this.sent=[];}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;this.emit('close');}}
-async function fixture({tools,route,resolveAuth,model,now,replyJudge,resume}={}){
+async function fixture({tools,route,resolveAuth,model,now,replyJudge,resume,screen}={}){
   const events=[],calls=[],audio=[],text=[],closes=[],ws=new Socket();
   const request={instructions:'你是 V。',tools:tools??[{type:'function',name:'web_search',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}},{type:'function',name:'delegate_to_v',parameters:{type:'object',properties:{question:{type:'string'},context:{type:'string'}},required:['question']}},{type:'function',name:'exec',parameters:{type:'object',properties:{command:{type:'string'}},required:['command']}},{type:'function',name:'explain_on_board',parameters:{type:'object',properties:{topic:{type:'string'}},required:['topic']}},{type:'function',name:'end_call',parameters:{type:'object',properties:{},required:[]}}],inputSampleRate:24000,
     onToolCall:c=>calls.push(c),onAudio:(b,m)=>audio.push([b.length,m?.responseId]),onTranscript:(...a)=>text.push(a),onEvent:e=>events.push(e),onReady:()=>events.push({ready:true}),
@@ -27,7 +27,7 @@ async function fixture({tools,route,resolveAuth,model,now,replyJudge,resume}={})
   const fetches=[];
   const fetchImpl=async(url,init)=>{fetches.push({url,init});return {ok:true,status:201,headers:new Headers({location:'/v1/realtime/calls/rtc_u23_Em7Mvp3oMOyinaFyEylD7nKHGz6ZmT38'}),text:async()=>'v=0\r\nanswer'};};
   const bridge=new GptLiveBridge(request,{createWebSocket:async(url,options)=>{ws.url=url;ws.options=options;return ws;},resolveAuth:resolveAuth??(async()=>({token:'tok',accountId:'acct'})),loadMedia:async()=>media(ws),fetchImpl,model,
-    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{}),...(replyJudge?{judge:replyJudge}:{}),...(resume?{resume}:{})});
+    route:route??createDelegationRouter({audit:e=>events.push(e),complete:judge}),notes:'媒体说明',...(now?{now}:{}),...(replyJudge?{judge:replyJudge}:{}),...(resume?{resume}:{}),...(screen?{screen}:{})});
   return {bridge,ws,events,calls,audio,text,closes,fetches,request};
 }
 const item=(id,textValue)=>({type:'delegation.created',item:{id,type:'delegation',target:'client',content:[{type:'input_text',text:textValue}]},offset_ms:5000});
@@ -696,4 +696,18 @@ test('a typed request is acted on with the tool its words call for: the model do
   // When the model does delegate them after all, the words are acted on once.
   f.bridge.sendUserMessage('那明天上海的天气呢');await pause(10);f.bridge.receive(item(idOf(7),'查明天上海的天气'));await pause(2700);
   assert.equal(f.calls.length,2);assert.equal(f.calls[1].callId,idOf(7));
+});
+
+// The router writes the tool arguments, so it is told what is on the screen now, as a model calling tools
+// itself is (call of 11/28: "把刚才这张改成夜晚" was refused before submitting: the command named no picture).
+test('the router is told what is on the screen at the moment it routes',async()=>{
+  let shown='屏幕素材现状：a1 图片「橘猫看雨」：窗台上的橘猫看着窗外的雨。最新的是 a1。';const seen=[];
+  const f=await fixture({screen:()=>shown,route:async input=>{seen.push(input);return {name:'answer_directly',args:{}};}});await ready(f);
+  userSays(f,'u1','把刚才这张改成夜晚，窗外有霓虹灯');await pause(10);
+  assert.equal(seen.at(-1).screen,shown);
+  shown='屏幕素材现状：a1 图片「橘猫看雨」；a2 图片「夜晚霓虹」。最新的是 a2。';
+  f.bridge.receive(item(idOf(3),'把最新那张再加点雪'));await pause(10);
+  assert.equal(seen.at(-1).screen,shown,'read again for each routing, never kept from the start of the call');
+  const plain=await fixture({route:async input=>{seen.push(input);return {name:'answer_directly',args:{}};}});await ready(plain);
+  userSays(plain,'u1','你好呀，今天过得怎么样');await pause(10);assert.equal(seen.at(-1).screen,'','a call without a screen has none');
 });

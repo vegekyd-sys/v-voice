@@ -69,8 +69,8 @@ export const SELF_START_NOTICE='\n语音查询接话规则：仅对明确向 V �
 // function-tool model reads it in its instructions; a delegation model's router, which makes that choice
 // for it, reads the same text (capabilities.mjs). One edit here reaches both.
 /** What a delegation model's router is told besides its own mechanics: the policy every model has. */
-export function routerNotes({sessionBound=false,publicVoice=false,lessons=false,media=''}={}){
-  return [toolChoicePolicy({sessionBound,publicVoice}),lessons?LESSON_ROUTING:'',media].filter(Boolean).join('\n');
+export function routerNotes({sessionBound=false,publicVoice=false,lessons=false,media='',screen=''}={}){
+  return [toolChoicePolicy({sessionBound,publicVoice}),lessons?LESSON_ROUTING:'',media,screen].filter(Boolean).join('\n');
 }
 export function toolChoicePolicy({sessionBound=false,publicVoice=false}={}){
   if(publicVoice)return VOICE_TASK_ROUTING.replaceAll('个人 V','V')+'\n'+VOICE_TASK_CONTROL_POLICY;
@@ -496,6 +496,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&traitsOf(s).explains==='lesson'&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
+  // How pictures on the screen are named and used, and what V always has: read by a model that calls the
+  // tools itself in its instructions, and by a delegation model's router, which writes the tool arguments.
+  const screenPolicy=()=>ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'');
   const sessionTools=s=>[...(s.improv?[IMPROV_TOOL]:[]),...lessonTools(s),...localTools.filter(t=>(s.display||t.name!=='show_content')&&(!['feishu_calendar','lark_read'].includes(t.name)||Boolean(s.actorReader)||!s.sessionBound&&Boolean(t.name==='feishu_calendar'?calendar:larkRead))).map(t=>s.actorReader&&t.name==='feishu_calendar'?{...t,description:t.description.replace('天懿本人','当前已验证来电账号本人')}:s.actorReader&&t.name==='lark_read'?{...t,description:t.description.replace('本人的飞书资料','当前已验证来电账号本人的飞书资料')}:s.sessionBound&&t.name==='memory_search'?{...t,description:'查询当前会话可用的记忆，权限沿用会话已有边界。'}:s.sessionBound&&t.name==='delegate_to_v'?{...t,description:t.description.replace('个人 V','当前会话的 V')}:s.sessionBound&&t.name==='openclaw_tool'?{...t,description:'执行当前会话可用的 OpenClaw 原生工具，遵守会话既有权限；arguments 传工具参数的 JSON。复杂任务或需要后台模型时使用 delegate_to_v。外部操作遵守当前用户授权。'}:t),...(s.speaker?.setVolume?[SPEAKER_VOLUME_TOOL]:[]),...(s.speaker?.look?[LOOK_TOOL]:[]),...(s.location?[LOCATION_TOOL]:[])].map(t=>s.location?({delegate_to_v:LOCATION_DELEGATE_TOOL,openclaw_agent_control:LOCATION_CONTROL_TOOL}[t.name]??t):t);
   // A successful native end_call can return no further speech at all. It is
   // already the model's semantic decision; never infer ending from keywords.
@@ -1109,7 +1112,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const baseInstructions=s.publicVoice?PUBLIC_VOICE_INSTRUCTIONS+'\n'+PUBLIC_PRESENTATION_INSTRUCTIONS+'\n'+V_FRONTEND_PERSONA+'\n'+V_ONE_VOICE_POLICY+'\n'+toolChoicePolicy({publicVoice:true})+'\n'+CALL_ENDING:(!s.unidentified?terminalInstructions(s.terminalContext()):'')+(!s.unidentified&&s.terminalContext().terminal.kind==='robot'?ROBOT_PRESENTATION_INSTRUCTIONS:'')+directInstructions(instructionCatalog,context,s.model,{surface:s.surface,hostCallControl,toolStartNotice:searchAck?'model':'off',nativeDuplex:s.nativeDuplex,speakerRouted:s.speakerRouting,sessionBound:s.sessionBound,unidentified:s.unidentified,callerIdentity:s.callerIdentity,actorLocalRead:Boolean(s.actorReader),mediaCliAvailable:s.mediaCliAvailable});
     const request={providerConfig:{voice:s.model==='seeduplex'?s.voice:'xiaohe',model:'1.2.6.1',apiKey:apiKeys.seeduplex},language:'zh-CN',
       ...(s.sessionBound?{greetingText:s.unidentified?'你好，我是 V，怎么称呼你？':'你好，我是 V，在呢。'}:{}),
-      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播意图由你结合对话判断。实际开播、调整下一幕、收播都调用 improv_live，先取得回执再回应。收播后继续这通电话。你能看到提交状态，无法观察直播帧。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(traitsOf(s).tools==='delegation'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+ASSET_POLICY+(assets.standingNote?.()?'\n'+assets.standingNote():'')+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,yieldToModel:Boolean(speechYield),
+      instructions:(!s.unidentified?speakerRouting?.initialInstructions?.(s.id,baseInstructions)??baseInstructions:baseInstructions)+(s.improv?'\n直播意图由你结合对话判断。实际开播、调整下一幕、收播都调用 improv_live，先取得回执再回应。收播后继续这通电话。你能看到提交状态，无法观察直播帧。':'')+(s.nativeDuplex?NATIVE_DUPLEX_POLICY:'')+(traitsOf(s).tools==='delegation'?'':voiceTools.some(tool=>tool.name===LESSON_TOOL.name)?'\n'+LESSON_ROUTING:lesson?.available&&lesson.source==='parallel'&&s.display&&!s.unidentified&&!s.publicVoice?'\n'+PARALLEL_ROUTING:'')+(shelfFor(s)?'\n'+screenPolicy()+'\n'+(s.screenStart=assets.context(s.id)):''),tools:voiceTools,inputSampleRate:s.inputSampleRate,nativeDuplex:s.nativeDuplex,yieldToModel:Boolean(speechYield),
       withoutContext:text=>text.replace(voiceConversationBlock(context,{sessionBound:s.sessionBound}),()=>voiceConversationBlock('',{sessionBound:s.sessionBound})),
       isPlaybackEcho:text=>playbackEchoGuard&&s.surface==='phone'&&s.playing===true&&playbackEchoLike(text,s.playbackText.text),
       // Live ASR is display-only. Routed speakers keep their admitted captions,
@@ -1184,7 +1187,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       const owned={...request,instructions};
       for(const [key,value]of Object.entries(owned))if(key.startsWith('on')&&typeof value==='function')owned[key]=wrap?wrap(key,value):(...args)=>{if(current(s)&&generation===s.providerGeneration)return value(...args);};
       if(s.model==='gpt-live-11')return new GptLiveBridge(owned,{createWebSocket,resolveAuth:gptLive.resolveAuth,loadMedia:gptLive.loadMedia,model:gptLive.model,voice:s.voice,display:s.display,judge:gptLive.judge??null,resume:s.resume??null,
-        notes:routerNotes({sessionBound:s.sessionBound,publicVoice:s.publicVoice,lessons:voiceTools.some(tool=>tool.name===LESSON_TOOL.name),media:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):''}),
+        notes:routerNotes({sessionBound:s.sessionBound,publicVoice:s.publicVoice,lessons:voiceTools.some(tool=>tool.name===LESSON_TOOL.name),media:s.mediaCliAvailable?mediaCliInstructions(instructionCatalog,{surface:s.surface}):'',screen:shelfFor(s)?screenPolicy():''}),
+        // What is on the screen now (a1, p2…), as the model is told it: the arguments name pictures by it.
+        screen:shelfFor(s)?()=>assets.context(s.id):null,
         route:createDelegationRouter({complete:gptLive.complete??null,choose:gptLive.choose??null,audit:event=>audit({...event,voiceSessionId:s.id})})});
       return s.model==='seeduplex'?new SeeduplexRealtimeVoiceBridge(owned,{createWebSocket})
         :new GrokVoiceBridge(owned,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});

@@ -56,6 +56,9 @@ test('the tool-choice policy a function-tool model reads is the text a delegatio
     assert(routerNotes({sessionBound}).startsWith(policy));
   }
   assert(routerNotes({lessons:true}).includes(LESSON_ROUTING));assert(!routerNotes({}).includes(LESSON_ROUTING));
+  // How pictures on the screen are named: in a function-tool model's instructions, and in the router's notes.
+  const {ASSET_POLICY}=await import('../gpt-live-h5/board-assets.mjs');
+  assert(routerNotes({screen:ASSET_POLICY}).endsWith(ASSET_POLICY));assert(!routerNotes({}).includes(ASSET_POLICY));
   assert(routerNotes({publicVoice:true}).startsWith(toolChoicePolicy({publicVoice:true})));
 });
 
