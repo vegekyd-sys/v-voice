@@ -995,7 +995,16 @@ function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canva
   };
   const go = index => {
     const strip = track.current;
-    if (strip) strip.scrollTo?.({left: strip.clientWidth * index, behavior: 'instant'});
+    const destination = strip?.children[index];
+    if (!destination) return;
+    const focused = strip.ownerDocument.activeElement;
+    if (strip.contains(focused) && !destination.contains(focused)) {
+      // A focused control on the old sheet would stay offscreen after the turn.
+      destination.querySelector('.board-scroll')?.focus({preventScroll: true});
+    } else if (focused?.matches('.board-dots [aria-current="page"]') && strip.parentElement.contains(focused)) {
+      strip.parentElement.querySelector('.board-dots')?.children[index]?.focus({preventScroll: true});
+    }
+    strip.scrollTo?.({left: strip.clientWidth * index, behavior: 'instant'});
     setInView(index);
   };
   const selectPage = index => {
@@ -1029,8 +1038,7 @@ function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canva
     const key = `${scene.serial}:${scene.rev}`, changed = lastScene.current !== key;
     lastScene.current = key;
     if (liveId) { if (track.current && inView >= pages.length - 1) go(pages.length - 1); }
-    else if (changed && !(tv && track.current?.closest('.board')?.matches(':focus-within'))) go(active);
-    else if (inView >= pages.length) go(active);
+    else if (changed || inView >= pages.length) go(active);
   }, [active, pages.length, scene.serial, scene.rev]);
   const onScroll = () => { const strip = track.current; if (strip?.clientWidth) setInView(Math.max(0, Math.min(pages.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)))); };
   const page = pages[Math.min(inView, pages.length - 1)];
