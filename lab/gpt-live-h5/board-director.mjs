@@ -84,6 +84,8 @@ const evidenceText = result => {
 };
 
 /** Build the user message for one run. Everything in it is conversation data. */
+/** A lesson's script that asks for a picture to be drawn (a line's hint reads「现画：…」). */
+const drawsInNotes = notes => (notes?.lines ?? []).some(line => /现画/u.test(String(line?.show ?? '')));
 /** A lesson's script that asks for a page of pictures (a line's hint reads「图集：…」). */
 const galleryInNotes = notes => (notes?.lines ?? []).some(line => /图集|gallery/iu.test(String(line?.show ?? '')));
 
@@ -102,11 +104,12 @@ export async function nameLanguage({complete, words, signal}) {
   return name && Array.from(name).length <= 30 ? name : '';
 }
 
-export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null, assets = [], unscripted = false, language = ''}) {
+export function boardRequest({trigger, scene, turns, evidence, notes = null, recent = [], canvas = [], page = null, assets = [], make = false, unscripted = false, language = ''}) {
   return JSON.stringify({
     trigger,
     ...(unscripted ? {unscripted: true} : {}),
     ...(assets.length ? {assets} : {}),
+    ...(make ? {make: true} : {}),
     ...(page ? {page} : {}),
     ...(canvas.length ? {canvas} : {}),
     ...(notes ? {notes} : {}),
@@ -672,12 +675,22 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             // (The names a full page of pictures has no photograph for: see below.)
             let rest = null;
             if (op.op === 'put' && op.block.t === 'work') {
-              // A made thing on a page is one the call's shelf holds. Nothing is made for a page: a lesson
-              // shows only what the caller had V make (11/28: drawn pictures turned up in lessons unasked).
-              // The same block written again (the illustrator is called as V's words arrive) keeps its picture.
+              // A made thing on a page is one the call's shelf holds. Asked for anew (`make`), it is
+              // made by the call's own executor, once per answer and only where the call has one;
+              // the same block written again (the illustrator is called as V's words arrive) keeps its picture.
               const held = row.scene.blocks.find(block => block.id === op.block.id && block.t === 'work');
-              if (held) op = {op: 'put', block: {...op.block, asset: held.asset}};
-              else {
+              const {make, ...rest} = op.block;
+              if (held) op = {op: 'put', block: {...rest, asset: held.asset}};
+              else if (make) {
+                // (Only a lesson's script asks: in call of 11/21 the illustrator asked for the very picture the
+                // caller had asked V for, a moment before V's own command, and the two were made as one.)
+                // (And only where the script itself says so: a picture is paid for.)
+                if (!scripted || !drawsInNotes(row.notes) || !shelf?.canMake?.(id) || row.madeFor === (row.turnNo ?? 0)) return;
+                const made = shelf.make(id, {prompt: make, caption: rest.caption});
+                if (!made) return;
+                row.madeFor = row.turnNo ?? 0;
+                op = {op: 'put', block: {...rest, asset: made}};
+              } else {
                 // (Nor twice on one page under another block's id.)
                 if (!shelf?.has?.(id, op.block.asset) || row.scene.blocks.some(block => block.t === 'work' && block.asset === op.block.asset)) return;
                 // A thing hangs once on the canvas. Asked for on a page just opened and still empty, the
@@ -762,7 +775,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             ...(stream && row.language ? {language: row.language} : {}),
             // The author's notes go with the script they were written for, and with nothing else.
             ...(scripted ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
-            ...(stream && shelf ? {assets: shelf.digest(id), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
+            ...(stream && shelf ? {assets: shelf.digest(id), ...(scripted && drawsInNotes(row.notes) && shelf.canMake?.(id) && row.madeFor !== (row.turnNo ?? 0) ? {make: true} : {}), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of (stream ? hedged(complete, {messages, signal: controller.signal}, hedgeMs) : complete({messages, signal: controller.signal}))) {
           if (controller.signal.aborted) break;

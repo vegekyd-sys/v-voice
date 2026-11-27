@@ -48,7 +48,7 @@ import {STREAM_INSTRUCTIONS,createLessonWriter,refineStreamOp} from './board-les
 import {CANVAS_CUE_INSTRUCTIONS,CANVAS_SCRIPT_INSTRUCTIONS,CUE_INSTRUCTIONS,CUE_SCRIPT_INSTRUCTIONS,cueTurns,refineCueOp} from './board-cue.mjs';
 import {createBoardEye} from './board-eye.mjs';
 import {scenePictures,namedThings} from './board-scene.mjs';
-import {ASSET_ID,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SELF_IMAGE_FILE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
+import {ASSET_ID,ASSET_MAKE_NOTES,ASSET_NOTES,ASSET_SCRIPT_NOTES,SELF_IMAGE,SELF_IMAGE_FILE,SHELF_ID,createAssetEye,createAssetShelf,pictureName} from './board-assets.mjs';
 import {roomyPicture} from './board-picture-size.mjs';
 import {createVideoScriptWriter} from '../realtime-direct-tools/media-script.mjs';
 import {createMaterialCheck} from '../realtime-direct-tools/material-check.mjs';
@@ -1485,7 +1485,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // and the voice model is told what is on the caller's screen. On wherever the board streams (VOICE_BOARD_ASSETS=0 turns it off).
     const assetsOn=process.env.VOICE_BOARD_ASSETS!=='0'&&process.env.VOICE_BOARD_STREAM!=='0';
     const board=boardDirectorFromEnv(process.env,{audit:voiceAudit,prefetch:query=>photos?.find(query),...(canvas?{eye:complete=>createBoardEye({complete,find:query=>photos?.find(query)})}:{}),defer:process.env.VOICE_BOARD_STREAM==='0'&&process.env.VOICE_BOARD_LESSON_SOURCE!=='parallel',...(process.env.VOICE_BOARD_UNIFIED==='0'?{}:{illustrate:args=>lesson?.illustrate(args)??null,
-      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:(canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS)+(assetsOn?ASSET_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true,...(canvas?{canvas:true}:{})}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
+      ...(process.env.VOICE_BOARD_STREAM==='0'?{}:{stream:process.env.VOICE_BOARD_FOLLOW!=='word'?{instructions:(canvas?CANVAS_CUE_INSTRUCTIONS:CUE_INSTRUCTIONS)+(assetsOn?ASSET_NOTES+ASSET_MAKE_NOTES:''),refine:refineCueOp,turns:cueTurns,cue:true,...(canvas?{canvas:true}:{})}:{instructions:STREAM_INSTRUCTIONS+(assetsOn?ASSET_NOTES:''),refine:refineStreamOp}})})});
     const assets=board&&assetsOn?createAssetShelf({director:board,...(process.env.VOICE_SELF_IMAGE==='0'?{}:{standing:[SELF_IMAGE]}),audit:event=>board.log?.(event),lookWaitMs:Math.max(0,Math.min(6000,Number(process.env.VOICE_BOARD_LOOK_WAIT_MS??0)||0)),makeLimit:Math.max(0,Math.min(6,Number(process.env.VOICE_BOARD_MAKE_MAX??3)||0)),
       // One look at each thing made, on the board's own model, so V can say what is really in it (VOICE_BOARD_LOOK=0: no look).
       see:process.env.VOICE_BOARD_LOOK==='0'?null:createAssetEye({complete:boardCompletionFromEnv({...process.env,VOICE_BOARD_MAX_TOKENS:'700'})})}):null;

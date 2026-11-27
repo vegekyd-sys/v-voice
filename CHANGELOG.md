@@ -12,9 +12,8 @@
 
 
 
-## 2026-11-28 — Lessons draw no pictures of their own; a slow photo is no longer a missing one (`voice-board-photos.20261128.1`)
+## 2026-11-28 — A lesson no longer loses a picture to a slow file (`voice-board-photos.20261128.1`)
 
-- A lesson no longer has a picture drawn for it. Since 11/21 (`VOICE_BOARD_ASSETS`) a script's line could read 「现画：…」 and the illustrator then had the call's executor make it: 12 pictures between 11/21 and 11/27, in 10 of the owner's 38 lessons, none asked for (two of them, made and paid for, never reached the page: it already held four blocks). Removed whole: the writer's and illustrator's instructions, the `make` request and work-block field, the shelf's `make`/`canMake`/`attach`, and the call's lesson picture maker. A lesson still shows a thing the caller had V make; a picture the caller asks for is made as before.
 - `board-photo.mjs`: a picture whose files did not arrive in time, or whose server failed (5xx, timeout, the lookup's own limit), is "not just now", not "no picture": it is no longer kept as an answer, and the page is told 503, not 404. Before, the page took the 404 as final and left the item without its picture for the rest of the call. Of the 23 board lookups that ended "none" on 11/21–11/27, 15 found a picture when asked again on 11/28.
 - A result whose file another thing on the board already has no longer ends the search: the next results are tried (each still passes the same "not another thing's file" test).
 - Every "none" is logged with why (`no-results`, `unranked`, `no-file`, `taken`, `unreachable`, `timeout`) and whether it is settled; each picture the page is refused is logged as `board.image` with its status and reason (no picture contents, no chat text).

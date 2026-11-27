@@ -219,11 +219,13 @@ const BLOCKS = {
     return items.length ? optional({items}, 'h', text(raw.h, 40)) : null;
   },
   // Something V made in this call, shown large: `asset` is its id on the call's shelf (board-assets.mjs),
-  // where the page finds what it is, how far along it is and where it came from. Only a thing
-  // already on the shelf: nothing is made for a page.
+  // where the page finds what it is, how far along it is and where it came from. `make` (the
+  // illustrator asking for a picture to be drawn) never reaches a page: the service makes the
+  // thing and writes its id here instead.
   work(raw) {
     const asset = typeof raw.asset === 'string' && /^a[1-9]\d{0,2}$/u.test(raw.asset) ? raw.asset : '';
-    return asset ? optional({asset}, 'caption', text(raw.caption, 20)) : null;
+    const make = asset ? '' : text(raw.make, 300);
+    return asset || make ? optional(optional(optional({}, 'asset', asset), 'make', make), 'caption', text(raw.caption, 20)) : null;
   },
   // Things placed by a number along one line: heights, sizes, prices, years.
   // `dir: "up"` stands the line upright (heights, depths).

@@ -7,9 +7,8 @@
 //     in the picture's own frame when the picture is made to move);
 //   - the voice model, which is told in a few lines what is on the caller's
 //     screen and may name a thing by its id instead of copying a link;
-//   - the board's illustrator, which may put a made thing on a lesson's page.
-//     A lesson never has a picture made for it (11/28: the caller does not want
-//     drawn pictures in a lesson; only what the caller asks V to make is made).
+//   - the board's illustrator, which may put a made thing on a lesson's page
+//     and may ask for one to be made.
 // Nothing here decides what V does: the shelf records what the call's own
 // tools did and tells the same facts to everyone who needs them.
 import {mediaReferences} from './media-references.mjs';
@@ -44,9 +43,14 @@ export const ASSET_NOTES = `
 - request 里 workshop 为 true：用户和 V 正在这一页上做作品。他们商量做什么、做哪几张、怎么改、什么风格，V 说「正在弄」「接着做下一张」时，都输出 none：不开新页，不把要做的东西列成清单，不为它们找照片。只有用户明显换了话题、去问一件别的事时才 scene 开新页。
 - V 介绍一张作品时（「左边是…，右边是…」），可以在同一页加一个区块写它讲到的要点，挂在讲到的那一段上；不要把作品换成别的图。
 - request 里的 assets 列出了本通话已有的作品（编号、名字、画面里有什么）。讲解正好要用到其中一张、而它还不在任何一页上时，可以把它放上来：{"id":"w1","t":"work","asset":"a1"}，像照片一样挂在讲到它的那一段。只能写 assets 里有的编号。它已经在 canvas 的某一页上时，用户再问起它，就用 zone 回到那一页接着画，不要再放一遍。`;
+export const ASSET_MAKE_NOTES = `
+- request 里 make 为 true（这是一段讲解的讲稿，并且 notes 里有一句的画面提示写了「现画：…」）时，照那条提示请 V 现画一张图：{"id":"w1","t":"work","make":"要画的画面，一两句话写清主体、动作、构图和风格","caption":"不超过 10 个字"}。只用在拍不到、搜不到的画面上：想象的场景、比喻、故事里的一幕、两个不同作品的角色同框、给小朋友看的示意画。真实存在的东西（地方、人物、产品、角色本人）仍然用照片。
+- 现画一张要十秒左右：把它挂在第三段以后才讲到的内容上，前面几段先用别的东西。一页最多一张，一次回答最多一张；可画可不画时不画。`;
+
 // What the lesson's script writer is told (appended to its instructions by the service).
 export const ASSET_SCRIPT_NOTES = `
-# 已有的作品
+# 现画的图和已有的作品
+- 输入里 make 为 true 时，可以请 V 现画一张图：那一句的画面提示写「现画：要画的画面」，写清主体、动作、构图和风格。只用在拍不到、搜不到的画面上：想象的场景、比喻、故事里的一幕、两个不同作品的角色同框、给小朋友看的示意画；真实存在的东西仍然用照片。现画一张要十秒左右，所以放在第三句以后；一次讲解最多一张，可画可不画时不画。讲稿里只说这幅画要表达的意思，不描述图里的细节（你看不到它最后画成什么样）。
 - 输入里的 assets 是这通电话里已经生成的作品（编号、名字、画面里有什么）。用户要你讲这张作品、或者讲解正好用得上它时，画面提示写「作品 a1」把它放上来，并按 see 里写的讲它画了什么；不要为它另外找照片。`;
 
 /**
@@ -196,7 +200,7 @@ function nameFit(wanted, name) {
  * the call's canvas. `see`: createAssetEye. `watch`ers are told whenever what
  * the voice model should know has changed.
  */
-export function createAssetShelf({director = null, see = null, now = Date.now, audit = () => {}, maxOwners = 64, lookWaitMs = 0, setTimer = setTimeout, standing = []} = {}) {
+export function createAssetShelf({director = null, see = null, now = Date.now, audit = () => {}, maxOwners = 64, lookWaitMs = 0, makeLimit = 3, setTimer = setTimeout, standing = []} = {}) {
   const owners = new Map();
   // A call whose connection was lost goes on under another session (`adopt`): what was begun under the
   // first finishes on the shelf where the call is now.
@@ -210,7 +214,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     if (!value) {
       for (const [key, old] of owners) if (now() - old.touched >= OWNER_TTL_MS) owners.delete(key);
       while (owners.size >= maxOwners) owners.delete(owners.keys().next().value);
-      value = {standing: kept.map(item => ({id: item.id, kind: 'image', state: 'ready', query: item.query ?? `standing:${item.id}`, name: bounded(item.name, 24), aliases: item.aliases ?? [], see: bounded(item.see, 160), url: '', source: 'search', standing: true})), assets: [], photos: [], shots: 0, checks: 0, lanes: [Promise.resolve(), Promise.resolve()], count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, touched: now(), stamp: 0};
+      value = {standing: kept.map(item => ({id: item.id, kind: 'image', state: 'ready', query: item.query ?? `standing:${item.id}`, name: bounded(item.name, 24), aliases: item.aliases ?? [], see: bounded(item.see, 160), url: '', source: 'search', standing: true})), assets: [], photos: [], shots: 0, checks: 0, lanes: [Promise.resolve(), Promise.resolve()], count: 0, picked: '', watchers: new Set(), turns: new Map(), maker: null, made: 0, making: Promise.resolve(), touched: now(), stamp: 0};
       owners.set(id, value);
     }
     value.touched = now();
@@ -582,6 +586,26 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     },
     shown(owner, id) { return owners.get(owner)?.assets.find(asset => asset.id === id)?.shown === true; },
     watch(owner, watcher) { const value = row(owner); value.watchers.add(watcher); return () => value.watchers.delete(watcher); },
+    /** The call's own way of making a picture (its creation executor), offered to lessons. */
+    attach(owner, maker) { row(owner).maker = typeof maker === 'function' ? maker : null; },
+    canMake(owner) { const value = owners.get(owner); return Boolean(value?.maker) && value.made < makeLimit; },
+    /**
+     * A lesson asks for a picture to be drawn. The place is on the shelf at once
+     * (the caller sees the sketch); the picture arrives when the executor has it.
+     * Returns the new id, or '' when this call may not make one.
+     */
+    make(owner, {prompt, caption = '', aspect = '4:3'} = {}) {
+      const value = owners.get(owner), words = bounded(prompt, 300);
+      if (!value?.maker || value.made >= makeLimit || !words) return '';
+      value.made++;
+      const asset = add(value, fresh(value, {state: 'making', prompt: words, name: bounded(caption, 14), named: Boolean(caption), source: 'lesson', aspect}));
+      audit({type: 'board.asset', voiceSessionId: owner, asset: asset.id, kind: 'image', state: 'making', source: 'lesson'});
+      changed(owner, value, {quiet: true});
+      const maker = value.maker;
+      // One at a time: the executor answers a second picture asked for meanwhile with the first.
+      value.making = value.making.then(() => maker({prompt: words, aspect})).then(output => api.finish(owner, asset.id, output), () => api.finish(owner, asset.id, {isError: true})).catch(() => {});
+      return asset.id;
+    },
     /**
      * The call of session `from` goes on as session `to`: its shelf with it, the things still being made
      * included. Not when the new session already has things of its own. True when it was carried over.
@@ -589,7 +613,7 @@ export function createAssetShelf({director = null, see = null, now = Date.now, a
     adopt(to, from) {
       const old = owners.get(from), fresh = owners.get(to);
       if (!old || to === from || fresh && (fresh.assets.length || fresh.photos.length)) return false;
-      old.watchers = fresh?.watchers ?? new Set(); old.turns = new Map(); old.touched = now();
+      old.watchers = fresh?.watchers ?? new Set(); old.maker = fresh?.maker ?? null; old.turns = new Map(); old.touched = now();
       owners.delete(from); owners.set(to, old);
       heirs.set(from, to);
       while (heirs.size > 64) heirs.delete(heirs.keys().next().value);

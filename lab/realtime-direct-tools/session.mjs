@@ -2,7 +2,7 @@ import {createMicDecoder,createOpusDownlink} from './opus-downlink.mjs';
 import {IMPROV_TOOL,improvArguments} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
-import {ASSET_POLICY,ASSET_CONTEXT_EMPTY} from '../gpt-live-h5/board-assets.mjs';
+import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
 import {mediaAccountScope} from './media-accounts.mjs';
 import {mediaArgv} from './media-cli.mjs';
 import {scriptOf,withScript} from './media-script.mjs';
@@ -843,6 +843,24 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     const admittedUserTurns=new Map();
     const execute=createToolExecutor({invoke,allowedTools,calendar:localRead('feishu_calendar',s.sessionBound?s.actorReader?.calendar:calendar),larkRead:localRead('lark_read',s.sessionBound?s.actorReader?.read:larkRead),showContent:({markdown},callId)=>publishContent(s,callId,markdown),speakerVolume:s.speaker?.setVolume,look:s.speaker?.look,delegate:async args=>{await s.ensureBackendDeviceBundle();if(shelfFor(s))await assets.lend(s.id);return s.backend.run({...args,context:(args.context??'')+s.backendDeviceContext()+(shelfFor(s)?assets.backendContext(s.id):'')+(args.use_current_location?s.location.context():''),callerTurn:admittedUserTurns.get(args.callId)});}});
     s.progressTimer=setInterval(()=>{idleTick(s);deferred(s);},200);s.progressTimer.unref?.();
+    // A lesson may ask for one picture to be drawn (board-assets.mjs): made by this call's own
+    // creation executor, under the same live permission as a picture the caller asks for.
+    if(s.mediaCliAvailable&&shelfFor(s)){
+      const makers=new Set();
+      s.closeAssetMakers=()=>{for(const controller of makers)controller.abort();makers.clear();};
+      assets.attach(s.id,async({prompt,aspect})=>{
+        if(!current(s))throw Error('通话已结束');
+        await authorizeMedia();
+        const controller=new AbortController();makers.add(controller);
+        const work=mediaRunner().then(runner=>runner.execute(`makaron edit --image-model gemini-2.1 --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{},separate:true}));
+        const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
+        cleanup.then(()=>{s.localCleanups.delete(cleanup);makers.delete(controller);});
+        audit({type:'tool.media-cli',voiceSessionId:s.id,callId:'lesson-picture',phase:'start'});
+        const output=await work;
+        audit({type:'tool.media-cli',voiceSessionId:s.id,callId:'lesson-picture',phase:'result',ok:!output.isError,exitCode:output.details?.exitCode});
+        return output;
+      });
+    }
     if(s.mediaCliAvailable)s.mediaRecovery=createMediaTurnRecovery({
       state:()=>({current:current(s),ending:s.ending,routed:s.speakerRouting,pending:s.pending.size,making:Boolean(shelfFor(s)&&assets.busy(s.id)),playing:s.playing,responseActive:s.responseActive,userSpeaking:s.userSpeaking}),
       // (Doubao takes no typed turn: nothing sent to it can make it act. The caller is told the truth instead,
@@ -963,7 +981,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
             let script=null;
-            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(shelfFor(s)?{assets:assets.digest(s.id)}:{})});
+            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)&&!asksOnlyToFind(s.latestUserTurn?.text)}:{})});
               // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
               if(script)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
@@ -1168,7 +1186,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         audit({type:'board.asset-context',voiceSessionId:s.id,chars:next.length});
       };
       const unwatch=assets.watch(s.id,()=>{clearTimeout(screenTimer);screenTimer=setTimeout(refreshScreen,400);});
-      s.closeAssets=()=>{unwatch();clearTimeout(screenTimer);};
+      s.closeAssets=()=>{unwatch();clearTimeout(screenTimer);s.closeAssetMakers?.();};
     }
     const greet=()=>{if(s.greeted)return;s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');};
     client.removeListener('message',earlyGreeting);
