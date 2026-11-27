@@ -12,6 +12,13 @@
 
 
 
+## 2026-11-28 — A lesson no longer loses a picture to a slow file (`voice-board-photos.20261128.1`)
+
+- `board-photo.mjs`: a picture whose files did not arrive in time, or whose server failed (5xx, timeout, the lookup's own limit), is "not just now", not "no picture": it is no longer kept as an answer, and the page is told 503, not 404. Before, the page took the 404 as final and left the item without its picture for the rest of the call. Of the 23 board lookups that ended "none" on 11/21–11/27, 15 found a picture when asked again on 11/28.
+- A result whose file another thing on the board already has no longer ends the search: the next results are tried (each still passes the same "not another thing's file" test).
+- Every "none" is logged with why (`no-results`, `unranked`, `no-file`, `taken`, `unreachable`, `timeout`) and whether it is settled; each picture the page is refused is logged as `board.image` with its status and reason (no picture contents, no chat text).
+- The page asks again twice (after 2.5 s and 6 s) before it gives a picture up.
+
 ## 2026-11-26 — One capability layer for every voice model (`voice-shared-model-layer.20261126.1`)
 
 - `capabilities.mjs`: what differs between Doubao, Grok and GPT Live is a trait table (`MODEL_TRAITS`), not model-name checks; tool briefs are written once (`TOOL_BRIEFS`).

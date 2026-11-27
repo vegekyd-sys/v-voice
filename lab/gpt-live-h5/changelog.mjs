@@ -229,6 +229,14 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-board-photos.20261128.1',date:'2026-11-28',
+    title:'讲解时不再无故少一张图',
+    items:[
+      '图片一时没取到（网络慢、图片站出错）时，画面会过一会儿再取，不再当成“这东西没有图”整通电话都不显示。',
+      '一张图已经被同页另一样东西用了时，会换下一个搜索结果，不再直接空着。',
+    ],
+  },
+  {
     version:'voice-tv-dial-policy.20261128.1',date:'2026-11-28',
     title:'电视头像拨号跟随网页的语音模式',
     items:['从桌面头像快速拨号也会沿用网页当前的豆包通话设置，包括原生双工和所选声音。'],

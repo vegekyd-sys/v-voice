@@ -390,3 +390,51 @@ test('photo requests count only distinct successful pictures and keep prior phot
  await make({owner:'me',ask:'找三张巴黎图片'});await make({owner:'me',ask:'再找三张其他的巴黎图片'});
  assert.deepEqual(pages,[['one','another','extra'],['last','next','third']]);
 });
+
+test('a picture another thing already has gives way to the next result, not to "no picture"', async () => {
+  // Two views of one city: the best result for the river is the very file the tower already has.
+  const shared = distinct(), own = distinct();
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], wait: async () => {},
+    fetchImpl: async url => {
+      if (url.startsWith('https://api.search.brave.com/')) {
+        const q = decodeURIComponent(/q=([^&]+)/u.exec(url)[1]);
+        // (The three best are copies of the tower's picture on three sites; the river's own comes fourth.)
+        return json({results: q.startsWith('珠江')
+          ? [...[1, 2, 3].map(n => ({title: '珠江夜景 广州塔', source: `copy${n}.wikipedia.org`, confidence: 'high', thumbnail: {src: `https://imgs.search.brave.com/shared${n}`, width: 500, height: 330}})), {title: '珠江夜景', source: 'b.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/own', width: 500, height: 330}}]
+          : [{title: '广州塔夜景', source: 'a.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/shared', width: 500, height: 330}}]});
+      }
+      return image(/\/shared\d?$/u.test(url) ? shared : own);
+    }});
+  assert.ok(await finder.find('广州塔 夜景'));
+  const river = await finder.find('珠江 夜景');
+  assert.equal(river?.title, '珠江夜景', 'the river gets its own picture');
+});
+
+test('files that do not arrive are "not just now", never "no picture": the page may ask again', async () => {
+  const events = [];
+  let hang = true;
+  const finder = createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], pictureTimeoutMs: 30, observe: event => events.push(event),
+    fetchImpl: async (url, init) => {
+      if (url.startsWith('https://api.search.brave.com/')) return json({results: [{title: '珠江夜景', source: 'a.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/1', width: 500, height: 330}}]});
+      if (hang) return new Promise((resolve, reject) => init?.signal?.addEventListener('abort', () => reject(Error('aborted')), {once: true}));
+      return image(distinct());
+    }});
+  assert.equal(await finder.find('珠江 夜景'), null);
+  assert.equal(finder.settled('珠江 夜景'), false, 'not kept as an answer');
+  assert.deepEqual(events.map(({why, settled}) => ({why, settled})), [{why: 'unreachable', settled: false}]);
+  hang = false;
+  assert.ok(await finder.find('珠江 夜景'), 'asked again, it is found');
+});
+
+test('a server that answers 5xx is unreachable; one that refuses (403) is an answer; every "none" says why', async () => {
+  const events = [];
+  const finder = status => createPhotoFinder({lookup, braveKey: 'test-key', braveGapMs: 0, languages: [], observe: event => events.push(event),
+    fetchImpl: async url => url.startsWith('https://api.search.brave.com/')
+      ? json({results: url.includes('nothing') ? [] : [{title: 'x', source: 'a.com', confidence: 'high', thumbnail: {src: 'https://imgs.search.brave.com/1', width: 500, height: 330}}]})
+      : {ok: false, status, headers: new Headers({'content-type': 'text/plain'})}});
+  const busy = finder(504), refused = finder(403), empty = finder(200);
+  await busy.find('x'); await refused.find('x'); await empty.find('nothing');
+  assert.equal(busy.settled('x'), false);
+  assert.equal(refused.settled('x'), true);
+  assert.deepEqual(events.map(({why, settled}) => [why, settled]), [['unreachable', false], ['no-file', true], ['no-results', true]]);
+});
