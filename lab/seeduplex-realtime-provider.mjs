@@ -519,8 +519,15 @@ export class SeeduplexRealtimeVoiceBridge {
     this.request.onDiagnostic?.({...value,sessionAgeMs:Date.now()-this.startedAt});
   }
 
+  #clearInputCaption() {
+    this.captionItem = null;
+    if (this.hasInputCaption) this.request.onInputCaption?.('');
+    this.hasInputCaption = false;
+  }
+
   #recover(reason) {
     if (this.terminal || this.reconnectTimer) return;
+    this.#clearInputCaption();
     this.#diagnostic({stage:"upstream-error",...reason});
     if (!reason.recoverable) return this.#fail(new Error("豆包语音连接未完成，请重新拨号。"));
     const now = Date.now();
@@ -950,7 +957,19 @@ export class SeeduplexRealtimeVoiceBridge {
       // hazard: outputClosed is only ever set once a turn has completed.
       this.outputClosed = false;
     }
+    // Seeduplex revises the whole candidate phrase in each delta, including
+    // corrections to earlier characters. Only the completed event owns a turn.
+    if (type === "conversation.item.input_audio_transcription.delta" && this.request.onInputCaption &&
+        this.captionItem && event.item_id === this.captionItem && typeof event.delta === 'string') {
+      this.hasInputCaption = true;
+      this.request.onInputCaption(event.delta.slice(-4000));
+    }
+    if (type === "conversation.item.input_audio_transcription.completed" || type === "conversation.item.input_audio_transcription.failed") {
+      if (!event.item_id || event.item_id === this.captionItem) this.#clearInputCaption();
+    }
     if (type === "conversation.item.input_audio_transcription.started") {
+      this.#clearInputCaption();
+      this.captionItem = event.item_id;
       this.playbackEchoAt = null;
       if(this.request.nativeDuplex)this.request.onInputSpeech?.(true);
       // Speech the service speaks for us (a board lesson) does not stop for the caller by

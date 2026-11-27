@@ -2335,3 +2335,15 @@ test('V\'s own voice heard back over a lesson is not judged, and nothing the mod
  assert(!f.client.sent.some(e=>e.type==='tool.call'&&e.name==='web_search'));
  assert(f.upstream.sent.some(e=>JSON.stringify(e).includes('echo-call')&&JSON.stringify(e).includes('ignored')),'answered as ignored at once, not left to go through later');
 });
+
+test('Seeduplex exposes revisable input captions without persisting or admitting a partial turn', async t => {
+  const audit = [], f = await fixture(undefined, 'seeduplex', {audit: event => audit.push(event)});
+  t.after(() => f.service.dispose());
+  const input = (suffix, item_id, fields = {}) => f.event({type:'conversation.item.input_audio_transcription.' + suffix, item_id, ...fields});
+  input('started', 'a'); input('delta', 'a', {delta:'月香'}); input('delta', 'a', {delta:'月相'});
+  input('started', 'b'); input('delta', 'a', {delta:'过期'}); input('delta', 'b', {delta:'上弦'});
+  input('failed', 'a'); input('completed', 'b', {text:'上弦月'});
+  input('delta', 'b', {delta:'已定稿'}); input('started', 'c'); input('delta', 'c', {delta:'待确认'}); input('failed', 'c');
+  assert.deepEqual(f.client.sent.filter(e => e.type === 'input.caption').map(e => e.text), ['月香','月相','','上弦','','待确认','']);
+  assert.deepEqual(audit.filter(e => e.type === 'transcript' && e.role === 'user').map(e => e.text), ['上弦月']);
+});

@@ -143,7 +143,7 @@ function Conversation({state, options, history, setHistory, onOverflow, wide}) {
     const el = scroller.current;
     pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
   };
-  if (!all.length) return <div className="conversation" />;
+  if (!all.length && !state.callerCaption) return <div className="conversation" />;
   return (
     <div className="conversation" data-history={String(history)}>
       {!wide && (all.length > turns.now.length || history)
@@ -156,6 +156,7 @@ function Conversation({state, options, history, setHistory, onOverflow, wide}) {
       )}
       <div ref={scroller} tabIndex={state.tvHost && state.tvLayout === 'full' ? 0 : undefined} onScroll={onScroll} className={history ? 'turns all' : 'turns now'} role="log" aria-live="polite" aria-label={history ? '全部对话' : '当前这一轮'}>
         {(history ? all : turns.now).map(row => <Turn key={row.key} row={row} options={options} />)}
+        {state.callerCaption && <article className="turn user" data-streaming="true"><span className="turn-who">你</span><div className="turn-text">{state.callerCaption}</div></article>}
       </div>
     </div>
   );
