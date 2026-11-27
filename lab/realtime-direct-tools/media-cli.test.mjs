@@ -7,9 +7,9 @@ import {createMediaAccounts,mediaAccountFailure,mediaAccountScope} from './media
 import {createVoiceMediaCli,mediaArgv,validateMediaArgv} from './media-cli.mjs';
 
 test('CLI arguments preserve quoted user content but cannot run shell or other commands',()=>{
-  assert.deepEqual(mediaArgv(`makaron edit --image-model gemini-2.1 'a cat; $(touch /tmp/bad) "hello"'`),['edit','--image-model','gemini-2.1','a cat; $(touch /tmp/bad) "hello"']);
+  assert.deepEqual(mediaArgv(`makaron edit --image-model gpt-image-2.6-flare 'a cat; $(touch /tmp/bad) "hello"'`),['edit','--image-model','gpt-image-2.6-flare','a cat; $(touch /tmp/bad) "hello"']);
   for(const command of ['makaron edit x; touch /tmp/bad','makaron edit $(whoami)','makaron edit `id`','makaron edit x | cat','makaron edit x\nwhoami','sh -c makaron','makaron edit "unclosed'])assert.throws(()=>mediaArgv(command));
-  for(const argv of [['edit','--image-model','gpt-image-2.5-flare','x'],['edit','--image-model','wan2.7-image','x'],['edit','--image-model','gpt-image-2.6-flare','x'],['chat','hello'],['edit','--image-model','openai','x'],['edit','--image-model','gemini-2.1','--out','/tmp/a','x'],['edit','--image-model','gemini-2.1','--image','/etc/passwd','x'],['video','create','--video-model','fal-h3-max','--duration','99','--script','x'],['video','status','task','--wait'],['create','--title','empty']])assert.throws(()=>validateMediaArgv(argv));
+  for(const argv of [['edit','--image-model','gpt-image-2.5-flare','x'],['edit','--image-model','wan2.7-image','x'],['edit','--image-model','gemini-2.1','x'],['chat','hello'],['edit','--image-model','openai','x'],['edit','--image-model','gpt-image-2.6-flare','--out','/tmp/a','x'],['edit','--image-model','gpt-image-2.6-flare','--image','/etc/passwd','x'],['video','create','--video-model','fal-h3-max','--duration','99','--script','x'],['video','status','task','--wait'],['create','--title','empty']])assert.throws(()=>validateMediaArgv(argv));
 });
 test('image-to-video requires valid media references before any subprocess or charge',async t=>{
  const {runner}=await fixture(t);
@@ -29,7 +29,7 @@ async function fixture(t,opts={}){
 }
 test('real subprocess enforces per-call file/task ownership, idempotency, exit code and secret filtering',async t=>{
  const {runner,cli}=await fixture(t);const other=await cli.forCall();
- const command=`makaron edit --image-model gemini-2.1 'moon'`;
+ const command=`makaron edit --image-model gpt-image-2.6-flare 'moon'`;
  const [one,two]=await Promise.all([runner.execute(command),runner.execute(command)]);
  assert.equal(one,two);assert.equal(one.isError,false);
  const file=one.content[0].text.match(/Image file: (.*)/u)[1];assert(file.endsWith('.jpg'));
@@ -39,17 +39,17 @@ test('real subprocess enforces per-call file/task ownership, idempotency, exit c
  await runner.execute(`makaron video create --video-model fal-h3-max --duration 5 --script 'rotate'`);
  assert.equal((await runner.execute('makaron video status task-123')).isError,false);
  await assert.rejects(other.execute('makaron video status task-123'),/本通话/);
- const failure=await runner.execute(`makaron edit --image-model gemini-2.1 'fail'`);
+ const failure=await runner.execute(`makaron edit --image-model gpt-image-2.6-flare 'fail'`);
  assert.equal(failure.isError,true);assert.equal(failure.details.exitCode,2);assert(!JSON.stringify(failure).includes('fixture-private-key'));
- assert.equal(await runner.execute(`makaron edit --image-model gemini-2.1 'fail'`),failure);
+ assert.equal(await runner.execute(`makaron edit --image-model gpt-image-2.6-flare 'fail'`),failure);
 });
 test('cancellation and timeout wait for process exit and do not resubmit uncertain generation',async t=>{
  const {runner}=await fixture(t,{timeoutMs:80});
- const result=await runner.execute(`makaron edit --image-model gemini-2.1 'hang'`);
+ const result=await runner.execute(`makaron edit --image-model gpt-image-2.6-flare 'hang'`);
  assert.equal(result.isError,true);assert(result.details.exitSignal);assert.match(result.content[0].text,/超时/);
  assert.equal(result.details.submission,'unknown');assert.equal(result.details.retryable,false);
  const {runner:second}=await fixture(t);const controller=new AbortController();
- const pending=second.execute(`makaron edit --image-model gemini-2.1 'hang'`,controller.signal);
+ const pending=second.execute(`makaron edit --image-model gpt-image-2.6-flare 'hang'`,controller.signal);
  setTimeout(()=>controller.abort(),100);const aborted=await pending;
  assert.equal(aborted.isError,true);assert(aborted.details.exitSignal);assert.match(aborted.content[0].text,/中止/);
 });
@@ -75,13 +75,13 @@ test('CLI capability requires an explicitly supplied existing key',()=>assert.eq
 
 test('one image operation returns a URL and never exposes a file-save step to the model',async t=>{
  const {runner,root}=await fixture(t,{completeMedia:true});
- const result=await runner.execute("makaron edit --image-model gemini-2.1 'moon'");
+ const result=await runner.execute("makaron edit --image-model gpt-image-2.6-flare 'moon'");
  assert.deepEqual(result.media,{kind:'image',url:'https://cdn.example/image.png'});
  assert.doesNotMatch(JSON.stringify(result),/Image file:|voice-media-|Saved to:/);
  const dir=(await fs.readdir(root)).find(x=>x.startsWith('voice-media-'));
  const receipts=await Promise.all((await fs.readdir(path.join(root,dir))).filter(x=>x.startsWith('receipt-')).map(x=>fs.readFile(path.join(root,dir,x),'utf8').then(JSON.parse)));
  assert.deepEqual(receipts.map(r=>r.operation).sort(),['create','edit']);
- const reordered=await runner.execute("makaron edit 'moon' --image-model gemini-2.1");
+ const reordered=await runner.execute("makaron edit 'moon' --image-model gpt-image-2.6-flare");
  assert.equal(reordered,result);
 });
 test('one video operation polls its original task; status questions and concurrent rephrasing cannot spend again',async t=>{
@@ -126,11 +126,11 @@ test('a forgotten image marker is supplied, other marker mistakes still stop bef
 test('a thing may be made from several pictures: one of each character',()=>{
  const A='https://cdn.example/luffy.png',B='https://cdn.example/zygarde.jpg',C='https://cdn.example/poster.png';
  // An image: the base picture and further references.
- const edit=validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --image '${C}' --ref '${A}' --ref '${B}' '两人对战'`));
+ const edit=validateMediaArgv(mediaArgv(`makaron edit --image-model gpt-image-2.6-flare --image '${C}' --ref '${A}' --ref '${B}' '两人对战'`));
  assert.equal(edit.flags.image,C);assert.equal(edit.flags.ref,A+' '+B);
- assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --image '${C}' --image '${A}' 'x'`)),/--image 只能写一次/u);
- assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 ${Array(14).fill(`--ref '${A}'`).join(' ')} 'x'`)),/最多 13 个/u);
- assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 --ref '${A}' --ref 'http://plain.example/b.png' 'x'`)),/HTTPS/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gpt-image-2.6-flare --image '${C}' --image '${A}' 'x'`)),/--image 只能写一次/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gpt-image-2.6-flare ${Array(16).fill(`--ref '${A}'`).join(' ')} 'x'`)),/最多 15 个/u);
+ assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gpt-image-2.6-flare --ref '${A}' --ref 'http://plain.example/b.png' 'x'`)),/HTTPS/u);
  // A video: several pictures, each named in the script by its place; a forgotten marker is put in.
  // A length it cannot make is refused in words the caller can be told.
  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron video create --video-model fal-h3-max --duration 30 --script 'a cat'`)),/最长 15 秒[^]*delegate_to_v/u);
@@ -162,7 +162,7 @@ else process.exit(8);
   const group=await cli.forCall({scope:mediaAccountScope('agent:makaron:feishu:group:oc_room')});
   const dm=await cli.forCall({scope:mediaAccountScope('agent:makaron:feishu:direct:ou_peer','oc_verified')});
   for(const [runner,name] of [[group,'group'],[dm,'dm']]){
-    const image=await runner.execute("makaron edit --image-model gemini-2.1 'moon'");
+    const image=await runner.execute("makaron edit --image-model gpt-image-2.6-flare 'moon'");
     assert.equal(image.media.url,'https://example.test/'+name+'.png');
     const video=await runner.execute("makaron video create --video-model fal-h3-max --script 'moon'");
     assert.equal(video.media.url,'https://example.test/'+name+'.mp4');
@@ -209,7 +209,7 @@ console.log('https://example.test/paid.png');
   let account={key:'empty',claimed:false};
   const cli=createVoiceMediaCli({binary,baseDirectory:root,accounts:{resolve:async()=>account},environment:{MAKARON_API_KEY:'owner'}});
   const runner=await cli.forCall({scope:{chat:'oc_room'}});
-  const command="makaron edit --image-model gemini-2.1 'moon'";
+  const command="makaron edit --image-model gpt-image-2.6-flare 'moon'";
   const first=await runner.execute(command,undefined,{requestToken:'first'});
   assert.equal(first.accountIssue.code,'insufficient_credits');
   assert.match(first.accountIssue.message,/认领/);
@@ -247,4 +247,16 @@ test('the owner entry pays with the owner account, never the group self-register
   assert.equal((await accounts.resolve({chat:'oc_room'})).key,'group-key','other callers keep the session binding');
   assert.match(mediaAccountFailure('Error: insufficient credits',account,owner).message,/主账号积分不足/);
   assert.doesNotMatch(mediaAccountFailure('Error: insufficient credits',account,owner).message,/飞书群|认领/);
+});
+
+// The call's image model is named once (CALL_IMAGE_MODEL); every place that makes a picture reads it.
+test('call pictures are made with GPT Image 2.6 Flare, with up to its 15 references besides the base',async()=>{
+  const {CALL_IMAGE_MODEL,mediaCliInstructions}=await import('./media-cli-policy.mjs');
+  assert.deepEqual({...CALL_IMAGE_MODEL},{id:'gpt-image-2.6-flare',label:'GPT Image 2.6 Flare',references:15});
+  const A='https://cdn.example/a.png';
+  assert.doesNotThrow(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gpt-image-2.6-flare --image '${A}' ${Array(15).fill(`--ref '${A}'`).join(' ')} 'x'`)));
+  assert.throws(()=>validateMediaArgv(mediaArgv(`makaron edit --image-model gemini-2.1 'x'`)),/指定的创作模型/u);
+  const told=mediaCliInstructions([{id:'exec'},{id:'process'}]);
+  assert(told.includes('makaron edit --image-model gpt-image-2.6-flare'));assert(told.includes('GPT Image 2.6 Flare'));
+  assert(!/gemini|Nano Banana/u.test(told));
 });

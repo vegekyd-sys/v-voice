@@ -1,7 +1,7 @@
 import {createMicDecoder,createOpusDownlink} from './opus-downlink.mjs';
 import {IMPROV_TOOL,improvArguments} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
-import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
+import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion,CALL_IMAGE_MODEL} from './media-cli-policy.mjs';
 import {ASSET_POLICY,ASSET_CONTEXT_EMPTY,asksOnlyToFind} from '../gpt-live-h5/board-assets.mjs';
 import {mediaAccountScope} from './media-accounts.mjs';
 import {mediaArgv} from './media-cli.mjs';
@@ -878,7 +878,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(!current(s))throw Error('通话已结束');
         await authorizeMedia();
         const controller=new AbortController();makers.add(controller);
-        const work=mediaRunner().then(runner=>runner.execute(`makaron edit --image-model gemini-2.1 --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{},separate:true}));
+        const work=mediaRunner().then(runner=>runner.execute(`makaron edit --image-model ${CALL_IMAGE_MODEL.id} --aspect ${/^\d{1,2}:\d{1,2}$/u.test(aspect)?aspect:'4:3'} '${String(prompt).replace(/[\0\r\n]/gu,' ').replaceAll("'","'\\''")}'`,controller.signal,{requestToken:{},separate:true}));
         const cleanup=work.then(()=>{},()=>{});s.localCleanups.add(cleanup);
         cleanup.then(()=>{s.localCleanups.delete(cleanup);makers.delete(controller);});
         audit({type:'tool.media-cli',voiceSessionId:s.id,callId:'lesson-picture',phase:'start'});

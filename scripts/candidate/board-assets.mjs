@@ -101,9 +101,9 @@ class Model extends EventEmitter {
     if (/找几张|图片给我看/u.test(text)) return this.say(FOUND, {heard: text});
     if (/改成|卡通|照这张/u.test(text)) {
       const at = this.instructions.match(/用户正点着 ([ap]\d+)/u)?.[1] ?? 'p1';
-      return this.say(['好，照这张来画。'], {heard: text, tool: {name: 'exec', args: {command: `makaron edit --image-model gemini-2.1 --image ${at} '${text.replace(/['\\]/gu, '')}'`, timeoutSeconds: 120, completionLine: '画好了。', failureLine: '没画成。'}}});
+      return this.say(['好，照这张来画。'], {heard: text, tool: {name: 'exec', args: {command: `makaron edit --image-model gpt-image-2.6-flare --image ${at} '${text.replace(/['\\]/gu, '')}'`, timeoutSeconds: 120, completionLine: '画好了。', failureLine: '没画成。'}}});
     }
-    if (/生成|画一张|海报|再来一版/u.test(text)) return this.say(['好，我来画。'], {heard: text, tool: {name: 'exec', args: {command: `makaron edit --image-model gemini-2.1 --aspect 16:9 '${text.replace(/['\\]/gu, '')}，电影海报，热血对决构图'`, timeoutSeconds: 120, completionLine: '图好了。', failureLine: '图没画成。'}}});
+    if (/生成|画一张|海报|再来一版/u.test(text)) return this.say(['好，我来画。'], {heard: text, tool: {name: 'exec', args: {command: `makaron edit --image-model gpt-image-2.6-flare --aspect 16:9 '${text.replace(/['\\]/gu, '')}，电影海报，热血对决构图'`, timeoutSeconds: 120, completionLine: '图好了。', failureLine: '图没画成。'}}});
     if (/光合/u.test(text)) return this.say(LESSON, {heard: text});
     return this.say(['嗯，我在，你说。'], {heard: text});
   }

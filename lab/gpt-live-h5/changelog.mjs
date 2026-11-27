@@ -229,6 +229,14 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-call-images-flare.20261128.1',date:'2026-11-28',
+    title:'通话出图换回 GPT Image 2.6 Flare',
+    items:[
+      '通话里让 V 画图、改图，讲解里现画的图，以及拿它们开场的直播用图，现在都用 GPT Image 2.6 Flare，不再用 Nano Banana 2.1。',
+      '改图时可以一次带更多参考图：除了要改的那张，最多再带 15 张。',
+    ],
+  },
+  {
     version:'voice-typed-input.20261128.1',date:'2026-11-28',
     title:'通话里打字、发图，豆包也会回你',
     items:[

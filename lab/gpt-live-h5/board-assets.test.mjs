@@ -15,7 +15,7 @@ const director = (replies = []) => createBoardDirector({complete: async function
 const shelfOn = (board, options = {}) => { const shelf = createAssetShelf({director: board, lookWaitMs: 50, ...options}); board.shelf = shelf; return shelf; };
 
 test('a creation command is read without being run', () => {
-  assert.deepEqual(readCreation("makaron edit --image-model gemini-2.1 --aspect 16:9 '鸣人大战路飞的海报'"), {kind: 'image', prompt: '鸣人大战路飞的海报', reference: '', aspect: '16:9'});
+  assert.deepEqual(readCreation("makaron edit --image-model gpt-image-2.6-flare --aspect 16:9 '鸣人大战路飞的海报'"), {kind: 'image', prompt: '鸣人大战路飞的海报', reference: '', aspect: '16:9'});
   assert.deepEqual(readCreation("makaron video create --video-model fal-h3-max --duration 5 --video-resolution 768p --image 'https://cdn.example/poster.png' --script '<<<media_1>>> 两人冲向对方'"),
     {kind: 'video', prompt: '两人冲向对方', reference: 'https://cdn.example/poster.png'});
   assert.equal(readCreation('makaron video status task-1'), null);
@@ -24,7 +24,7 @@ test('a creation command is read without being run', () => {
 
 test('a picture asked for is on the board before it exists, and develops in place', async () => {
   const board = director(), shelf = shelfOn(board);
-  const begun = shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '鸣人大战路飞的海报'", turn: {}});
+  const begun = shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '鸣人大战路飞的海报'", turn: {}});
   assert.equal(begun.id, 'a1');
   assert.deepEqual(sceneWorks(board.scene('call')), ['a1']);
   assert.equal(shelf.page('call').busy, true);
@@ -38,7 +38,7 @@ test('a picture asked for is on the board before it exists, and develops in plac
 
 test('"animate it": the id becomes the link, and the video takes the picture\'s frame', async () => {
   const board = director(), shelf = shelfOn(board);
-  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '海报'", turn: {}}).id, image(POSTER));
+  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '海报'", turn: {}}).id, image(POSTER));
   const rev = board.scene('call').rev, page = board.scene('call').serial;
   const begun = shelf.begin('call', {command: "makaron video create --video-model fal-h3-max --duration 5 --image a1 --script '<<<media_1>>> 动起来'", turn: {}});
   assert.equal(begun.command, `makaron video create --video-model fal-h3-max --duration 5 --image '${POSTER}' --script '<<<media_1>>> 动起来'`);
@@ -64,13 +64,13 @@ test('an id that is not on the shelf is refused before anything is submitted', (
 
 test('one request makes one thing of a kind; a failed first attempt is the same thing begun again', async () => {
   const shelf = shelfOn(director()), turn = {};
-  const first = shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '海报'", turn});
-  assert.equal(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '海报，更热血'", turn}).id, first.id);
+  const first = shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '海报'", turn});
+  assert.equal(shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '海报，更热血'", turn}).id, first.id);
   await shelf.finish('call', first.id, {isError: true});
   assert.equal(shelf.get('call', first.id).state, 'failed');
-  assert.equal(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '海报'", turn}).id, first.id);
+  assert.equal(shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '海报'", turn}).id, first.id);
   assert.equal(shelf.get('call', first.id).state, 'making');
-  assert.equal(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '另一张'", turn: {}}).id, 'a2');
+  assert.equal(shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '另一张'", turn: {}}).id, 'a2');
 });
 
 test('a video still rendering when the wait ends keeps its place; its later answer finishes it', async () => {
@@ -89,7 +89,7 @@ test('the eye names the thing and tells V what is in it; the page takes the name
   const shelf = shelfOn(board, {lookWaitMs: 500, see: async ({url, prompt}) => { assert.equal(url, POSTER); assert.equal(prompt, '海报'); return {name: '鸣人大战路飞', see: '左边是金发少年，右边是戴草帽的少年。', parts: [{h: '鸣人', box: [0, 100, 480, 900]}]}; }});
   let told = 0;
   shelf.watch('call', () => { told++; });
-  const fact = await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '海报'", turn: {}}).id, image(POSTER));
+  const fact = await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '海报'", turn: {}}).id, image(POSTER));
   assert.deepEqual(fact, {id: 'a1', kind: 'image', name: '鸣人大战路飞', see: '左边是金发少年，右边是戴草帽的少年。', onBoard: true});
   assert.equal(board.scene('call').title, '鸣人大战路飞');
   assert.match(shelf.context('call'), /a1 图片「鸣人大战路飞」：左边是金发少年/u);
@@ -99,7 +99,7 @@ test('the eye names the thing and tells V what is in it; the page takes the name
 
 test('a slow look does not hold the result back', async () => {
   const shelf = shelfOn(director(), {lookWaitMs: 20, see: () => new Promise(resolve => setTimeout(resolve, 200, {name: '晚到', see: '晚到的描述', parts: []}))});
-  const fact = await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '海报'", turn: {}}).id, image(POSTER));
+  const fact = await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '海报'", turn: {}}).id, image(POSTER));
   assert.equal(fact.see, undefined);
   await new Promise(resolve => setTimeout(resolve, 260));
   assert.match(shelf.context('call'), /晚到的描述/u);
@@ -118,8 +118,8 @@ test('what the backend made comes onto the shelf from its result', () => {
 
 test('the caller taps a thing: it is "this one" until another is tapped', async () => {
   const shelf = shelfOn(director());
-  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '一'", turn: {}}).id, image(POSTER));
-  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '二'", turn: {}}).id, image('https://cdn.example/two.png'));
+  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '一'", turn: {}}).id, image(POSTER));
+  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '二'", turn: {}}).id, image('https://cdn.example/two.png'));
   assert.match(shelf.context('call'), /最新的是 a2/u);
   assert.equal(shelf.pick('call', 'a1'), true);
   assert.match(shelf.context('call'), /用户正点着 a1/u);
@@ -141,7 +141,7 @@ test('what the caller asks V to make is the turn\'s picture: what was drawn for 
   assert.equal(before.title, '海贼王海报');
   await board.run({owner: 'call', trigger: 'user', turns: [{role: 'user', text: '把那个海报变成Q版的'}]});
   assert.equal(board.scene('call').title, 'Q版海报');
-  shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 'Q版海贼王海报'", turn: {}});
+  shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare 'Q版海贼王海报'", turn: {}});
   // The page drawn for the request is gone; the thing has a page of its own, further on from the one V was on.
   const pages = board.canvas('call').zones;
   assert.deepEqual(pages.map(page => [page.title, page.blocks.map(block => block.t)]), [['海贼王海报', ['list']], ['', ['work']]]);
@@ -159,7 +159,7 @@ test('what the caller asks V to make is the turn\'s picture: what was drawn for 
 });
 
 test('things made one after another share a page; the video of one takes its frame without leaving the page', async () => {
-  const board = director(), shelf = shelfOn(board), make = words => shelf.begin('call', {command: `makaron edit --image-model gemini-2.1 '${words}'`, turn: {}});
+  const board = director(), shelf = shelfOn(board), make = words => shelf.begin('call', {command: `makaron edit --image-model gpt-image-2.6-flare '${words}'`, turn: {}});
   await shelf.finish('call', make('Q版海报').id, image(POSTER));
   const page = board.scene('call').serial;
   shelf.begin('call', {command: "makaron video create --video-model fal-h3-max --image a1 --script '<<<media_1>>> 搞怪'", turn: {}});
@@ -350,18 +350,18 @@ test('a photograph found for the board can be the picture a thing is made from',
   assert.equal(await shelf.address('call', 'p8'), '');
   shelf.pick('call', '');
   // Only the photograph the command names is lent out, and only then.
-  const command = "makaron edit --image-model gemini-2.1 --image p2 '把这张海报改成全员Q版'";
+  const command = "makaron edit --image-model gpt-image-2.6-flare --image p2 '把这张海报改成全员Q版'";
   assert.match(shelf.begin('other', {command, turn: {}}).error, /没有可用的图片 p2/u);
   await shelf.lend('call', command);
   assert.deepEqual(lent, ['航海王 强者天下 上映海报', '取不到的图', '航海王 强者天下 复古风 海报']);
   const begun = shelf.begin('call', {command, turn: {}});
-  assert.equal(begun.command, "makaron edit --image-model gemini-2.1 --image 'https://voice.example/voice/board-shared/3.jpg' '把这张海报改成全员Q版'");
+  assert.equal(begun.command, "makaron edit --image-model gpt-image-2.6-flare --image 'https://voice.example/voice/board-shared/3.jpg' '把这张海报改成全员Q版'");
   assert.equal(shelf.get('call', begun.id).from, 'p2');
   // The page is given the photograph too, so the frame can show what the thing is being made of.
   assert.deepEqual(shelf.page('call').assets.map(({id, source, from}) => [id, source, from]), [['p2', 'search', undefined], ['a1', 'made', 'p2']]);
   // One that cannot be fetched is said to be so; nothing is submitted with a made-up picture.
-  await shelf.lend('call', "makaron edit --image-model gemini-2.1 --image p3 'x'");
-  assert.match(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --image p3 'x'", turn: {}}).error, /「取不到」这张这次没能取到/u);
+  await shelf.lend('call', "makaron edit --image-model gpt-image-2.6-flare --image p3 'x'");
+  assert.match(shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare --image p3 'x'", turn: {}}).error, /「取不到」这张这次没能取到/u);
   // For V's backend the latest few are lent together, with their addresses.
   await shelf.lend('call');
   assert.match(shelf.backendContext('call'), /p1「上映海报」 链接 https:\/\/voice\.example\/voice\/board-shared\/\d\.jpg；p2「复古风海报」/u);
@@ -385,14 +385,14 @@ test('a photograph is called on the shelf what it is called on the board', () =>
 });
 
 test('the frame of a thing that was not made leaves the page when the next thing goes up', async () => {
-  const board = director(), shelf = shelfOn(board), make = words => shelf.begin('call', {command: `makaron edit --image-model gemini-2.1 '${words}'`, turn: {}});
+  const board = director(), shelf = shelfOn(board), make = words => shelf.begin('call', {command: `makaron edit --image-model gpt-image-2.6-flare '${words}'`, turn: {}});
   await shelf.finish('call', make('海报').id, image(POSTER));
   await shelf.finish('call', make('电影海报版').id, {isError: true});
   assert.deepEqual(board.scene('call').blocks.map(block => [block.asset, block.w]), [['a1', 'half'], ['a2', 'half']], 'it says so while nothing else has come');
   make('纯电影海报');
   assert.deepEqual(board.scene('call').blocks.map(block => [block.asset, block.w]), [['a1', 'half'], ['a3', 'half']]);
   // Alone again, a thing has the page's width.
-  const one = director(), single = shelfOn(one), again = words => single.begin('call', {command: `makaron edit --image-model gemini-2.1 '${words}'`, turn: {}});
+  const one = director(), single = shelfOn(one), again = words => single.begin('call', {command: `makaron edit --image-model gpt-image-2.6-flare '${words}'`, turn: {}});
   await single.finish('call', again('一').id, {isError: true});
   again('二');
   assert.deepEqual(one.scene('call').blocks.map(block => [block.asset, block.w]), [['a2', undefined]]);
@@ -412,13 +412,13 @@ test('a thing is made from a picture of each character, each named by what it is
   const board = director(), shelf = shelfOn(board, {see: async () => ({name: '尼卡海报', see: '白发的尼卡路飞在画面中间。', parts: []})});
   shelf.share = async query => ({url: `https://voice.example/voice/board-shared/${encodeURIComponent(query)}.jpg`, until: Date.now() + 60000});
   for (const [query, name] of [['路飞 齿轮四 弹跳人', '四档 弹跳人'], ['路飞 五档 太阳神尼卡 官方图', '五档 尼卡'], ['基格尔德 10%形态 官方图', '10%形态'], ['基格尔德 完全体形态', '基格尔德 完全体形态']]) shelf.found('call', {query, name});
-  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 '尼卡路飞电影海报'", turn: {}}).id, image(POSTER));
+  await shelf.finish('call', shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare '尼卡路飞电影海报'", turn: {}}).id, image(POSTER));
   await new Promise(resolve => setTimeout(resolve, 5));
   // Two characters, two pictures: the made poster as the base, the photograph of the other by its name.
-  const command = "makaron edit --image-model gemini-2.1 --image 尼卡海报 --ref '基格尔德完全体' '两人正面对战'";
+  const command = "makaron edit --image-model gpt-image-2.6-flare --image 尼卡海报 --ref '基格尔德完全体' '两人正面对战'";
   await shelf.lend('call', command);
   const begun = shelf.begin('call', {command, turn: {}});
-  assert.equal(begun.command, `makaron edit --image-model gemini-2.1 --image '${POSTER}' --ref 'https://voice.example/voice/board-shared/${encodeURIComponent('基格尔德 完全体形态')}.jpg' '两人正面对战'`);
+  assert.equal(begun.command, `makaron edit --image-model gpt-image-2.6-flare --image '${POSTER}' --ref 'https://voice.example/voice/board-shared/${encodeURIComponent('基格尔德 完全体形态')}.jpg' '两人正面对战'`);
   assert.deepEqual(shelf.get('call', begun.id).refs, ['a1', 'p4']);
   assert.equal(shelf.get('call', begun.id).from, 'a1');
   // V is told what the thing was really made from, by name; the page is given those pictures to show.
@@ -430,7 +430,7 @@ test('a thing is made from a picture of each character, each named by what it is
   await shelf.lend('call', film);
   assert.deepEqual(shelf.get('call', shelf.begin('call', {command: film, turn: {}}).id).refs, ['p2', 'p4']);
   // A name nothing on the screen goes by is said to be so, with what there is; nothing is submitted with a wrong picture.
-  const wrong = shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --ref '皮卡丘' 'x'", turn: {}});
+  const wrong = shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare --ref '皮卡丘' 'x'", turn: {}});
   assert.match(wrong.error, /屏幕上没有叫「皮卡丘」的图片；本次没有提交。现有：p1「四档 弹跳人」、p2「五档 尼卡」、p3「10%形态」、p4「基格尔德 完全体形态」、a1「尼卡海报」/u);
 });
 
@@ -446,11 +446,11 @@ test('a found photograph is looked at: one that is not the thing it was searched
   await Promise.all(shelf.page('call').photos.map(() => new Promise(resolve => setTimeout(resolve, 5))));
   assert.deepEqual(looked.map(([name]) => name).sort(), ['布偶猫趴沙发', '柴犬全身', '柴犬正脸']);
   assert.match(shelf.context('call'), /p1「柴犬全身」（搜错了，图里其实是：一枚印章和纸上的小狗线稿）、p2「柴犬正脸」、p3「布偶猫趴沙发」/u);
-  const command = "makaron edit --image-model gemini-2.1 --ref 柴犬全身 --ref 布偶猫趴沙发 '一起坐在沙发上'";
+  const command = "makaron edit --image-model gpt-image-2.6-flare --ref 柴犬全身 --ref 布偶猫趴沙发 '一起坐在沙发上'";
   await shelf.lend('call', command);
   const refused = shelf.begin('call', {command, turn: {}});
   assert.match(refused.error, /「柴犬全身」这张搜到的图不对：图里其实是一枚印章和纸上的小狗线稿。本次没有提交。.*现有：p2「柴犬正脸」、p3「布偶猫趴沙发」/u);
-  const right = "makaron edit --image-model gemini-2.1 --ref 柴犬正脸 --ref 布偶猫趴沙发 '一起坐在沙发上'";
+  const right = "makaron edit --image-model gpt-image-2.6-flare --ref 柴犬正脸 --ref 布偶猫趴沙发 '一起坐在沙发上'";
   await shelf.lend('call', right);
   assert.deepEqual(shelf.get('call', shelf.begin('call', {command: right, turn: {}}).id).refs, ['p2', 'p3']);
 });
@@ -481,10 +481,10 @@ test('V\'s own image is always at hand: named in a command, lent like a found ph
   assert.equal(shelf.context('call'), ASSET_CONTEXT_EMPTY);
   assert.deepEqual(shelf.names('call'), ['V 自己的形象']);
   // Not lent yet: it cannot be the reference, and nothing is submitted.
-  assert.match(shelf.begin('call', {command: "makaron edit --image-model gemini-2.1 --image v '打电话的 V'", turn: {}}).error, /没能取到/u);
+  assert.match(shelf.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare --image v '打电话的 V'", turn: {}}).error, /没能取到/u);
   // By its id, or by what the caller calls it.
   for (const [index, token] of ['v', 'V', "'你自己'", '"V 的形象"'].entries()) {
-    const command = `makaron edit --image-model gemini-2.1 --image ${token} '打电话的 V，第 ${index} 张'`;
+    const command = `makaron edit --image-model gpt-image-2.6-flare --image ${token} '打电话的 V，第 ${index} 张'`;
     await shelf.lend('call', command);
     const begun = shelf.begin('call', {command, turn: {}});
     assert.equal(begun.error, undefined, token);
@@ -497,14 +497,14 @@ test('V\'s own image is always at hand: named in a command, lent like a found ph
   assert.deepEqual(made.find(item => item.id === 'a1').refs, ['v']);
   // As a second picture beside one on the shelf.
   const poster = await shelf.finish('call', 'a1', image(POSTER));
-  const both = shelf.begin('call', {command: `makaron edit --image-model gemini-2.1 --image ${poster.id} --ref v '把 V 放进海报'`, turn: {}});
+  const both = shelf.begin('call', {command: `makaron edit --image-model gpt-image-2.6-flare --image ${poster.id} --ref v '把 V 放进海报'`, turn: {}});
   assert.equal(both.error, undefined);
   assert.equal((both.command.match(/https:/gu) ?? []).length, 2);
   // A shelf without one says nothing of it and knows no "v".
   const plain = createAssetShelf({director: director()});
   assert.equal(plain.context('call'), ASSET_CONTEXT_EMPTY);
   assert.equal(plain.standingNote(), '');
-  assert.match(plain.begin('call', {command: "makaron edit --image-model gemini-2.1 --image v 'x'", turn: {}}).error, /屏幕上没有/u);
+  assert.match(plain.begin('call', {command: "makaron edit --image-model gpt-image-2.6-flare --image v 'x'", turn: {}}).error, /屏幕上没有/u);
 });
 
 test('a call connected again as another session keeps its shelf and board, and what was begun before lands there', async () => {
@@ -524,9 +524,9 @@ test('a call connected again as another session keeps its shelf and board, and w
   const fact = await shelf.finish('first', begun.id, {media: {kind: 'video', url: 'https://cdn.example/cat.mp4'}});
   assert.equal(fact.id, begun.id);
   assert.equal(shelf.page('second').assets[0].state, 'ready');
-  assert.notEqual(shelf.begin('second', {command: "makaron edit --image-model gemini-2.1 'a dog'", turn: {}}).id, begun.id);
+  assert.notEqual(shelf.begin('second', {command: "makaron edit --image-model gpt-image-2.6-flare 'a dog'", turn: {}}).id, begun.id);
   // A session with things of its own is not overwritten; the old board of one that never had any is nothing to carry.
-  shelf.begin('third', {command: "makaron edit --image-model gemini-2.1 'x'", turn: {}});
+  shelf.begin('third', {command: "makaron edit --image-model gpt-image-2.6-flare 'x'", turn: {}});
   assert.equal(shelf.adopt('third', 'second'), false);
   assert.equal(board.adopt('fourth', 'nobody'), false);
 });
