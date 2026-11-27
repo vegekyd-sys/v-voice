@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-shared-model-layer-20261126",
-  "version": "voice-shared-model-layer.20261126.1",
-  "entryCommit": "166f4fd4814506b5d415c77849a50b8c1ce8d788",
-  "deviceEntryCommit": "166f4fd4814506b5d415c77849a50b8c1ce8d788",
-  "filesSha256": "9b63f9bfcf7986674bddcb431cfb4dc7583be496d97789f0d768fe0f498b2e78",
-  "registration": "voice-shared-model-layer-20261126/release.json",
-  "previousEntryCommit": "279fc3c2e28cdfaed3d3d0c11e3ec62527fc52c9",
+  "release": "voice-tv-lessons-20261128",
+  "version": "voice-tv-lessons.20261128.1",
+  "entryCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
+  "deviceEntryCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
+  "filesSha256": "d25e4858c3e67579addfb1d05904a94bb0a56ea910868069f0adcd02fdeef04f",
+  "registration": "voice-tv-lessons-20261128/release.json",
+  "previousEntryCommit": "166f4fd4814506b5d415c77849a50b8c1ce8d788",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-26T02:05:00+08:00",
-  "runtimeDifference": "GPT Live 1.1 路由改读共用的选工具规则和完整工具说明；包含此前已发布的 lesson-barge 与 listen-only；豆包和 Grok 指令不变。"
+  "validatedAt": "2026-11-28T01:56:52+08:00",
+  "runtimeDifference": "电视与网页共用讲解画布和分页。支持电视语音双向压缩传输、流式收字、道别挂断和接通后遥控一键全屏。"
 }
