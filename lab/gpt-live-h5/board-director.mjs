@@ -86,6 +86,17 @@ const evidenceText = result => {
 /** Build the user message for one run. Everything in it is conversation data. */
 /** A lesson's script that asks for a picture to be drawn (a line's hint reads「现画：…」). */
 const drawsInNotes = notes => (notes?.lines ?? []).some(line => /现画/u.test(String(line?.show ?? '')));
+/** A lesson's script that shows photographs: a line's hint names a photo, a pictured item or a page of pictures
+ * (the words of the hint vocabulary the writer is given, SCRIPT_INSTRUCTIONS). */
+const photosInNotes = notes => (notes?.lines ?? []).some(line => /^\s*(?:photo|照片)\s*[：:]|配图|带图|图集|gallery/iu.test(String(line?.show ?? '')));
+/**
+ * Whether a picture may be drawn for this lesson's page now. Only for a page that has nothing to show:
+ * a drawn picture next to photographs is one more than the page needs, and paid for (11/21–27: nine
+ * of the ten drawn for the owner's lessons went up beside one to six photographs). Not for a page
+ * already full either: the picture was made and never shown (11/24, 11/25). Once per answer.
+ */
+const mayDraw = (row, scripted, shelf, id) => scripted && drawsInNotes(row.notes) && !photosInNotes(row.notes) && scenePictures(row.scene).size === 0
+  && row.scene.blocks.length < 4 && Boolean(shelf?.canMake?.(id)) && row.madeFor !== (row.turnNo ?? 0);
 /** A lesson's script that asks for a page of pictures (a line's hint reads「图集：…」). */
 const galleryInNotes = notes => (notes?.lines ?? []).some(line => /图集|gallery/iu.test(String(line?.show ?? '')));
 
@@ -684,8 +695,8 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
               else if (make) {
                 // (Only a lesson's script asks: in call of 11/21 the illustrator asked for the very picture the
                 // caller had asked V for, a moment before V's own command, and the two were made as one.)
-                // (And only where the script itself says so: a picture is paid for.)
-                if (!scripted || !drawsInNotes(row.notes) || !shelf?.canMake?.(id) || row.madeFor === (row.turnNo ?? 0)) return;
+                // (And only where the script itself says so, on a page with no photographs and room for it: see mayDraw.)
+                if (!mayDraw(row, scripted, shelf, id)) return;
                 const made = shelf.make(id, {prompt: make, caption: rest.caption});
                 if (!made) return;
                 row.madeFor = row.turnNo ?? 0;
@@ -775,7 +786,7 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
             ...(stream && row.language ? {language: row.language} : {}),
             // The author's notes go with the script they were written for, and with nothing else.
             ...(scripted ? {notes: {title: row.notes.title, lines: row.notes.lines}} : {}),
-            ...(stream && shelf ? {assets: shelf.digest(id), ...(scripted && drawsInNotes(row.notes) && shelf.canMake?.(id) && row.madeFor !== (row.turnNo ?? 0) ? {make: true} : {}), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
+            ...(stream && shelf ? {assets: shelf.digest(id), ...(mayDraw(row, scripted, shelf, id) ? {make: true} : {}), ...(row.scene.blocks.some(block => block.t === 'work') ? {workshop: true} : {})} : {}),
             ...(stream ? {recent: row.recent ?? [], page: {id: zoneId(row.scene), room: Math.max(0, 4 - row.scene.blocks.length)}, canvas: (row.zones ?? []).filter(zone => zone.serial !== row.scene.serial).map(zoneDigest)} : {})})}];
         for await (const chunk of (stream ? hedged(complete, {messages, signal: controller.signal}, hedgeMs) : complete({messages, signal: controller.signal}))) {
           if (controller.signal.aborted) break;

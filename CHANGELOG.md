@@ -12,8 +12,9 @@
 
 
 
-## 2026-11-28 — A lesson no longer loses a picture to a slow file (`voice-board-photos.20261128.1`)
+## 2026-11-28 — A lesson draws a picture only where it has no photographs; a slow photo is no longer a missing one (`voice-board-photos.20261128.1`)
 
+- A lesson's script may still ask for a picture to be drawn (「现画：…」), but only for a page with nothing to show: not where the script shows a photograph, a pictured item or a page of pictures, not where the page already holds a photograph, and not where the page is already full (four blocks). The illustrator is told it may draw only then (`make`), and the director checks the same before anything is made (`mayDraw`). Of the ten pictures drawn for the owner's lessons on 11/21–27, nine went up beside one to six photographs, and two more were made for a full page and never shown.
 - `board-photo.mjs`: a picture whose files did not arrive in time, or whose server failed (5xx, timeout, the lookup's own limit), is "not just now", not "no picture": it is no longer kept as an answer, and the page is told 503, not 404. Before, the page took the 404 as final and left the item without its picture for the rest of the call. Of the 23 board lookups that ended "none" on 11/21–11/27, 15 found a picture when asked again on 11/28.
 - A result whose file another thing on the board already has no longer ends the search: the next results are tried (each still passes the same "not another thing's file" test).
 - Every "none" is logged with why (`no-results`, `unranked`, `no-file`, `taken`, `unreachable`, `timeout`) and whether it is settled; each picture the page is refused is logged as `board.image` with its status and reason (no picture contents, no chat text).
