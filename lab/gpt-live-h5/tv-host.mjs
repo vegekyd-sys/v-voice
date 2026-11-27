@@ -25,8 +25,30 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
   const validOwner = expected => expected === undefined || Boolean(expected && expected.owner === owner && expected.generation === generation);
   const focusable = () => [...((document.querySelector?.('dialog[open], .board-viewer[aria-modal="true"]') ?? (view.get().reading?document.getElementById?.('contentReader'):document))?.querySelectorAll?.('button,a[href],input,select,textarea,[tabindex]') ?? [])].filter(e => {
     const r = e.getBoundingClientRect();
-    return !e.disabled && e.tabIndex >= 0 && r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth && !e.closest('[inert]');
+    return !e.disabled && e.tabIndex >= 0 && r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth && !e.closest('[inert], .board-page[aria-hidden="true"]') && visibleInBoard(e, r);
   });
+  function visibleInBoard(element, rect) {
+    const region = element.closest('.board-scroll');
+    if (!region || region === element) return true;
+    const frame = region.getBoundingClientRect();
+    return rect.bottom > frame.top && rect.top < frame.bottom && rect.right > frame.left && rect.left < frame.right;
+  }
+  function nearest(active, items, direction) {
+    const r = active.getBoundingClientRect();
+    let best = null, score = Infinity;
+    for (const item of items) {
+      if (item === active) continue;
+      const t = item.getBoundingClientRect();
+      const dx = t.x + t.width / 2 - r.x - r.width / 2, dy = t.y + t.height / 2 - r.y - r.height / 2;
+      const forward = direction === 'up' ? -dy : direction === 'down' ? dy : direction === 'left' ? -dx : dx;
+      const cross = direction === 'up' || direction === 'down' ? Math.abs(dx) : Math.abs(dy);
+      if (forward > 3 && forward >= cross * .6 && forward + cross * 3 < score) {
+        best = item;
+        score = forward + cross * 3;
+      }
+    }
+    return best;
+  }
   const focusPrimary = () => {
     if(view.get().reading){document.getElementById?.('readerBody')?.focus({preventScroll:true});return;}
     const items = focusable();
@@ -37,7 +59,9 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     delete document.documentElement.dataset.tvTransition;
     window.scrollTo?.(0,0);
     view.set({tvLayout:layout});
-    window.requestAnimationFrame?.(focusPrimary);
+    window.requestAnimationFrame?.(() => {
+      if (!focusable().includes(document.activeElement)) focusPrimary();
+    });
   };
   let hostBounds, companionBounds, enteringAvatar, flight, avatarAnimation, landing;
   const avatar = () => document.querySelector?.('.call-page .avatar');
@@ -269,24 +293,46 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
           document.getElementById?.('readerBody')?.focus({preventScroll:true});return true;
         }
       }
-      const scroller = document.activeElement;
+      const active = document.activeElement;
+      const items = focusable();
+      const region = layout === 'full' && !view.get().reading
+        ? items.find(item => item.matches?.('.board-page[data-current] .board-scroll'))
+        : null;
+      // The full TV has a lesson column and a call column. Cross at the reading
+      // surfaces, even when the nearest button by distance is on another row.
+      const board = region?.closest('.board');
+      const inBoard = board?.contains(active);
+      const chat = items.find(item => item.matches?.('.turns[role="log"]'));
+      const focus = item => { item.focus({preventScroll: true}); return true; };
+      if (region) {
+        if (active?.matches?.('.tv-return') && direction === 'down') return focus(region);
+        if (active?.closest?.('.board-top') && direction === 'down') return focus(region);
+        if (active?.closest?.('.board-dots') && direction === 'up') return focus(region);
+        if (active === region && direction === 'right' && chat) return focus(chat);
+        if (active === chat && direction === 'left') return focus(region);
+      }
+      const scroller = region?.contains(active) ? region : active;
+      if (region && scroller === region && active !== region) {
+        const sibling = nearest(active, items.filter(item => item !== region && region.contains(item)), direction);
+        if (sibling) return focus(sibling);
+        if (direction === 'right' && chat) return focus(chat);
+      }
       if (scroller?.matches?.('.turns[role="log"], .board-scroll') && ['up','down'].includes(direction)) {
         const down = direction === 'down';
         if (down ? scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1 : scroller.scrollTop > 1) {
-          scroller.scrollBy({top: (down ? 1 : -1) * scroller.clientHeight * .8});
+          if (region && scroller === region) focus(region);
+          scroller.scrollBy({top: (down ? 1 : -1) * scroller.clientHeight * .8, behavior: 'instant'});
           return true;
         }
       }
-      const items=focusable(), active=document.activeElement;
-      if (!items.includes(active)) { focusPrimary(); return true; }
-      const r=active.getBoundingClientRect(); let best=null,score=Infinity;
-      for(const item of items) {
-        if(item===active)continue;
-        const t=item.getBoundingClientRect(),dx=t.x+t.width/2-r.x-r.width/2,dy=t.y+t.height/2-r.y-r.height/2;
-        const forward=direction==='up'?-dy:direction==='down'?dy:direction==='left'?-dx:dx;
-        const cross=direction==='up'||direction==='down'?Math.abs(dx):Math.abs(dy);
-        if(forward>3&&forward>=cross*.6&&forward+cross*3<score){best=item;score=forward+cross*3;}
+      if (region && scroller === region && (direction === 'up' || direction === 'down')) {
+        const edge = direction === 'up' ? items.find(item => item.closest('.board-top'))
+          : items.find(item => item.matches?.('.board-dots [aria-current="page"]')) ?? chat;
+        if (edge) return focus(edge);
       }
+      if (!items.includes(active)) { focusPrimary(); return true; }
+      const best = nearest(active, items, direction);
+      if (region && !inBoard && direction === 'left' && (!best || board.contains(best))) return focus(region);
       if(!best&&overlay&&layout==='medium')return 'exit';
       if(best){best.focus({preventScroll:true});if(layout==='full')best.scrollIntoView({block:'nearest'});}
       return true;

@@ -864,7 +864,7 @@ function Sheet({scene, spoken, loadPhoto, enlarge, caption = '', works = null}) 
   // brought the view back to V's page; on a phone the view swung between two pages (11/14).
   useEffect(() => {
     const host = box.current, target = spoken && view.focus ? host?.querySelector('[data-now]') : null;
-    if (!host || !target) return;
+    if (!host || !target || host.closest('.board[data-tv-board]:focus-within')) return;
     const at = target.getBoundingClientRect(), frame = host.getBoundingClientRect();
     if (at.top >= frame.top && at.bottom <= frame.bottom) return;
     const top = host.scrollTop + (at.top < frame.top ? at.top - frame.top - 12 : at.bottom - frame.bottom + 12);
@@ -961,9 +961,9 @@ export function Board(props) {
   return <BoardGuard retry={`${props.scene?.serial}:${props.scene?.rev}`}><Canvas {...props} /></BoardGuard>;
 }
 // A broadcast that has ended stays on the board as its recording, framed like any made video.
-function Recorded({clip, save}) {
+function Recorded({clip, save, tv}) {
   const [saved, setSaved] = useState('');
-  return <div className="board-scroll"><div className="board-body board-live-media"><figure className="board-work improv-stage" data-kind="live" data-state="ready">
+  return <div className="board-scroll" tabIndex={tv ? 0 : undefined} role="region" aria-label="画面内容"><div className="board-body board-live-media"><figure className="board-work improv-stage" data-kind="live" data-state="ready">
     <div className="board-work-frame" style={{'--shape': clip.shape || 16 / 9}}>
       {clip.recording ? <video className="board-work-print" data-loaded="true" src={clip.recording} poster={clip.poster} playsInline controls preload="metadata" aria-label="直播录像" />
         : clip.poster ? <img className="board-work-print" data-loaded="true" src={clip.poster} alt="直播停下时的画面" />
@@ -998,6 +998,22 @@ function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canva
     if (strip) strip.scrollTo?.({left: strip.clientWidth * index, behavior: 'instant'});
     setInView(index);
   };
+  const selectPage = index => {
+    go(index);
+    if (tv) track.current?.children[index]?.querySelector('.board-scroll')?.focus({preventScroll: true});
+  };
+  // The remote's OK enters the visible pictures/actions. Android may dispatch
+  // either Enter or click(), depending on whether its WebView owns key focus.
+  const enterContent = event => {
+    const region = event.target;
+    if (!tv || !region.matches('.board-scroll')) return;
+    const frame = region.getBoundingClientRect();
+    const first = [...region.querySelectorAll('button:enabled, [tabindex="0"]')].find(item => {
+      const rect = item.getBoundingClientRect();
+      return rect.width && rect.height && rect.bottom > frame.top && rect.top < frame.bottom;
+    });
+    if (first) { event.preventDefault(); first.focus({preventScroll: true}); }
+  };
   const lastLive = useRef(null);
   const lastScene = useRef(`${scene.serial}:${scene.rev}`);
   useLayoutEffect(() => {
@@ -1013,7 +1029,8 @@ function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canva
     const key = `${scene.serial}:${scene.rev}`, changed = lastScene.current !== key;
     lastScene.current = key;
     if (liveId) { if (track.current && inView >= pages.length - 1) go(pages.length - 1); }
-    else if (changed) go(active);
+    else if (changed && !(tv && track.current?.closest('.board')?.matches(':focus-within'))) go(active);
+    else if (inView >= pages.length) go(active);
   }, [active, pages.length, scene.serial, scene.rev]);
   const onScroll = () => { const strip = track.current; if (strip?.clientWidth) setInView(Math.max(0, Math.min(pages.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)))); };
   const page = pages[Math.min(inView, pages.length - 1)];
@@ -1039,29 +1056,31 @@ function Canvas({scene, tv, recordings = [], liveMedia, liveId, liveFocus, canva
   // A page that goes further into something on an earlier page is titled with where it came from.
   const parent = page.from ? pages.find(item => `z${item.serial}` === page.from) : null;
   return (
-    <section className="board" data-pages={pages.length} aria-label={page.title ? `画面：${page.title}` : '画面'}>
+    <section className="board" data-tv-board={tv || undefined} data-pages={pages.length} aria-label={page.title ? `画面：${page.title}` : '画面'}>
       <header className="board-top">
         {page.title ? <h2 key={page.serial} className="board-title">{parent?.title && <small>{parent.title} ›</small>}<span>{page.title}</span><Stroke className="board-title-line" d={underline(page.title)} /></h2> : <span />}
         {/* (A made thing's own card in the conversation is not a report to open: the thing is here on the page.) */}
         {tv && pages.length > 1 && <div className="tv-board-pages" aria-label="讲解翻页">
           {[-1, 1].map(step => <button key={step} type="button" disabled={!pages[inView + step]}
-            onClick={() => track.current?.scrollTo({left: track.current.clientWidth * (inView + step)})}>{step < 0 ? '上一页' : '下一页'}</button>)}
+            onClick={() => selectPage(inView + step)}>{step < 0 ? '上一页' : '下一页'}</button>)}
         </div>}
         {onReport && !page.clip && page.serial !== liveId && !page.blocks.some(block => block.t === 'work') && <button type="button" className="board-report" onClick={onReport}>完整报告</button>}
         <button type="button" className="board-close" aria-label="收起画面" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
       </header>
-      <div className="board-track" ref={track} onScroll={onScroll}>
+      <div className="board-track" ref={track} onScroll={onScroll} onClick={tv ? enterContent : undefined}
+        onKeyDown={tv ? event => { if (event.key === 'Enter') enterContent(event); } : undefined}>
         {pages.map((item, index) => (
           <div key={item.serial} className="board-page" data-lesson={item.lesson || undefined} data-current={index === inView || undefined} aria-hidden={index !== inView || undefined}>
             <BoardGuard retry={`${item.serial}:${item.rev}`}>
-              {item.serial === liveId ? <div className="board-scroll"><div className="board-body board-live-media">{liveMedia}</div></div> : item.clip ? <Recorded clip={item.clip} save={works?.save}/> : <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />}
+              {item.serial === liveId ? <div className="board-scroll" tabIndex={tv ? 0 : undefined} role="region" aria-label="画面内容"><div className="board-body board-live-media">{liveMedia}</div></div> : item.clip ? <Recorded tv={tv} clip={item.clip} save={works?.save}/> : <Sheet scene={item} spoken={index === active ? spoken : null} caption={index === active ? caption : ''} loadPhoto={loadPhoto} enlarge={look} works={works} />}
             </BoardGuard>
           </div>
         ))}
       </div>
-      {pages.length > 1 && <nav className="board-dots" aria-label="画面分页">{pages.map((item, index) => <button key={item.serial} type="button" aria-label={item.serial === liveId ? "查看直播画面" : item.clip ? "查看直播回放" : "查看第" + (index + 1) + "页"} aria-current={index === inView ? "page" : undefined} onClick={() => go(index)}><b data-current={index === inView || undefined}/></button>)}</nav>}
+      {pages.length > 1 && <nav className="board-dots" aria-label="画面分页">{pages.map((item, index) => <button key={item.serial} type="button" aria-label={item.serial === liveId ? "查看直播画面" : item.clip ? "查看直播回放" : "查看第" + (index + 1) + "页"} aria-current={index === inView ? "page" : undefined} onClick={() => selectPage(index)}><b data-current={index === inView || undefined}/></button>)}</nav>}
+      {tv && <small className="tv-board-guide">↑↓ 浏览　·　→ 回到对话</small>}
       {viewing && <Viewer items={viewing.items} start={viewing.start} works={works} onClose={() => setViewing(null)} />}
     </section>
   );

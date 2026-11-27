@@ -2352,3 +2352,9 @@ html[data-tv-landing],html[data-tv-landing] body{background:transparent!importan
 html[data-tv-landing] #app{opacity:0;pointer-events:none}
 
 html[data-tv-entering="true"] .call-page .avatar{visibility:hidden!important}
+
+/* An inset ring stays visible inside the clipped TV canvas. */
+.board[data-tv-board] .board-scroll:focus { outline: 3px solid #745392; outline-offset: -4px; border-radius: 10px; }
+.board[data-tv-board] :is(button, [data-enlarge]):focus { outline: 3px solid #745392; outline-offset: -2px; }
+.tv-board-guide { align-self: flex-end; padding: 2px 12px 4px; color: #705e79; font-size: 14px; }
+.board[data-tv-board] .board-dots { left: 12px; transform: none; }

@@ -97,7 +97,7 @@ export function Work({block, view}) {
   const making = shown?.state === 'making' ? shown.id : '';
   useEffect(() => {
     const host = frame.current?.closest('.board-scroll'), target = frame.current;
-    if (!making || !host || !target) return;
+    if (!making || !host || !target || host.closest('.board[data-tv-board]:focus-within')) return;
     const at = target.getBoundingClientRect(), box = host.getBoundingClientRect();
     if (at.top >= box.top && at.bottom <= box.bottom) return;
     host.scrollTo?.({top: host.scrollTop + (at.top < box.top ? at.top - box.top - 12 : at.bottom - box.bottom + 12), behavior: 'smooth'});
