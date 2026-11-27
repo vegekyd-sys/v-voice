@@ -49,10 +49,20 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
     }
     return best;
   }
+  // In the small overlay Android keeps key focus on the native surface. The
+  // WebView remembers the selected button, but does not always paint :focus.
+  let markedDockButton;
+  const focus = item => {
+    item?.focus({preventScroll:true});
+    markedDockButton?.removeAttribute('data-remote-focus');
+    markedDockButton = layout === 'medium' && item?.closest?.('.tv-dock-actions') ? item : null;
+    markedDockButton?.setAttribute('data-remote-focus', '');
+    return true;
+  };
   const focusPrimary = () => {
     if(view.get().reading){document.getElementById?.('readerBody')?.focus({preventScroll:true});return;}
     const items = focusable();
-    (items.find(e => e.hasAttribute('data-tv-primary')) ?? items.find(e => e.id === 'start') ?? items[0])?.focus({preventScroll:true});
+    focus(items.find(e => e.hasAttribute('data-tv-primary')) ?? items.find(e => e.id === 'start') ?? items[0]);
   };
   const commitLayout = () => {
     document.documentElement.dataset.tvLayout=layout;
@@ -303,7 +313,6 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const board = region?.closest('.board');
       const inBoard = board?.contains(active);
       const chat = items.find(item => item.matches?.('.turns[role="log"]'));
-      const focus = item => { item.focus({preventScroll: true}); return true; };
       if (region) {
         if (active?.matches?.('.tv-return') && direction === 'down') return focus(region);
         if (active?.closest?.('.board-top') && direction === 'down') return focus(region);
@@ -344,7 +353,7 @@ export function installTvHost({view, window, actions, onError = () => {}}) {
       const best = nearest(active, items, direction);
       if (region && !inBoard && direction === 'left' && (!best || board.contains(best))) return focus(region);
       if(!best&&overlay&&layout==='medium')return 'exit';
-      if(best){best.focus({preventScroll:true});if(layout==='full')best.scrollIntoView({block:'nearest'});}
+      if(best){focus(best);if(layout==='full')best.scrollIntoView({block:'nearest'});}
       return true;
     },
     // Measured RMS only; no recordings, provider-arrival envelope or animation generator.
