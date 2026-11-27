@@ -669,8 +669,10 @@ export class SeeduplexRealtimeVoiceBridge {
     const normalized = optionalString(text);
     if (!normalized || !this.ready || this.terminal) return false;
     this.#send({type:"conversation.item.create",event_id:`event_${randomUUID()}`,items:[
-      {role:"user",content:[{type:"input_text",text:`（用户在屏幕上打字发来一段话，原文如下，下一句会念给你听；有出入以原文为准）${normalized}`}]},
-      {role:"assistant",content:[{type:"input_text",text:"好，我按原文理解。"}]},
+      // (A notice, as the screen's are, not a request: written as the caller asking, it was acted on again
+      // in the turns after the real one, 11/28: a typed "画一张" ran the drawing command three times.)
+      {role:"user",content:[{type:"input_text",text:`打字原文通知（不是新的请求，不要求回复，也不要为它做任何事）：用户下一句话是打字发来的，念出来给你听。听到的字和这份原文有出入时（链接、名字、数字），以原文为准：${normalized}`}]},
+      {role:"assistant",content:[{type:"input_text",text:"好，下一句以这份原文为准，只回应那一句。"}]},
     ]});
     // Typing while V talks is talking over V.
     if (this.responseActive) this.handleBargeIn({ confirmed: true });
