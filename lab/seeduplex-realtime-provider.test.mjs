@@ -1053,3 +1053,62 @@ test("the page's voice choices are speakers this provider maps, the default firs
   // Mapped for the provider but not offered, another model's voice, a raw speaker id, nothing at all.
   for (const voice of ["companion", "sol", "zh_female_vv_uranus_bigtts", "", null]) assert.throws(() => seeduplexVoice(voice), /豆包音色/u);
 });
+
+// Seeduplex answers speech only (a text item is history; `response.create` ends the session), and reads
+// history added mid-call from the turn after next. A typed message goes as the caller's own turn, said
+// aloud, after an empty turn that lets it read its exact words (and the screen) as history.
+test('a typed message is the caller\'s committed speech turn, after an empty turn that lets it read its exact words',async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());
+ const speech=[],captions=[];f.bridge.request.onInputSpeech=(active,detail)=>speech.push([active,detail]);f.bridge.request.onInputCaption=text=>captions.push(text);
+ f.bridge.request.isPlaybackEcho=()=>true;
+ const sent=()=>f.socket.sent.slice(f.socket.sent.findIndex(e=>e.type==='session.create')+1);
+ const audio=Buffer.alloc(640*3+322,1);
+ assert.equal(await f.bridge.sendTypedSpeech('  ',audio),false);
+ const giving=f.bridge.sendTypedSpeech('看一下 https://example.test/a',Promise.resolve(audio));
+ let events=sent();
+ assert.equal(events[0].type,'conversation.item.create');assert.deepEqual(events[0].items.map(item=>item.role),['user','assistant']);
+ assert(events[0].items[0].content[0].text.endsWith('看一下 https://example.test/a'));
+ assert.deepEqual(events.slice(1).map(e=>e.type),['input_audio_buffer.commit'],'the empty turn first, and nothing of the message yet');
+ f.socket.message({type:'response.done'});assert.equal(sent().length,2,'a reply that ended before the empty turn was taken is not its answer');
+ f.socket.message({type:'input_audio_buffer.committed'});f.socket.message({type:'response.done'});
+ assert.equal(await giving,true);
+ events=sent().slice(2);
+ const appended=events.filter(e=>e.type==='input_audio_buffer.append');
+ assert.equal(appended.length,4);assert.equal(Buffer.concat(appended.map(e=>Buffer.from(e.audio,'base64'))).length,audio.length);
+ assert.equal(events.at(-1).type,'input_audio_buffer.commit');
+ assert(!f.socket.sent.some(e=>e.type==='response.create'),'never sent: an unknown event that ends the session');
+ f.socket.message({type:'conversation.item.input_audio_transcription.started',item_id:'typed'});
+ f.socket.message({type:'conversation.item.input_audio_transcription.delta',item_id:'typed',delta:'看一下 HTTPS'});
+ f.socket.message({type:'conversation.item.input_audio_transcription.completed',item_id:'typed',text:'看一下 HTTPS example 点 test'});
+ assert.deepEqual(speech,[[true,{typed:true}],[false,{recognized:true,typed:true}]]);
+ assert.deepEqual(captions,[],'no live caption of the recognised words: it is shown as typed');
+ assert.equal(f.texts.filter(t=>t[0]==='user').length,0,'the typed words are the caption; the recognised ones are not reported');
+ assert(!f.events.some(e=>e.type==='native.playback-echo'),'the caller\'s typed words are never V\'s echo');
+ f.socket.message({type:'conversation.item.input_audio_transcription.completed',text:'接着说的话'});
+ assert.deepEqual(f.texts.filter(t=>t[0]==='user').map(t=>t[1]),['接着说的话']);
+});
+
+test('an empty turn that is never answered does not hold a typed message for long',async t=>{
+ const socket=new FakeSocket(),texts=[];
+ const bridge=new SeeduplexRealtimeVoiceBridge({providerConfig:{apiKey:'fixture'},nativeDuplex:true,onAudio(){},onTranscript:(...x)=>texts.push(x),onError:e=>assert.fail(e.message),onClose(){}},{createWebSocket:async()=>socket,typedFlushMs:20});
+ t.after(()=>bridge.close());
+ const connect=bridge.connect();await new Promise(r=>setImmediate(r));socket.open();socket.message({type:'session.created'});await connect;
+ assert.equal(await bridge.sendTypedSpeech('你好',Buffer.alloc(1280,1)),true);
+ assert.deepEqual(socket.sent.filter(e=>e.type==='input_audio_buffer.commit').length,2);
+ // Speech that came out too short, or not at all, is not given.
+ assert.equal(await bridge.sendTypedSpeech('你好',Buffer.alloc(10)),false);
+ const refused=Promise.reject(Error('refused'));refused.catch(()=>{});
+ await assert.rejects(bridge.sendTypedSpeech('你好',refused),/refused/u);
+ assert.equal(socket.sent.filter(e=>e.type==='input_audio_buffer.append').length,2);
+});
+
+test('typing while V speaks stops V, and a reconnect forgets a typed turn that was never recognised',async t=>{
+ const f=await listeningAsideFixture();t.after(()=>f.bridge.close());
+ f.socket.message({type:'response.created',response_id:'talking'});
+ const giving=f.bridge.sendTypedSpeech('停一下',Buffer.alloc(1280,1));
+ assert.equal(f.clears.length,1);assert(f.socket.sent.some(e=>e.type==='response.cancel'));
+ f.socket.message({type:'input_audio_buffer.committed'});f.socket.message({type:'response.done'});await giving;
+ f.socket.message({type:'session.created'});assert.equal(f.bridge.typedTurns,0);
+ f.socket.message({type:'conversation.item.input_audio_transcription.completed',text:'真的说出来的话'});
+ assert.deepEqual(f.texts.filter(t=>t[0]==='user').map(t=>t[1]),['真的说出来的话']);
+});

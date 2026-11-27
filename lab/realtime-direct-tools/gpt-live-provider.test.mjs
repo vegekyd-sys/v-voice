@@ -683,3 +683,17 @@ test('the policy asks the model to look up what the results it holds do not say'
   // No line hands the model words to say: a sample opener became the opener of every reply, said even with nothing looked up.
   assert.doesNotMatch(policy,/对一下|半句/u);
 });
+
+test('a typed request is acted on with the tool its words call for: the model does not delegate typed words',async()=>{
+  const f=await fixture({tools:END,route:async({text})=>/天气/u.test(text)?{name:'web_search',args:{query:'上海今天天气'}}:{name:'answer_directly',args:{}}});await ready(f);
+  f.bridge.sendUserMessage('帮我上网查一下今天上海的天气');await pause(10);
+  assert(appends(f).some(e=>e.content?.[0]?.text==='帮我上网查一下今天上海的天气'),'the model is given the words');
+  vSays(f,'a1','好,我去查一下,马上回来。');await pause(2600);
+  assert.deepEqual([f.calls[0]?.name,f.calls[0]?.args],['web_search',{query:'上海今天天气'}]);assert.match(f.calls[0].callId,/^host_/u);
+  assert(f.events.some(e=>e.diag?.stage==='typed-unprompted'));
+  // Typed chat is left to the model.
+  f.bridge.sendUserMessage('你好呀，今天过得怎么样');await pause(2600);assert.equal(f.calls.length,1);
+  // When the model does delegate them after all, the words are acted on once.
+  f.bridge.sendUserMessage('那明天上海的天气呢');await pause(10);f.bridge.receive(item(idOf(7),'查明天上海的天气'));await pause(2700);
+  assert.equal(f.calls.length,2);assert.equal(f.calls[1].callId,idOf(7));
+});

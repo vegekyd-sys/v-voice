@@ -13,7 +13,8 @@ A phone call can be spoken by Doubao (`seeduplex`), Grok or GPT Live 1.1. They t
   | `tools` | function | function | delegation | schemas offered directly, or one sentence routed by `gpt-live-router.mjs` |
   | `explains` | lesson | lesson | speech | `explain_on_board` scripts, or the model explains in its own words and the board follows |
   | `hostToolSpeech` | yes | – | – | cached start/progress lines and the "say one line first" prompt |
-  | `typedTurns` | – | yes | yes | whether a typed message can make the model act |
+  | `typedTurns` | – | yes | yes | whether a text message from the service (a nudge, not the caller) can make the model act |
+  | `typedInput` | speech | text | text | how a message the caller types reaches the model: as a text turn, or said aloud in a voice not V's as the caller's own turn (`typed-speech.mjs`), with the exact words as text beside it |
   | `compactResults` | yes | – | – | search results compacted by the service (GPT Live's bridge words results itself) |
   | `nativeDuplex` | yes | – | – | provider end-of-turn when no speaker routing is in front |
 

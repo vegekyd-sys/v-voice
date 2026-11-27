@@ -345,7 +345,8 @@ test('cancel kills and polls only process IDs actually created by this call',asy
  assert.equal(f.invocations.some(x=>x.args.sessionId==='foreign'),false);await f.service.dispose();
 });
 test('hybrid tool keeps one backend run alive during chat; progress and final wait for actual playback idle',async()=>{
- const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}));
+ // (A typed message is the caller's turn: progress keeps its quiet after it, as after spoken words.)
+ const f=await fixture(async(args,method)=>method==='chat.send'?{runId:args.idempotencyKey,status:'started'}:new Promise(()=>{}),'grok',{narration:{firstMs:0,factGapMs:0,quietAfterUserMs:120}});
  f.call('delegate_to_v',{question:'比较多种方案，完成所有步骤'});await delay(5);
  const started=f.audit.find(x=>x.type==='backend.started');assert(started);
  const backend=e=>{if(e.payload?.state==='final')f.completeBackend(e.payload.message.content[0].text);else if(e.payload?.stream==='item')f.progressBackend(e.payload.data.progressText);};
@@ -356,7 +357,8 @@ test('hybrid tool keeps one backend run alive during chat; progress and final wa
  await f.service.steer(f.reservation.voiceSessionId,{mode:'append',text:'顺便和我聊聊天'});
  assert.equal(f.invocations.filter(x=>x.question?.includes('完整目标')).length,1);
  f.client.emit('message',Buffer.from(JSON.stringify({type:'playback.state',speaking:false})),false);
- await delay(250);
+ await delay(250);assert.equal(f.upstream.sent.some(x=>x.item?.type==='force_message'),false,'nothing is said right after the caller\'s typed turn');
+ await delay(1100);
  const progress=f.upstream.sent.find(x=>x.item?.type==='force_message');assert.equal(progress.item.content[0].text,'第一步查到了实际记录，正在核对网页。');assert.equal(progress.item.interruptible,true);
  backend({payload:{state:'final',message:{content:[{type:'text',text:'所有步骤完成，结论如下'}]}}});await delay(5);
  assert.equal(f.upstream.sent.filter(x=>x.item?.type==='force_message').length,1);
@@ -2368,4 +2370,53 @@ test('a second goodbye and a change of mind race safely with the TV playback rec
    assert.equal(f.client.readyState, 1);
   }
  }
+});
+
+// What the caller types is their turn whatever model speaks (capabilities.mjs, typedInput).
+test('a typed message reaches a speech-only model as the caller\'s own speech, captioned once with the typed words',async t=>{
+ const said=[];
+ const f=await fixture(undefined,'seeduplex',{typedSpeech:async(text,{speaker})=>{said.push({text,speaker});return Buffer.alloc(1280,1);}});t.after(()=>f.service.dispose());
+ const typed='查一下 https://example.test/fixture 这个链接';
+ const giving=f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:typed});
+ // (The empty turn before it: Doubao reads history added mid-call from the turn after next.)
+ for(let i=0;i<100&&!f.upstream.sent.some(e=>e.type==='input_audio_buffer.commit');i++)await delay(2);
+ f.event({type:'input_audio_buffer.committed'});f.event({type:'response.done'});
+ const result=await giving;
+ assert.deepEqual(result,{ok:true,forwardedToVoice:true,queued:false});
+ assert.equal(said.length,1);assert.equal(said[0].text,typed);assert.notEqual(said[0].speaker,SEEDUPLEX_VOICES.xiaohe,'never in V\'s own voice');
+ const sent=f.upstream.sent,commit=sent.findLastIndex(e=>e.type==='input_audio_buffer.commit');
+ assert.equal(sent.filter(e=>e.type==='input_audio_buffer.commit').length,2);
+ assert(sent.slice(0,sent.findIndex(e=>e.type==='input_audio_buffer.commit')).some(e=>e.type==='conversation.item.create'&&e.items?.[0]?.content?.[0]?.text?.endsWith(typed)),'its exact words come before the empty turn');
+ assert(sent.slice(0,commit).some(e=>e.type==='input_audio_buffer.append'));
+ assert(!sent.some(e=>e.type==='response.create'));
+ f.event({type:'conversation.item.input_audio_transcription.started'});
+ f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'查一下 HTTPS example 点 test'});
+ assert.deepEqual(f.client.sent.filter(e=>e.type==='transcript'&&e.role==='user').map(e=>e.text),[typed]);
+ assert(f.audit.some(e=>e.type==='typed.speech'&&e.sent===true&&e.whole===true&&e.chars===typed.length));
+});
+
+test('a typed message that cannot be said is reported to the caller, not silently dropped',async t=>{
+ const f=await fixture(undefined,'seeduplex',{typedSpeech:async()=>{throw Error('fixture refusal');}});t.after(()=>f.service.dispose());
+ const giving=f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:'你好'});
+ for(let i=0;i<100&&!f.upstream.sent.some(e=>e.type==='input_audio_buffer.commit');i++)await delay(2);
+ f.event({type:'input_audio_buffer.committed'});f.event({type:'response.done'});
+ const result=await giving;
+ assert.equal(result.ok,false);assert.match(result.error,/没有送到 V/u);
+ assert(!f.upstream.sent.some(e=>e.type==='input_audio_buffer.append'));assert(f.audit.some(e=>e.type==='typed.speech-failed'));
+ const off=await fixture(undefined,'seeduplex',{typedSpeech:null});t.after(()=>off.service.dispose());
+ assert.equal((await off.service.steer(off.reservation.voiceSessionId,{mode:'steer',text:'你好'})).ok,false);
+ assert(!off.client.sent.some(e=>e.type==='transcript'&&e.role==='user'),'nothing is shown as sent when it was not');
+});
+
+test('a question typed right after adding a picture reaches V after what is in the picture does',async t=>{
+ const {createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
+ const assets=createAssetShelf({see:async()=>{await delay(60);return {name:'形状图',see:'左边蓝色方块，右边红色圆',parts:[]};}});
+ const f=await fixture(undefined,'grok',{assets});t.after(()=>f.service.dispose());
+ assets.add(f.reservation.voiceSessionId,{url:'https://cdn.example/fixture-upload.png',name:'我上传的参考图',source:'upload'});
+ const typed='我发的图里有什么？';
+ await f.service.steer(f.reservation.voiceSessionId,{mode:'steer',text:typed});
+ const sent=f.upstream.sent.map(e=>JSON.stringify(e));
+ const seen=sent.findIndex(e=>e.includes('左边蓝色方块')),asked=sent.findIndex(e=>e.includes(typed));
+ assert(seen>=0,'what the picture shows reached V');assert(asked>seen,'and before the question about it');
+ assert.deepEqual(f.client.sent.filter(e=>e.type==='transcript'&&e.role==='user').map(e=>e.text),[typed]);
 });

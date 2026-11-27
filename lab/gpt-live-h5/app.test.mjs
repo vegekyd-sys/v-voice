@@ -152,9 +152,10 @@ async function fixture(t, options = {}) {
     EventSource,
     MediaStream: class { constructor(tracks) { Object.assign(this, stream(tracks)); } },
     Blob,
+    ...(options.URL ? {URL: options.URL} : {}),
     fetch: async (url, init) => {
-      const route = url.split("?")[0].split("/").at(-1);
-      const payload = init?.body ? JSON.parse(init.body) : undefined;
+      const route = String(url).split("?")[0].split("/").at(-1);
+      const payload = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
       requests.push({ route, payload, url });
       const defaultResult = route === "status" ? { ready: true }
         : route === "session" ? { voiceSessionId: `voice-${++sessionId}` }
@@ -1352,4 +1353,22 @@ test('Doubao dials in the voice chosen in Settings and remembers it; a service t
  assert.equal((await page([['v.gptLive11.voice','maple']])).f.view.get().doubao.voice,'xiaohe');
  const old=await page([['v.doubao.voice','taozi']],{id:'seeduplex',label:'豆包 SeedDuplex',available:true});
  assert.deepEqual(held(old.f.view.get().doubao),{voices:[],voice:null});assert.equal('voice' in await old.dialed(),false);
+});
+
+test('a message typed while a picture is still uploading is sent once the picture is there', async t => {
+  const uploaded = deferred();let ui;
+  // (The page resolves the upload's address against its own; this one is invented.)
+  const f = await fixture(t, {URL: class extends URL { constructor(path, base) { super(path, base ?? 'https://voice.test/voice/'); } }, contentView: {reset() {}, render() {}}, mountCallUi: (_document, _view, value) => { ui = value; },
+    api: (route, payload, result) => route === 'reference-image' ? uploaded.promise : result});
+  await f.context.startCall();
+  const picture = {size: 1024, type: 'image/png'};
+  const uploading = ui.actions.uploadReference(picture);
+  const sending = f.context.sendSteer('我刚发的图里有什么？');
+  await tick();
+  assert.equal(f.requests.some(row => row.route === 'steer'), false, 'the question waits for its picture');
+  uploaded.resolve({id: 'a1'});
+  await uploading;assert.equal(await sending, true);
+  const routes = f.requests.map(row => row.route);
+  assert(routes.indexOf('steer') > routes.indexOf('reference-image'));
+  assert.equal(f.requests.find(row => row.route === 'steer').payload.text, '我刚发的图里有什么？');
 });

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-28 — Typed messages and pictures reach both models (`voice-typed-input.20261128.1`)
+
+- Doubao (Seeduplex) answers speech only: a text item is history and is never answered, and `response.create` is an unknown event that ends its session (probed on its endpoint). A typed message is now said in a voice that is not V's (Seed TTS 2.0, same key) and committed as the caller's own turn (`input_audio_buffer.commit`), with the exact words beside it as a documented history pair; Doubao answers in its own words with all of the call's tools. Doubao reads history added mid-call only from the turn after next (probed: a fact added and then asked about was unknown, asked again it was known), so an empty turn is committed first (answered with nothing, ~1.2 s); the message's turn then reads its exact words and a picture's description.
+- New trait `typedInput` (`text` for GPT Live 1.1 and Grok, `speech` for Doubao); `typedTurns` keeps meaning a service nudge, which Doubao still does not take.
+- Shared for every model: a typed message is recorded and shown as the caller's line at once; a picture still being looked at is waited for (at most 5 s) and its description reaches V before the question; a message that cannot be delivered is reported instead of shown as sent. Typed turns are never weighed as side talk by the floor judge.
+- The asset eye is told an uploaded picture is the caller's own, not something V's backend made; the shared screen policy tells V the caller's own pictures are listed and described there (Doubao used to answer "I cannot see pictures").
+- The page sends a message typed while a picture is still uploading only once the picture is on the board.
+- GPT Live 1.1 does not delegate for typed words (a typed weather question twice got "好,我去看看" and nothing; spoken, it was delegated). A typed message is now a finished caller turn in the bridge (remembered and routed ahead like a spoken one), and the tool the router chose for it is started when the model has not delegated within 2.5 s, as was already done for lessons (`typed-unprompted`); chat is left to the model.
+
 ## 2026-11-28 — 电视头像拨号跟随网页的语音模式（voice-tv-dial-policy.20261128.1）
 
 - 桌面快速拨号与普通网页共用拨号参数，保留预热、当前豆包输入模式及所选声音。

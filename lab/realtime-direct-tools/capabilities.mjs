@@ -14,16 +14,20 @@
  *                 'speech'     — the model explains in its own words and the board follows what it says.
  * hostToolSpeech: the service speaks around a tool call for the model (cached start/progress lines in its
  *                 voice, or the model told to say one short line first).
- * typedTurns:     a typed message can make the model act (Doubao takes none: the caller is asked instead).
+ * typedTurns:     a text message from the service (a nudge, not the caller) can make the model act
+ *                 (Doubao takes none: the caller is asked instead).
+ * typedInput:     how a message the caller types reaches the model. 'text' — as a text turn;
+ *                 'speech' — a model that answers speech only hears it said, in a voice not V's
+ *                 (typed-speech.mjs), as the caller's own turn, with the exact words as text beside it.
  * compactResults: the service compacts a search before handing it over (a delegation bridge words results itself).
  * nativeDuplex:   full-duplex audio with the provider's own end-of-turn, where no speaker routing is in front.
  */
 export const MODEL_TRAITS=Object.freeze({
-  seeduplex:Object.freeze({tools:'function',explains:'lesson',hostToolSpeech:true,typedTurns:false,compactResults:true,nativeDuplex:true}),
-  grok:Object.freeze({tools:'function',explains:'lesson',hostToolSpeech:false,typedTurns:true,compactResults:false,nativeDuplex:false}),
-  'gpt-live-11':Object.freeze({tools:'delegation',explains:'speech',hostToolSpeech:false,typedTurns:true,compactResults:false,nativeDuplex:false}),
+  seeduplex:Object.freeze({tools:'function',explains:'lesson',hostToolSpeech:true,typedTurns:false,typedInput:'speech',compactResults:true,nativeDuplex:true}),
+  grok:Object.freeze({tools:'function',explains:'lesson',hostToolSpeech:false,typedTurns:true,typedInput:'text',compactResults:false,nativeDuplex:false}),
+  'gpt-live-11':Object.freeze({tools:'delegation',explains:'speech',hostToolSpeech:false,typedTurns:true,typedInput:'text',compactResults:false,nativeDuplex:false}),
 });
-const PLAIN=Object.freeze({tools:'function',explains:'lesson',hostToolSpeech:false,typedTurns:true,compactResults:false,nativeDuplex:false});
+const PLAIN=Object.freeze({tools:'function',explains:'lesson',hostToolSpeech:false,typedTurns:true,typedInput:'text',compactResults:false,nativeDuplex:false});
 /** A model's traits; one this file does not know takes no part in anything model-specific. */
 export const modelTraits=model=>MODEL_TRAITS[model]??PLAIN;
 

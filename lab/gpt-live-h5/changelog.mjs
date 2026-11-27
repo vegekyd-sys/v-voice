@@ -229,6 +229,16 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-typed-input.20261128.1',date:'2026-11-28',
+    title:'通话里打字、发图，豆包也会回你',
+    items:[
+      '用豆包通话时，在输入框打字发给 V，V 会像听到你说话一样回答，也能照常查东西、上画面；以前打的字豆包收不到回应。',
+      '先加图片再打字问它，V 会先看清图里有什么再回答，豆包和 GPT Live 1.1 都一样。',
+      '用 GPT Live 1.1 打字让 V 查东西，不会再只说一句“马上回来”就没有下文。',
+      '你打的字会作为你说的话显示在对话里；没送到时会提示，不会悄悄丢掉。',
+    ],
+  },
+  {
     version:'voice-board-photos.20261128.1',date:'2026-11-28',
     title:'讲解已有照片时不再另画 AI 图；照片不再无故少一张',
     items:[

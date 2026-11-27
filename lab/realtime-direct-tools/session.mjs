@@ -21,7 +21,8 @@ import {createDeviceLocation,LOCATION_TOOL,locationOperation} from './device-loc
 import {createNativeRuntime,DEFAULT_NATIVE_RUNTIME_POLICY} from './native-runtime.mjs';
 import { taskActivity } from '../gpt-live-h5/avatar-state.mjs';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
-import {SEEDUPLEX_VOICE,SEEDUPLEX_VOICE_CHOICES,seeduplexVoice,SeeduplexRealtimeVoiceBridge,preconnectSeeduplex} from '../seeduplex-realtime-provider.mjs';
+import {SEEDUPLEX_VOICE,SEEDUPLEX_VOICES,SEEDUPLEX_VOICE_CHOICES,seeduplexVoice,SeeduplexRealtimeVoiceBridge,preconnectSeeduplex} from '../seeduplex-realtime-provider.mjs';
+import {createTypedSpeech,callerSpeaker,spokenPart} from './typed-speech.mjs';
 import {V_FRONTEND_PERSONA} from '../gpt-live-h5/persona.mjs';
 import {V_ONE_VOICE_POLICY} from '../gpt-live-h5/one-voice-policy.mjs';
 import {TOOLS,SPEAKER_VOLUME_TOOL,LOOK_TOOL,LOCATION_DELEGATE_TOOL,LOCATION_CONTROL_TOOL,createToolExecutor,validateTool,processExited,withExecutionLines} from './tools.mjs';
@@ -117,7 +118,9 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,endingJudge=gptLive?.judge,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,endingJudge=gptLive?.judge,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null,typedSpeech,typedLookWaitMs=5000}) {
+  // What the caller types, said aloud for a model that answers speech only (capabilities.mjs, typedInput).
+  typedSpeech=typedSpeech===undefined?createTypedSpeech({apiKey:apiKeys.seeduplex}):typedSpeech;
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -360,8 +363,9 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // model nearly always gave (11/24–25: of ten lessons cut, three by side talk and one by a backchannel).
   // (Speech read out from a script, a lesson above all: what was measured, and what runs furthest ahead.)
   const stillPlaying=s=>{const position=s.playing?s.playback.snapshot({chars:Array.from(s.playbackText.text).length}):null;return position?.scripted&&position.remainingMs>=(speechYield?.minRemainingMs??2000)?position:null;};
+  // (A typed message is never weighed as side talk: typing it is addressing V. Its speech already stopped V.)
   const yieldSpeech=(s,active,detail)=>{
-    if(!s.nativeDuplex)return;
+    if(!s.nativeDuplex||detail?.typed)return;
     if(active){
       endYield(s);
       const position=stillPlaying(s);
@@ -401,7 +405,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // someone speaks again or the speech has played out. The speech's own audio never waits.
   const IGNORED_TURN={ignored:true,instruction:'刚才那句话不是对你说的，这次没有执行。保持安静，不要回应，你正在讲的内容会继续播完。'};
   const floorSpeech=(s,active,detail)=>{
-    if(!floorJudge||!s.nativeDuplex||s.speakerRouting)return;
+    if(!floorJudge||!s.nativeDuplex||s.speakerRouting||detail?.typed)return;
     if(active){
       if(s.floor&&s.floor.state!=='dropped')return;
       const position=stillPlaying(s);
@@ -467,6 +471,28 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
   // and words, and the page draws along with what it says: a script written by another model and read out
   // is what it sounded like, read out. (Its scripts can be brought back for comparison with `scriptedLessons`.)
   const traitsOf=s=>s.model==='gpt-live-11'&&gptLive?.scriptedLessons===true?{...modelTraits(s.model),explains:'lesson'}:modelTraits(s.model);
+  // A message the caller typed, perhaps about a picture they have just added: their turn, whichever model
+  // speaks. It is recorded as their words at once; a picture still being looked at is waited for (briefly),
+  // so V knows what is in it before the question about it; then the model is given the message the way it
+  // takes one (`typedInput`): as text, or said aloud as the caller's own turn.
+  const deliverTyped=async(s,text)=>{
+    const speech=traitsOf(s).typedInput==='speech';
+    if(speech&&(!typedSpeech||typeof s.bridge.sendTypedSpeech!=='function'))return {ok:false,error:'这个模型现在收不到打字，请直接说。'};
+    s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});
+    s.callerTyped(text);
+    if(shelfFor(s)){await assets.settled?.(s.id,typedLookWaitMs);if(!current(s))throw Error('语音会话已结束');s.flushScreen?.();}
+    if(!speech){s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}
+    // (Said aloud while the bridge readies the model's turn for it.)
+    const started=Date.now(),said=spokenPart(text);let synthMs=null;
+    const audio=typedSpeech(said.text,{speaker:callerSpeaker(SEEDUPLEX_VOICES[s.voice])}).then(pcm=>{synthMs=Date.now()-started;return pcm;});
+    audio.catch(()=>{});// (Its failure is the bridge's to report, once it waits for it.)
+    let sent;
+    try{sent=await s.bridge.sendTypedSpeech(text,audio)===true;}
+    catch(error){audit({type:'typed.speech-failed',voiceSessionId:s.id,error:String(error?.message??error).slice(0,120)});return {ok:false,error:'这句话没有送到 V，请再发一次，或者直接说。'};}
+    if(!current(s))throw Error('语音会话已结束');
+    audit({type:'typed.speech',voiceSessionId:s.id,chars:text.length,whole:said.whole,synthMs,givenMs:Date.now()-started,sent});
+    return sent?{ok:true,forwardedToVoice:true,queued:false}:{ok:false,error:'这句话没有送到 V，请再发一次，或者直接说。'};
+  };
   const lessonTools=s=>lesson?.available&&lesson.source!=='parallel'&&s.display&&traitsOf(s).explains==='lesson'&&(lesson.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped)?[LESSON_TOOL]:[];
   // The call's shelf of made things (board-assets.mjs) is kept wherever the board is shown.
   const shelfFor=s=>Boolean(assets?.available&&s.display&&(assets.audience==='all'||!s.unidentified&&!s.publicVoice&&!s.actorScoped));
@@ -1104,7 +1130,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         if(source||!floorHolds(s,metadata.responseId))observe();
         if(role==='assistant'&&!source&&guardReply(s,text,final,metadata.responseId))return;
         if(role==='user'&&s.speakerRouting){s.lastUserAt=Date.now();s.userSpeaking=!final;return;}
-        if(role==='user'&&final&&text.trim())judgeFloor(s,text,metadata.turnId);
+        if(role==='user'&&final&&text.trim()&&!metadata.typed)judgeFloor(s,text,metadata.turnId);
         const deliver=()=>{
         observe();
         if(role==='assistant')s.replyDelivery?.transcript(text,{final,source,responseId:metadata.responseId});
@@ -1164,6 +1190,8 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         :new GrokVoiceBridge(owned,{createWebSocket,apiKey:apiKeys.grok,model:grokModel,voice:s.voice,speed:grokSpeed,expressiveTags:grokExpressiveTags});
     };
     s.bridge=makeBridge();
+    // A message the caller typed is their turn in the conversation, recorded as one at once, whatever model speaks.
+    s.callerTyped=text=>request.onTranscript('user',text,true,undefined,{turnId:`typed-${randomUUID()}`,typed:true});
     let deviceContextText=s.unidentified?'':terminalInstructions(s.terminalContext());
     s.refreshDeviceContext=()=>{
       if(!current(s)||s.unidentified)return;
@@ -1186,6 +1214,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         audit({type:'board.asset-context',voiceSessionId:s.id,chars:next.length});
       };
       const unwatch=assets.watch(s.id,()=>{clearTimeout(screenTimer);screenTimer=setTimeout(refreshScreen,400);});
+      s.flushScreen=()=>{clearTimeout(screenTimer);refreshScreen();};
       s.closeAssets=()=>{unwatch();clearTimeout(screenTimer);s.closeAssetMakers?.();};
     }
     const greet=()=>{if(s.greeted)return;s.greeted=true;if(s.speakerRouting&&speakerRouting.greet)void speakerRouting.greet(s.id);else s.bridge.triggerGreeting(s.sessionBound?'电话已接通。请用中文向当前会话的通话者简短打个招呼，然后听对方说话。':'电话已接通。请用中文向天懿简短打个招呼，然后听他说话。');};
@@ -1362,7 +1391,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       return {pendingTools:s.pending.size,backgroundTask:Boolean(s.backend?.snapshot()),awaitingToolAnswer:Boolean(s.lookup?.waiting()),responseActive:s.responseActive,userSpeaking:s.userSpeaking,playing:s.playing,ending:Boolean(s.ending),lastUserAt:s.lastUserAt};
     },
     async steer(id,{mode,text}){const s=sessions.get(id);if(!current(s)||!s.bridge)throw Error('语音会话已结束');
-      if(mode==='append'||mode==='steer'&&!s.backend.snapshot()){s.latestUserTurn=Object.freeze({text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(text);return {ok:true,forwardedToVoice:true,queued:false};}
+      if(mode==='append'||mode==='steer'&&!s.backend.snapshot())return deliverTyped(s,text);
       const result=mode==='cancel'?await cancel(s):await s.backend.control({mode,text});
       return {...result,...(mode==='cancel'?{ok:result.cancelled===true}:{})};},
     async dispose({drain=false}={}){
