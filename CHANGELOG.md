@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-28 — GPT Live 1.1 edits the picture on the screen (`voice-gpt-live-screen.20261128.1`)
+
+- GPT Live's router writes the tool arguments but was never told what is on the screen, so "把刚才这张改成夜晚" became an edit command with no picture, which the executor's material check refused before submitting (nothing charged).
+- The router now reads what a function-tool model reads: the screen policy (`ASSET_POLICY` and V's standing pictures, via `screenPolicy()` and `routerNotes({screen})`), and the screen's current list (`屏幕素材现状`, a1, p2…) each time it routes (`screen` in `route()`).
+
 ## 2026-11-28 — Call images back on GPT Image 2.6 Flare (`voice-call-images-flare.20261128.1`)
 
 - Images made in the call (asked for, edited, and a lesson's drawn pictures) use Makaron `gpt-image-2.6-flare` again instead of `gemini-2.1` (Nano Banana 2.1). The model is named once (`CALL_IMAGE_MODEL` in `media-cli-policy.mjs`): the voice instructions, the executor guard (which accepts only it) and the lesson picture maker read it.

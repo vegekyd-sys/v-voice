@@ -163,8 +163,8 @@ export function gptLiveInitialItems(instructions){
 const verbatim=text=>`原样念出 <say> 里的内容，不加开场白，不解释，不改写，不省略：<say>${text}</say>`;
 
 export class GptLiveBridge {
-  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',judge=null,resume=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
-    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,judge,resume,display,connectTimeoutMs,pollGapMs,now});
+  constructor(request,{createWebSocket,resolveAuth,route,loadMedia,fetchImpl=fetch,model=GPT_LIVE_MODEL,voice=GPT_LIVE_VOICE,notes='',screen=null,judge=null,resume=null,display=true,connectTimeoutMs=25000,pollGapMs=1500,now=()=>Date.now()}){
+    Object.assign(this,{request,createWebSocket,resolveAuth,route,loadMedia,fetchImpl,model,voice:gptLiveVoice(voice),notes,screen,judge,resume,display,connectTimeoutMs,pollGapMs,now});
     this.delegations=new Map();this.background=new Set();this.follows=new Map();this.abort=new AbortController();
     this.early=[];this.earlyMs=0;this.earlyLoudAt=-Infinity;this.pauseMs=Infinity;this.lateMs=0;
     this.closed=false;this.ready=false;this.muted=false;this.bargeAt=0;this.judging=0;this.loudMs=0;this.loudAt=-Infinity;this.callerLoudAt=-Infinity;this.userDoneAt=-Infinity;this.skippedReported=0;this.turnOpen=false;this.turnLoud=false;this.turnDoneAt=0;this.turnId=null;this.userText='';this.replyText='';this.script=null;this.reading=false;this.heldBack=false;this.ending=false;this.nudged=false;this.delegated_=0;
@@ -506,7 +506,7 @@ export class GptLiveBridge {
     // Already routed for the delegation that came first.
     if(Array.from(text).length<4||this.closed||this.routedText&&same(this.routedText,text))return;
     const working=this.working,guess={text,working,at:this.now()};
-    guess.choice=this.route({text,userText:text,tools:this.offered(working),notes:this.notes,history:this.history.slice(),running:working,signal:this.abort.signal,speculative:true});
+    guess.choice=this.route({text,userText:text,tools:this.offered(working),notes:this.notes,screen:this.screen?.()??'',history:this.history.slice(),running:working,signal:this.abort.signal,speculative:true});
     guess.choice.catch(()=>{});this.guess=guess;
     // The model sometimes answers "好，我讲讲" and never delegates. When the caller's own words ask for an
     // explanation, the lesson is prepared anyway; a delegation that still comes for them is already served.
@@ -542,7 +542,7 @@ export class GptLiveBridge {
     // the caller's last finished turn (and takes a later one for a change of mind), so the call waits for it.
     const turn=this.userTurn?.settled;
     this.routedText=text;
-    try{choice??=await this.route({text,userText:gptLiveText(this.userText),tools,notes:this.notes,history:this.history.slice(),running:working,signal:this.abort.signal});}catch{}
+    try{choice??=await this.route({text,userText:gptLiveText(this.userText),tools,notes:this.notes,screen:this.screen?.()??'',history:this.history.slice(),running:working,signal:this.abort.signal});}catch{}
     if(turn)await Promise.race([turn,new Promise(resolve=>{const timer=setTimeout(resolve,TURN_WAIT_MS);timer.unref?.();})]);
     if(this.closed)return;
     if(!choice){
