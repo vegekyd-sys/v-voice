@@ -263,6 +263,21 @@ test('a lesson draws a picture only for a page with no photographs, and only whe
   // The illustrator put a photograph up on its own: the page has something to show, nothing is drawn.
   const photo = await attempt({show: 'list：阳光', page: '{"op":"put","block":{"id":"l1","t":"list","items":[{"id":"i1","h":"太阳","img":"太阳","cue":0}]}}'});
   assert.equal(photo.made.length, 0);
+  // A print put up on the caller's question, before there was a script, is not the lesson's photograph: a story
+  // told in drawn scenes still gets its picture.
+  {
+    const made = [];
+    const board = createBoardDirector({complete: async function* ({messages}) {
+      const request = JSON.parse(messages.at(-1).content);
+      yield request.notes ? `${words}\n${draw}\n` : '{"op":"scene","title":"小恐龙"}\n{"op":"put","block":{"id":"p1","t":"photo","query":"小恐龙"}}\n';
+    }, stream: {instructions: CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true}});
+    const shelf = shelfOn(board);
+    shelf.attach('call', async ({prompt}) => { made.push(prompt); return image(POSTER); });
+    await board.run({owner: 'call', trigger: 'user', turns: [{role: 'user', text: '讲个小恐龙的睡前故事'}]});
+    board.note('call', {title: '小恐龙', ask: '讲个小恐龙的睡前故事', script, lines: lines('list：阳光')});
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(made.length, 1, 'the opening print does not count');
+  }
   // A page already holding four blocks: the picture would never be shown, so it is not made.
   const full = await attempt({show: 'list：阳光', page: ['s1', 's2', 's3', 's4'].map((id, n) => `{"op":"put","block":{"id":"${id}","t":"sticky","text":"第${n + 1}条","cue":0}}`).join('\n')});
   assert.deepEqual([full.made.length, full.types.length], [0, 4]);

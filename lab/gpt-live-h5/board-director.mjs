@@ -90,12 +90,16 @@ const drawsInNotes = notes => (notes?.lines ?? []).some(line => /现画/u.test(S
  * (the words of the hint vocabulary the writer is given, SCRIPT_INSTRUCTIONS). */
 const photosInNotes = notes => (notes?.lines ?? []).some(line => /^\s*(?:photo|照片)\s*[：:]|配图|带图|图集|gallery/iu.test(String(line?.show ?? '')));
 /**
- * Whether a picture may be drawn for this lesson's page now. Only for a page that has nothing to show:
- * a drawn picture next to photographs is one more than the page needs, and paid for (11/21–27: nine
- * of the ten drawn for the owner's lessons went up beside one to six photographs). Not for a page
- * already full either: the picture was made and never shown (11/24, 11/25). Once per answer.
+ * Whether a picture may be drawn for this lesson's page now. Only for a lesson that has nothing to show:
+ * a drawn picture next to the lesson's photographs is one more than the page needs, and paid for
+ * (11/21–27: nine of the ten drawn for the owner's lessons went up beside one to six photographs).
+ * The lesson's photographs are those its script asks for and those put up since it arrived; a print
+ * put up on the caller's question before there was a script is not one (a bedtime story drawn line by
+ * line was otherwise left with that print alone, 11/28). Not for a page already full either: the
+ * picture was made and never shown (11/24, 11/25). Once per answer.
  */
-const mayDraw = (row, scripted, shelf, id) => scripted && drawsInNotes(row.notes) && !photosInNotes(row.notes) && scenePictures(row.scene).size === 0
+const lessonPhotos = row => [...scenePictures(row.scene)].filter(query => !row.opening?.has(query)).length;
+const mayDraw = (row, scripted, shelf, id) => scripted && drawsInNotes(row.notes) && !photosInNotes(row.notes) && lessonPhotos(row) === 0
   && row.scene.blocks.length < 4 && Boolean(shelf?.canMake?.(id)) && row.madeFor !== (row.turnNo ?? 0);
 /** A lesson's script that asks for a page of pictures (a line's hint reads「图集：…」). */
 const galleryInNotes = notes => (notes?.lines ?? []).some(line => /图集|gallery/iu.test(String(line?.show ?? '')));
@@ -396,7 +400,11 @@ export function createBoardDirector({complete, now = Date.now, audit = () => {},
     streams: Boolean(stream),
     /** The author's notes for a script V is about to speak: {title, script, lines: [{say, show}]}. */
     note(id, notes) {
-      const row = owner(id); row.notes = notes; row.expectUntil = 0; row.lessonTurn = row.turnNo ?? 0;
+      const row = owner(id);
+      // (The pictures up before this lesson's script: the page opened on the caller's question. They are not the
+      // lesson's own pictures, so they do not stand in the way of the one it may draw: see mayDraw.)
+      if (!row.notes || row.lessonTurn !== (row.turnNo ?? 0)) row.opening = new Set(scenePictures(row.scene));
+      row.notes = notes; row.expectUntil = 0; row.lessonTurn = row.turnNo ?? 0;
       // The script is known before V has said a word of it: its page is started now,
       // not when the caller's screen comes back to ask (about a second and a half later).
       // Its first lines (`partial`) start the page while the rest is written; the whole
