@@ -193,51 +193,26 @@ test('the illustrator may hang a thing the shelf holds, and nothing else', async
   assert.deepEqual(works(third), [['a1', 'sticky']]);
 });
 
-test('a lesson\'s script may ask for one picture to be drawn, where the call can make one; nothing else may', async () => {
-  const made = [];
+test('a lesson never has a picture drawn: a script that says 现画 and an illustrator that asks for one both get nothing made', async () => {
+  // (11/28: drawn pictures turned up in lessons the caller had not asked for, and were paid for.)
   const reply = '{"op":"scene","title":"光合作用"}\n{"op":"put","block":{"id":"l1","t":"list","items":[{"id":"i1","h":"阳光","cue":0}]}}\n{"op":"put","block":{"id":"w1","t":"work","make":"一片叶子里的小工厂，水彩","caption":"叶子工厂","cue":2}}';
   const script = '叶子要吃阳光。它还要喝水。你可以把叶子想成一座小工厂，阳光是电，水和空气是原料，做出来的是糖。';
   const said = [{role: 'user', text: '给十二讲讲光合作用'}, {role: 'assistant', text: script}];
   const notes = {title: '光合作用', ask: '给十二讲讲光合作用', script, lines: [{say: '叶子要吃阳光。', show: 'list：阳光'}, {say: '你可以把叶子想成一座小工厂', show: '现画：一片叶子里的小工厂，水彩'}]};
-  const types = (board, owner) => board.scene(owner).blocks.map(block => block.t);
-  // V's own answer (no script): the illustrator's wish for a picture is not a request to make one.
-  const plain = director([reply]), free = shelfOn(plain);
-  free.attach('call', async () => { made.push('unasked'); return image(POSTER); });
-  await plain.run({owner: 'call', trigger: 'assistant_end', turns: said});
-  assert.deepEqual(types(plain, 'call'), ['list']);
-  // A script, but a call with no executor of its own: the picture is left out, the rest is drawn.
-  const bound = director([reply]);
-  shelfOn(bound);
-  bound.note('call', notes);
-  await new Promise(resolve => setTimeout(resolve, 10));
-  assert.deepEqual(types(bound, 'call'), ['list']);
-  // A script that does not itself ask for a drawn picture: the illustrator's wish is not enough (a picture is paid for).
-  const sober = director([reply]), still = shelfOn(sober);
-  still.attach('call', async () => { made.push('unscripted'); return image(POSTER); });
-  sober.note('call', {...notes, lines: [{say: '叶子要吃阳光。', show: 'list：阳光'}, {say: '你可以把叶子想成一座小工厂', show: '图集：加一张 叶子'}]});
-  await new Promise(resolve => setTimeout(resolve, 20));
-  assert.deepEqual(types(sober, 'call'), ['list']);
-  assert.deepEqual(made, []);
-  // A script on a call that can make one: the sketch is on the page at once, the picture follows.
+  const types = board => board.scene('call').blocks.map(block => block.t);
   const board = director([reply, reply]), shelf = shelfOn(board);
-  shelf.attach('call', async ({prompt, aspect}) => { made.push([prompt, aspect]); return image(POSTER); });
   board.note('call', notes);
   await new Promise(resolve => setTimeout(resolve, 20));
-  const work = board.scene('call').blocks.find(block => block.t === 'work');
-  assert.equal(work.asset, 'a1');
-  assert.equal(work.make, undefined);
-  assert.ok(work.q, 'it appears when the voice reaches its clause');
-  assert.deepEqual(made, [['一片叶子里的小工厂，水彩', '4:3']]);
-  assert.equal(shelf.get('call', 'a1').state, 'ready');
-  assert.equal(shelf.get('call', 'a1').name, '叶子工厂');
-  // The page asking again for the same script keeps the picture; no second one is made.
+  assert.deepEqual(types(board), ['list'], 'the rest of the page is drawn; no frame for a picture');
   await board.run({owner: 'call', trigger: 'assistant_end', turns: said});
-  assert.equal(made.length, 1);
+  assert.deepEqual(types(board), ['list']);
+  assert.equal(shelf.page('call').assets.some(card => card.state === 'making'), false, 'nothing is being made');
+  assert.equal(typeof shelf.make, 'undefined', 'the shelf has no way for a lesson to have a picture made');
 });
 
-test('a work block is an id on the shelf or words to draw from, and nothing else', () => {
+test('a work block is an id on the shelf, and nothing else', () => {
   assert.deepEqual(normalizeOp({op: 'put', block: {id: 'w1', t: 'work', asset: 'a12', url: 'https://x/y.png'}}), {op: 'put', block: {id: 'w1', t: 'work', asset: 'a12'}});
-  assert.deepEqual(normalizeOp({op: 'put', block: {id: 'w1', t: 'work', make: ' 一只猫 ', caption: '猫'}}), {op: 'put', block: {id: 'w1', t: 'work', make: '一只猫', caption: '猫'}});
+  assert.equal(normalizeOp({op: 'put', block: {id: 'w1', t: 'work', make: ' 一只猫 ', caption: '猫'}}), null, 'words to draw from are not a work');
   assert.equal(normalizeOp({op: 'put', block: {id: 'w1', t: 'work', asset: 'https://x/y.png'}}), null);
   assert.equal(normalizeOp({op: 'put', block: {id: 'w1', t: 'work'}}), null);
   const scene = normalizeScene({rev: 3, serial: 1, title: '海报', blocks: [{id: 'w1', t: 'work', asset: 'a1'}]});

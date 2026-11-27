@@ -173,7 +173,7 @@ export function Work({block, view}) {
       <figcaption>
         {/* (The page already carries the name as its title when the page is this thing's own.) */}
         {name && name !== view.title && <span className="board-work-name">{name}</span>}
-        {shown.state === 'ready' && <small>{shown.source === 'upload' ? '你上传的图片' : shown.source === 'backend' ? '后台生成' : shown.source === 'lesson' ? '讲解时现画' : 'V 生成'}{shown.kind === 'video' ? ' · 视频' : ''}</small>}
+        {shown.state === 'ready' && <small>{shown.source === 'upload' ? '你上传的图片' : shown.source === 'backend' ? '后台生成' : 'V 生成'}{shown.kind === 'video' ? ' · 视频' : ''}</small>}
         {/* What it was (or is being) made from, by name: a wrong picture is seen at once. */}
         {references.length > 0 && <small className="board-work-refs">照着：{references.join('、')}</small>}
       </figcaption>
