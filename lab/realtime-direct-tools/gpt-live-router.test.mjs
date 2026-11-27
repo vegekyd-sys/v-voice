@@ -100,3 +100,13 @@ test('what was just said is judged by a model: probabilities with a Decisions ke
   assert.equal(createReplyJudge({}),null);assert.equal(replyJudgeFromEnv({}),null);
   assert.equal(typeof replyJudgeFromEnv({VOICE_GPT_LIVE_DECISIONS_API_KEY:'k'}),'function');assert.equal(typeof replyJudgeFromEnv({},{complete:async()=>null}),'function');
 });
+
+test('an unavailable Decisions endpoint still distinguishes a farewell from a new question', async () => {
+  const {endingJudgeFromEnv} = await import('./gpt-live-router.mjs');
+  const judge = endingJudgeFromEnv({VOICE_GPT_LIVE_DECISIONS_API_KEY:'test'}, {
+    fetchImpl:async () => ({ok:false, status:401}),
+    complete:async ({user}) => ({name:'verdict', args:{stays:!user.includes('还有问题')}}),
+  });
+  assert.equal((await judge({userText:'好的，拜拜。拜拜。'})).stays, 1);
+  assert.equal((await judge({userText:'等一下，我还有问题。'})).stays, 0);
+});
