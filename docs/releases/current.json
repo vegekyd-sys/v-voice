@@ -1,13 +1,13 @@
 {
   "schema": "v-voice-current-release-v1",
-  "release": "voice-tv-lessons-20261128",
-  "version": "voice-tv-lessons.20261128.1",
-  "entryCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
-  "deviceEntryCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
-  "filesSha256": "d25e4858c3e67579addfb1d05904a94bb0a56ea910868069f0adcd02fdeef04f",
-  "registration": "voice-tv-lessons-20261128/release.json",
-  "previousEntryCommit": "166f4fd4814506b5d415c77849a50b8c1ce8d788",
+  "release": "voice-tv-dial-policy-20261128",
+  "version": "voice-tv-dial-policy.20261128.1",
+  "entryCommit": "0652c97bb35d2e9f2f5726a0e11a127d21c2a976",
+  "deviceEntryCommit": "0652c97bb35d2e9f2f5726a0e11a127d21c2a976",
+  "filesSha256": "f50fa3acb1848e6965b7112351d55b9040112e5c66f231909dff25713871dccb",
+  "registration": "voice-tv-dial-policy-20261128/release.json",
+  "previousEntryCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
   "gatewayRestartRequired": false,
-  "validatedAt": "2026-11-28T01:56:52+08:00",
-  "runtimeDifference": "电视与网页共用讲解画布和分页。支持电视语音双向压缩传输、流式收字、道别挂断和接通后遥控一键全屏。"
+  "validatedAt": "2026-11-28T02:40:15+08:00",
+  "runtimeDifference": "电视桌面预热拨号与网页共用语音设置，豆包默认使用原生双工。"
 }

@@ -1,0 +1,30 @@
+{
+  "version": "voice-tv-dial-policy.20261128.1",
+  "verifiedAt": "2026-11-28T02:40:15+08:00",
+  "sourceCommit": "0652c97bb35d2e9f2f5726a0e11a127d21c2a976",
+  "mergePRs": [
+    289
+  ],
+  "previousRunningCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
+  "filesSha256": "f50fa3acb1848e6965b7112351d55b9040112e5c66f231909dff25713871dccb",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/46049915064",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "64164c1fa6a2e6663b818177f756f9c1323eb4999d7f3f40ef933ef8d8ad7726",
+  "changes": [
+    "电视桌面预热拨号与网页共用语音设置，豆包默认使用原生双工。"
+  ],
+  "acceptance": [
+    "小米电视正式入口从家庭桌面头像拨号，接管预热连接。正式服务记录豆包原生双工及 assisted 播放策略。",
+    "另一次真机通话用模拟阵列音频加载正式网页，同一通话连续讲解月相、火山和彩虹。核对三次画布生成和换题后的实际标题、正文、页码及焦点。客厅真人听感未复验。"
+  ]
+}
