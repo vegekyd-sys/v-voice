@@ -98,6 +98,18 @@ let preferredPhoneInputPolicy = null;
 let webDialVersion = null, dialGreeting = false, standbyEnabled = false;
 let standbySocket, standbyRetry, desktopRequest, desktopDeviceActions, expiredDesktopId;
 const standbyStats={opens:0,closes:0,lastCode:0,prime:false};
+function callParameters(model, nativeDeviceActions) {
+  const state = view.get();
+  const params = {model, nativeDeviceActions};
+  if (improvAvailable && model !== 'gpt-live') params.improvLive = true;
+  if (model === 'seeduplex' && speakerCandidate()) {
+    const policy = new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy;
+    if (policy === 'native' || policy === 'speaker') params.inputPolicy = policy;
+  }
+  const settings = model === 'seeduplex' ? state.doubao : model === 'grok' ? state.grok : model === 'gpt-live-11' ? state.live11 : null;
+  if (settings?.voice) params.voice = settings.voice;
+  return params;
+}
 function dialEndpoint(params,resumed,greeting){
       const endpoint=new URL('./api/dial',document.baseURI);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
       endpoint.search=new URLSearchParams({...(phoneEntry?{phone:phoneEntry}:{}),model:params.model,dialVersion:'2',...(greeting?{greeting:'1'}:{}),...(params.improvLive?{improvLive:'1'}:{}),...(resumed?{resumed:JSON.stringify(resumed)}:{}),...(params.nativeDeviceActions?{nativeDeviceActions:JSON.stringify(params.nativeDeviceActions)}:{}),...(params.inputPolicy?{inputPolicy:params.inputPolicy}:{}),...(params.voice?{voice:params.voice}:{})});
@@ -116,7 +128,7 @@ function primeTvDial(id){
       !desktopDeviceActions||state.model!=='seeduplex'||webDialVersion!==2)return false;
   // The permission-checked Home click owns this dial. Only the socket starts
   // here. Recording and playback still belong to the foreground service.
-  const params={model:state.model,voice:state.doubao.voice,nativeDeviceActions:desktopDeviceActions};
+  const params = callParameters(state.model, desktopDeviceActions);
   standbyStats.prime=true;
   const connection=createDialConnection({url:dialEndpoint(params,null,dialGreeting),standby:takeTvTransport()});
   desktopRequest={id,connection,timeout:setTimeout(()=>{expiredDesktopId=id;discardDesktopRequest();},8000)};
@@ -855,10 +867,8 @@ async function startCall(options = {}) {
     if(call!==active)return;
     const withCapture=async pending=>captureReady?(await Promise.all([pending,captureReady]))[0]:pending;
     const selectedModel = ['seeduplex','grok','gpt-live-11'].includes(chosenModel)?chosenModel:'gpt-live';
-    const inputPolicy = speakerCandidate() ? (new URLSearchParams(location.search).get('inputPolicy') ?? preferredPhoneInputPolicy) : null;
     const nativeDeviceActions=active.dialConnection?desktopDeviceActions:await browserDeviceActions();
-    const improvLive = improvAvailable && selectedModel !== 'gpt-live';
-    const params={model:selectedModel,...(improvLive?{improvLive:true}:{}),nativeDeviceActions,...selectedModel==='seeduplex'&&speakerCandidate()&&['native','speaker'].includes(inputPolicy)?{inputPolicy}:{},...(selectedModel==='grok'?{voice:view.get().grok.voice || undefined}:selectedModel==='gpt-live-11'&&view.get().live11.voice?{voice:view.get().live11.voice}:selectedModel==='seeduplex'&&view.get().doubao.voice?{voice:view.get().doubao.voice}:{})};
+    const params = callParameters(selectedModel, nativeDeviceActions);
     let reservation;
     if(webDialVersion===2&&(phoneEntry||tvHost&&location.protocol==='https:')&&['seeduplex','grok','gpt-live-11'].includes(selectedModel)){
       if(!active.dialConnection){
@@ -871,7 +881,7 @@ async function startCall(options = {}) {
     active.voiceSessionId = reservation.voiceSessionId; markVoiceTiming("voice.reservation.ready");
     if (call !== active) { await api("close", { voiceSessionId: active.voiceSessionId }); return; }
     if(captureError)throw captureError;
-    if (improvLive) active.improv = createImprovPlayer({context:active.context,
+    if (params.improvLive) active.improv = createImprovPlayer({context:active.context,
       update: improv => { if (call === active) view.set({improv}); },
       archive: clip => {
         if(call!==active){if(clip.recording)URL.revokeObjectURL(clip.recording);return;}

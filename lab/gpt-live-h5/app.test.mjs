@@ -177,6 +177,29 @@ async function fixture(t, options = {}) {
   return { get view() { return view; }, context, element, body, requests, peers, contexts, sounds, pageEvents, beacons, eventSources, intervals, timeouts, meter, setNow: value => {now = value;} };
 }
 
+test('a ready TV Home socket sends the current Doubao call settings on its first dial', async t => {
+  const f = await fixture(t, {
+    api: (route, body, fallback) => route === 'status'
+      ? {ready:true, webDialVersion:2, phoneInputPolicy:'native', defaultModel:'seeduplex', models:[{id:'seeduplex',available:true}]}
+      : fallback,
+  });
+  f.context.URL = URL;
+  f.context.document.baseURI = 'https://voice.test/voice/';
+  f.context.location = {protocol:'https:', search:''};
+  f.body.dataset.speakerRouting = 'true';
+  f.view.set({model:'seeduplex', doubao:{voice:'taozi'}});
+  let endpoint;
+  f.context.createDialConnection = ({url}) => { endpoint=url; return {dispose(){}}; };
+  for (const [search, policy] of [['','native'], ['?inputPolicy=speaker','speaker']]) {
+    f.context.location.search = search;
+    vm.runInContext('standbySocket={readyState:1}; desktopDeviceActions={version:1};', f.context);
+    assert.ok(f.context.primeTvDial('home-tap'));
+    assert.equal(endpoint.searchParams.get('inputPolicy'),policy);
+    assert.equal(endpoint.searchParams.get('voice'),'taozi');
+    f.context.discardDesktopRequest();
+  }
+});
+
 test("dial stays unavailable until the real entry check finishes; no session starts while waiting", async t => {
   const status = deferred();
   const f = await fixture(t, { api: (route, payload, fallback) => route === "status" ? status.promise : fallback });
