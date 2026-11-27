@@ -1,3 +1,4 @@
+import {createOpusDownlink} from './opus-downlink.mjs';
 import {IMPROV_TOOL,improvArguments} from './improv-live.mjs';
 import {ROBOT_PRESENTATION_INSTRUCTIONS} from '../robot/robot-semantics.mjs';
 import {mediaCliInstructions,MEDIA_CLI_START_NOTICE,mediaStatusQuestion} from './media-cli-policy.mjs';
@@ -332,7 +333,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       // Retire local tools/audio only; the admitted Agent retains its controller.
       const result=await cancel(s,{includeBackend:false});
       for(const id of s.pending.keys())if(id!==s.backgroundCallId)s.pending.delete(id);
-      clearInterval(s.progressTimer);s.interruptDetector?.close();if(!s.unidentified)speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
+      s.outputEncoder?.close();clearInterval(s.progressTimer);s.interruptDetector?.close();if(!s.unidentified)speakerRouting?.close(id);for(const lane of s.stagedBridges??[])lane.discard();s.bridge?.close();for(const old of s.retiredBridges??[])old.close();s.retiredBridges?.clear();s.client?.close();
       s.cleanupFailed=result.processCleanupFailures>0;
       if(s.cleanupFailed){audit({type:'call.cleanup-unconfirmed',voiceSessionId:id,result});throw Error('电话已结束，后台任务退出尚未确认');}
       sessions.delete(id);audit({type:'call.closed',voiceSessionId:id,why:s.closeWhy});
@@ -715,7 +716,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
     // (The waiting lines were recorded in the default voice: a call in another voice waits quietly instead of hearing a second voice.)
     const noticeClips=traitsOf(s).hostToolSpeech?loadToolStartClips():null,progressClips=traitsOf(s).hostToolSpeech&&s.voice===SEEDUPLEX_VOICE?toolProgressClips??loadToolProgressClips():[];
     s.audioDelivery=createAudioDeliveryMetrics({report:event=>audit({...event,voiceSessionId:s.id})});
-    const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,audio:audio.toString('base64'),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);s.audioDelivery.packet(audio.length,metadata.responseId);s.playback.sent(metadata.responseId,audio.length,{scripted:metadata.source==='injected-speech'});audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
+    const deliverAudio=(audio,metadata={})=>{if(!current(s))return;emit(s,{type:'audio',sequence:++s.audioSequence,...(s.outputEncoder?.encode(audio) ?? {audio:audio.toString('base64')}),sampleRate:24000,...metadata});onOutputAudio(s.id,audio);s.audioDelivery.packet(audio.length,metadata.responseId);s.playback.sent(metadata.responseId,audio.length,{scripted:metadata.source==='injected-speech'});audit({type:'audio',voiceSessionId:s.id,bytes:audio.length,...metadata});};
     // A slow native lookup gets a cached "still looking" line, delivered like the
     // start notice: never upstream TTS, which can cost the pending function its turn.
     s.progressNotice=index=>{
@@ -1189,6 +1190,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
         return;
       }
       try{const e=JSON.parse(data.toString());if(e.type==='device.capabilities'||e.type==='device.result'){receiveDeviceFrame(s,e);return;}if(e.type==='greeting'){if(s.readyAnnounced)greet();else s.greetingWanted=true;}
+      else if(e.type==='output.codec' && e.codec==='opus24-v1' && s.surface==='phone' && !s.nativeRuntime){s.outputEncoder ??= createOpusDownlink();}
       else if(e.type==='barge-in') {
         // Only a speaker endpoint can mark a barge-in as confirmed speech (device echo cancellation).
         const device=s.surface==='speaker'&&typeof e.deviceId==='string'?e.deviceId:null,confirmed=Boolean(device&&e.confirmed===true);
@@ -1196,7 +1198,7 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
       else if(e.type==='text'&&typeof e.text==='string'&&e.text.trim()&&e.text.length<=2000){if(s.nativeDuplex&&s.ending){clearEnding(s);emit(s,{type:'end.cancelled'});s.bridge?.endingCancelled?.();}s.lookup.answered();s.latestUserTurn=Object.freeze({text:e.text,receivedAt:new Date().toISOString()});s.bridge.sendUserMessage(e.text);}
       else if(e.type==='playback.state'&&typeof e.speaking==='boolean'){s.playing=e.speaking;if(!e.speaking){s.playback.drained();if(s.floor?.state==='dropped')s.floor=null;}audit({type:'client.playback-state',voiceSessionId:s.id,speaking:e.speaking});}
       else if(e.type==='playback.stats'){
-        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','stretchedMs','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','droppedInputFrames','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
+        const stats=Object.fromEntries(['inputBytes','outputBytes','queuedOutputBytes','peakQueuedOutputBytes','clears','underflows','stretchedMs','duplicateFrames','maxReceiveGapMs','startBufferMs','contextSampleRate','peakInputBufferedBytes','droppedInputFrames','inputBatches','inputBufferedBytes','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','opusChunks','audioPayloadChars','nativePauses','nativeResumes'].filter(k=>Number.isFinite(e[k])&&e[k]>=0).map(k=>[k,e[k]]));
         for(const key of ['dialToReadyMs','dialToFirstPcmMs','dialToFirstRenderObservedMs'])if(Number.isFinite(e[key])&&e[key]>=0&&e[key]<=120000)stats[key]=Math.round(e[key]);
         for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof e[key]==='boolean')stats[key]=e[key];
         if(['running','suspended','interrupted','closed'].includes(e.contextState))stats.contextState=e.contextState;

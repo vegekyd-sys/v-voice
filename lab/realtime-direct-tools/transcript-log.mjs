@@ -147,7 +147,7 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
     }
     if(event.type==='client.playback-stats'){
       const stats={};
-      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','stretchedMs','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','droppedInputFrames','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
+      for(const key of ['inputBytes','outputBytes','queuedOutputBytes','clears','underflows','stretchedMs','maxReceiveGapMs','contextSampleRate','inputBufferedBytes','peakInputBufferedBytes','droppedInputFrames','inputFrames','inputActiveFrames','maxInputGapMs','inputIdleMs','contextTimeMs','outputClockWallMs','outputClockAudioMs','outputClockRatio','bufferedOutput','opusChunks','audioPayloadChars','nativePauses','nativeResumes'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0)stats[key]=event.stats[key];
       for(const key of ['dialToReadyMs','dialToFirstPcmMs','dialToFirstRenderObservedMs'])if(Number.isFinite(event.stats?.[key])&&event.stats[key]>=0&&event.stats[key]<=120000)stats[key]=Math.round(event.stats[key]);
       for(const key of ['trackMuted','trackEnabled','trackLive','pageHidden'])if(typeof event.stats?.[key]==='boolean')stats[key]=event.stats[key];
       if(['running','suspended','interrupted','closed'].includes(event.stats?.contextState))stats.contextState=event.stats.contextState;

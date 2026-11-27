@@ -1,3 +1,4 @@
+import {createTvOpusDecoder, warmTvOpus} from './tv-opus.mjs';
 // Gateway-owned PCM transport shared by Seeduplex and Grok. No provider key
 // or arbitrary tool request is accepted from this browser audio channel.
 // Runs inside the audio rendering thread. A consumed sample is never replayed
@@ -259,6 +260,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   let recoveryAttempted=false;
   let lastMessageAt=null;
   let closed=false,ready=false,node,speaker,source,quietGain,ending=null,tailTimer,epoch=0,written=0,lastPlayedAt=null,lastSequence=0,blocked=false,outputComplete=false,playbackActive=false,busy=false,lastReceiveAt=null,statsTimer,uploadFailed=false;
+  let opusDecoder;
   const pendingOutput=[];
   const inputBatch=[];let inputBatchBytes=0;
   const flushInput=()=>{if(!inputBatchBytes)return;const bytes=new Uint8Array(inputBatchBytes);let at=0;for(const frame of inputBatch){bytes.set(new Uint8Array(frame),at);at+=frame.byteLength;}inputBatch.length=0;inputBatchBytes=0;socket.send(bytes.buffer);stats.inputBytes+=bytes.byteLength;stats.inputBatches++;};
@@ -266,7 +268,7 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
   let inputTrack=stream?.getAudioTracks?.()[0];
   const inputStartedAt=performance.now();let lastInputAt=null;
   let uploadStalledAt=null;
-  const stats={droppedInputFrames:0,inputFrames:0,inputActiveFrames:0,maxInputGapMs:0,inputIdleMs:0,inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0,nativePauses:0,nativeResumes:0};
+  const stats={opusChunks:0,audioPayloadChars:0,droppedInputFrames:0,inputFrames:0,inputActiveFrames:0,maxInputGapMs:0,inputIdleMs:0,inputBytes:0,outputBytes:0,queuedOutputBytes:0,peakQueuedOutputBytes:0,clears:0,duplicateFrames:0,underflows:0,maxReceiveGapMs:0,startBufferMs,contextState:context.state,contextSampleRate:context.sampleRate,playbackDrained:false,peakInputBufferedBytes:0,inputBatches:0,nativePauses:0,nativeResumes:0};
   const activity=value=>{if(playbackActive!==value){playbackActive=value;onPlaybackActivity(value);}};
   const send=e=>{if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(e));};
   const reportBusy=()=>{const next=stats.queuedOutputBytes>0||playbackActive;if(next!==busy){busy=next;send({type:'playback.state',speaking:busy});}};
@@ -308,8 +310,17 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
     // identical silence and repeated syllables are valid audio.
     if(Number.isSafeInteger(e.sequence)&&e.sequence>0){if(e.sequence<=lastSequence){stats.duplicateFrames++;return;}lastSequence=e.sequence;}
     // Avoid allocating a JavaScript element for every byte of the lecture audio.
-    const binary=atob(e.audio),bytes=new Uint8Array(binary.length);
-    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    let bytes;
+    if (e.codec === 'opus24-v1' && opusDecoder) {
+      bytes = opusDecoder.decode(e);
+      stats.opusChunks++;
+      stats.audioPayloadChars += e.packets.reduce((sum, packet) => sum + packet.length, 0);
+    } else {
+      const binary=atob(e.audio);
+      bytes=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+      stats.audioPayloadChars += e.audio.length;
+    }
     if(!bytes.length||bytes.length%2||bytes.length>480000||e.sampleRate!==24000)throw Error('语音帧格式无效');
     if(stats.dialToFirstPcmMs===undefined){stats.dialToFirstPcmMs=Math.round(performance.now()-dialStartedAt);timing('voice.output.received');}
     if(stats.queuedOutputBytes+bytes.length>maxQueuedOutputBytes)throw Error('语音缓存过大，请重新拨号');
@@ -438,7 +449,11 @@ export function createRelayAudio({context,stream,reservation,connection,dialStar
       // filled an eight-second PCM queue and aborted legitimate 20s connects.
       // Keep the page-owned microphone grant; attach audio nodes only after
       // the actual upstream ready event. Greeting PCM is retained above.
-      await promise;if(!closed)await capture();if(!closed)await startCapture?.();
+      await promise;
+      if (!closed && bufferedOutput) void warmTvOpus().then(module => {
+        if (!closed && module) { opusDecoder = createTvOpusDecoder(module); send({type:'output.codec',codec:'opus24-v1'}); }
+      }).catch(() => {}); // Keep PCM if this WebView cannot instantiate libopus.
+      if(!closed)await capture();if(!closed)await startCapture?.();
     },sendDeviceResult:value=>send(value),sendText:text=>send({type:'text',text}),
-    dispose(){if(closed)return;stopPcm?.();stopMeter?.();reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);globalThis.document?.removeEventListener?.('visibilitychange',visible);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
+    dispose(){if(closed)return;opusDecoder?.close();stopPcm?.();stopMeter?.();reportStats();closed=true;clearInterval(statsTimer);clearTimeout(tailTimer);context.removeEventListener?.('statechange',stateChanged);globalThis.document?.removeEventListener?.('visibilitychange',visible);flush();node?.port.close();node?.disconnect();speaker?.port.close();speaker?.disconnect();source?.disconnect();quietGain?.disconnect();socket.close();}};
 }

@@ -1,3 +1,4 @@
+import {warmTvOpus} from "./tv-opus.mjs";
 import {createImprovPlayer} from "./improv-player.mjs";
 import {phoneModelOptions} from "./model-options.mjs";
 import {installTvHost,tvDefaultModel} from "./tv-host.mjs";
@@ -32,6 +33,7 @@ const $ = (id) => document.getElementById(id);
 // and rendered by the React UI. Audio elements and the reader stay in the HTML.
 const view = createCallView();
 const tvHost=installTvHost({view,window,actions:{dial:()=>startCall(),primeDial:primeTvDial,dialFromHome:id=>startCall({homeRequest:id}),end:()=>stopCall(),mute:()=>setMuted(!view.get().muted),speaker:()=>setOutputMuted(!view.get().outputMuted)},onError:error=>setStatus(error.message,{tone:'error'})});
+if (tvHost && hasTvArrayCapture()) void warmTvOpus();
 if(tvHost)warmTvAudio();
 const contentView = document.querySelector ? createContentView(document, window, { onReading: reading => view.set({ reading }) }) : null;
 const renderAssistant = (target, item) => {
