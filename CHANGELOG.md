@@ -11,6 +11,18 @@
 - Doubao's and Grok's instructions are unchanged byte for byte.
 - The experiment that had every model retell lessons in its own words (`VOICE_LESSON_RETELL`) was reverted before release: the board's sentence-by-sentence follow-along was lost.
 
+## 2026-11-26 — A line not said to V reads 「仅倾听」 on web and iOS (`voice-listen-only.20261126.1`)
+
+- The native runtime marks a caller line the floor judge heard as not said to V as a listen-only row, so the iOS app shows it the same way as web without an app release; the shared UI shows it as 「你 · 仅倾听」, faded, instead of web's own caption.
+- Released together with the homepage changelog entries for 11/26 (#277, #279).
+
+## 2026-11-26 — Side talk no longer cuts a lesson (`voice-lesson-barge.20261126.1`)
+
+- While a lesson still plays, an utterance is judged by OpenAI's Decisions API (direct, threshold 0.6) as said to V or not — by meaning, no word lists. Not to V: the lesson plays on. To V: it stops in about 1.5 s (production median was 3.6 s).
+- The judge reads the lesson actually playing and the request it answers, not a reply it dropped; a long joined utterance is read by whom it opens to.
+- A recognised utterance no longer holds playback with no limit; web lowers V's voice instead of pausing while someone speaks; each judgement is logged as `floor.judged`.
+- Outside callers can dial after confirming the card; sending work to another group goes to background V (#275).
+
 ## 2026-11-25 — Live broadcast recordings upload in parts (`voice-makaron-director.20261125.1`)
 
 - A full-flow production check found the 15-minute relay limit was not enough: Cloudflare ends a request whose origin has not answered in about 100 s (HTTP 524), so a single recording upload over the slow tunnel never finished.
