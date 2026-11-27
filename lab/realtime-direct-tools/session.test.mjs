@@ -1520,7 +1520,7 @@ for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses l
  const f=await fixture(async()=>{throw Error('Gateway exec must not run');},model,{mediaCli:{forCall:async()=>({execute:async command=>(await invokeMedia({name:'exec',args:{command}})).output})}});
  t.after(()=>f.service.dispose());
  const config=f.upstream.sent.find(e=>['session.create','session.update'].includes(e.type)).session;
- assert(config.instructions.includes('makaron edit --image-model gemini-2.1'));
+ assert(config.instructions.includes('makaron edit --image-model gpt-image-2.6-flare'));
  assert(config.instructions.includes('makaron video create --video-model fal-h3-max'));
  assert(!config.instructions.includes('图片、视频生成也用 delegate_to_v'));
  assert(!config.tools.some(tool=>/^(generate_image|generate_video|makaron_)/.test(tool.name)));
@@ -1530,7 +1530,7 @@ for (const model of ['grok','seeduplex']) test(`${model} direct CLI media uses l
    for(let i=0;i<100&&!f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id);i++)await delay(5);
    const delivered=f.audit.find(e=>e.type==='tool.delivered'&&e.callId===id);assert(delivered,`missing ${id}`);return delivered.result;
  };
- await invoke('exec',{command:"makaron edit --image-model gemini-2.1 'a small blue moon'",timeoutSeconds:120},'image-submit');
+ await invoke('exec',{command:"makaron edit --image-model gpt-image-2.6-flare 'a small blue moon'",timeoutSeconds:120},'image-submit');
  await invoke('exec',{command:"makaron create --image 'makaron-output-fixture.webp' --title '月亮'",timeoutSeconds:120},'image-save');
  const image='![月亮](https://cdn.test/generated.webp)';
  assert.equal((await invoke('show_content',{markdown:image},'image-show')).shown,true);
@@ -1553,13 +1553,13 @@ for(const options of [{sessionBound:true},{actorScoped:true},{unidentified:true}
  let local=0;const f=await fixture(async()=>({ok:false,error:{message:'denied'}}),'grok',{...options,mediaCli:{forCall:async()=>{local++;throw Error('must not run');}}});t.after(()=>f.service.dispose());
  const config=f.upstream.sent.find(e=>e.type==='session.update').session;
  assert(!config.instructions.includes('makaron edit --image-model'));
- f.call('exec',{command:"makaron edit --image-model gemini-2.1 'x'"},'isolated-media');
+ f.call('exec',{command:"makaron edit --image-model gpt-image-2.6-flare 'x'"},'isolated-media');
  await delay(20);assert.equal(local,0);
 });
 test('media catalog revocation stops local execution without attempting Gateway fallback',async t=>{
  let local=0;const catalog=['exec','process'];
  const f=await fixture(async()=>{throw Error('must not call Gateway tool');},'grok',{catalog,mediaCli:{forCall:async()=>({execute:async()=>{local++;return {};}})}});t.after(()=>f.service.dispose());
- catalog.splice(0);f.call('exec',{command:"makaron edit --image-model gemini-2.1 'x'"},'revoked-media');
+ catalog.splice(0);f.call('exec',{command:"makaron edit --image-model gpt-image-2.6-flare 'x'"},'revoked-media');
  await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='revoked-media'));
  assert.equal(local,0);assert.equal(f.invocations.length,0);assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/撤回/);
 });
@@ -1624,7 +1624,7 @@ test('a model still following its execution answers it itself; the service says 
  t.after(()=>{finish({});return f.service.dispose();});
  const call=(id,name,args)=>f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name,arguments:JSON.stringify(args)}]});
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
- call('followed','exec',{command:"makaron edit --image-model gemini-2.1 'cat'",completionLine:'小猫画好了'});
+ call('followed','exec',{command:"makaron edit --image-model gpt-image-2.6-flare 'cat'",completionLine:'小猫画好了'});
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='followed')));
  const {sessionId}=f.audit.find(e=>e.type==='tool.delivered'&&e.callId==='followed').result.details;
  finish({isError:false,media:{kind:'image',url:'https://cdn.test/followed.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
@@ -1641,7 +1641,7 @@ test('a turn the provider opened and abandoned does not hold back a finished exe
  t.after(()=>{finish({});return f.service.dispose();});
  const said=()=>f.upstream.sent.filter(e=>e.type==='speech_text_buffer.commit').map(e=>e.text);
  f.event({type:'conversation.item.input_audio_transcription.completed',transcript:'画一只小猫'});
- f.event({type:'response.function_call_arguments.done',items:[{call_id:'abandoned',name:'exec',arguments:JSON.stringify({command:"makaron edit --image-model gemini-2.1 'cat'",completionLine:'小猫画好了'})}]});
+ f.event({type:'response.function_call_arguments.done',items:[{call_id:'abandoned',name:'exec',arguments:JSON.stringify({command:"makaron edit --image-model gpt-image-2.6-flare 'cat'",completionLine:'小猫画好了'})}]});
  assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='abandoned')));
  f.event({type:'response.created',response:{id:'never-finished'}});
  finish({isError:false,media:{kind:'image',url:'https://cdn.test/abandoned.webp'},content:[{type:'text',text:'done'}],details:{status:'completed'}});
@@ -1970,7 +1970,7 @@ test('what a call was making when its connection was lost is finished where the 
   const f=await fixture(async()=>{throw Error('must not use Gateway');},'grok',{assets,mediaCli:{forCall:async()=>({execute:(command,signal)=>new Promise((resolve,reject)=>{finish=resolve;signal.addEventListener('abort',()=>{aborted=true;reject(signal.reason);});})})}});
   t.after(()=>f.service.dispose());
   const first=f.reservation.voiceSessionId;
-  f.call('exec',{command:"makaron edit --image-model gemini-2.1 '一只猫'",completionLine:'猫画好了。'},'make-cat');
+  f.call('exec',{command:"makaron edit --image-model gpt-image-2.6-flare '一只猫'",completionLine:'猫画好了。'},'make-cat');
   for(let i=0;i<200&&!finish;i++)await delay(5);
   assert.equal(assets.page(first).busy,true);
   await f.service.close(first,why);
@@ -2083,7 +2083,7 @@ for(const model of ['grok','seeduplex'])test(model+' dispatches creation using t
   }};
   const f=await fixture(undefined,model,{mediaCli,sessionKey:'agent:makaron:feishu:group:oc_test',actorScoped:true,sessionBound:true});
   t.after(()=>f.service.dispose());
-  const args={command:"makaron edit --image-model gemini-2.1 'moon'"},id='session-credit';
+  const args={command:"makaron edit --image-model gpt-image-2.6-flare 'moon'"},id='session-credit';
   if(model==='grok')f.call('exec',args,id);
   else f.event({type:'response.function_call_arguments.done',items:[{call_id:id,name:'exec',arguments:JSON.stringify(args)}]});
   assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId===id)));
@@ -2108,7 +2108,7 @@ test('first media request provisions through the admitted session before using t
   const key='agent:makaron:feishu:direct:ou_new';
   const f=await fixture(undefined,'grok',{sessionKey:key,sessionBound:true,actorScoped:true,mediaCli});
   t.after(()=>f.service.dispose());
-  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'moon'"},'first');
+  f.call('exec',{command:"makaron edit --image-model gpt-image-2.6-flare 'moon'"},'first');
   assert(await until(()=>f.invocations.some(x=>x.question)));
   const request=f.invocations.find(x=>x.question);
   assert.equal(request.sessionKey,key);assert.match(request.question,/只办理账号/);
@@ -2123,7 +2123,7 @@ test('a partial actor catalog cannot fall through to native Makaron exec',async 
   const f=await fixture(undefined,'grok',{sessionKey:'agent:makaron:feishu:group:oc_test',sessionBound:true,actorScoped:true,catalog:['exec'],
     mediaCli:{sessionAccounts:true,forCall:()=>assert.fail('no media grant')}});
   t.after(()=>f.service.dispose());
-  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'moon'"},'denied');
+  f.call('exec',{command:"makaron edit --image-model gpt-image-2.6-flare 'moon'"},'denied');
   assert(await until(()=>f.audit.some(e=>e.type==='tool.delivered'&&e.callId==='denied')));
   assert.equal(f.invocations.length,0);
   assert.match(f.audit.find(e=>e.type==='tool.delivered').result.error,/未开放前台创作/);
@@ -2178,7 +2178,7 @@ test('the owner entry hands the media runner an owner scope; other sessions keep
  const media={sessionAccounts:true,forCall:async({scope})=>{scopes.push(scope);return {execute:async()=>({content:[{type:'text',text:'ok'}]})};}};
  for(const ownerMedia of [true,false]){
   const f=await fixture(async()=>{throw Error('must not use Gateway');},'grok',{mediaCli:media,ownerMedia,sessionKey:'agent:makaron:feishu:group:oc_room'});t.after(()=>f.service.dispose());
-  f.call('exec',{command:"makaron edit --image-model gemini-2.1 'x'"},'media-'+ownerMedia);
+  f.call('exec',{command:"makaron edit --image-model gpt-image-2.6-flare 'x'"},'media-'+ownerMedia);
   await until(()=>scopes.length===(ownerMedia?1:2));
  }
  assert.deepEqual(scopes,[{chat:'oc_room',owner:true},{chat:'oc_room'}]);
@@ -2419,4 +2419,14 @@ test('a question typed right after adding a picture reaches V after what is in t
  const seen=sent.findIndex(e=>e.includes('左边蓝色方块')),asked=sent.findIndex(e=>e.includes(typed));
  assert(seen>=0,'what the picture shows reached V');assert(asked>seen,'and before the question about it');
  assert.deepEqual(f.client.sent.filter(e=>e.type==='transcript'&&e.role==='user').map(e=>e.text),[typed]);
+});
+
+test('a picture a lesson draws is made with the call\'s image model',async t=>{
+ const {createAssetShelf}=await import('../gpt-live-h5/board-assets.mjs');
+ const assets=createAssetShelf({}),commands=[];
+ const f=await fixture(async()=>{throw Error('must not use Gateway');},'grok',{assets,mediaCli:{forCall:async()=>({execute:async command=>{commands.push(command);return {isError:true,content:[{type:'text',text:'fixture: not made'}]};}})}});
+ t.after(()=>f.service.dispose());
+ assets.make(f.reservation.voiceSessionId,{prompt:'一只在雪地里的小狐狸',caption:'小狐狸',aspect:'4:3'});
+ for(let i=0;i<100&&!commands.length;i++)await delay(5);
+ assert.equal(commands.length,1);assert.match(commands[0],/^makaron edit --image-model gpt-image-2\.6-flare --aspect 4:3 '一只在雪地里的小狐狸'$/u);
 });

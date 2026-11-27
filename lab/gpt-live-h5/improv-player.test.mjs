@@ -59,7 +59,7 @@ test('reference edits use the actual caller upload or canonical avatar within th
  const shelf=createAssetShelf({standing:[SELF_IMAGE]});
  const uploaded=shelf.add('call',{source:'upload',url:'https://cdn.example/train.png'});
  assert.equal(await shelf.openingImage('other',uploaded.id),'');
- const command="makaron edit --image-model gemini-2.1 --image "+uploaded.id+" '画成水彩'";
+ const command="makaron edit --image-model gpt-image-2.6-flare --image "+uploaded.id+" '画成水彩'";
  assert.match(shelf.begin('call',{command}).command,/cdn.example\/train.png/u);
  shelf.share=async()=>({url:'https://cdn.example/avatar.jpg',until:Infinity});
  assert.equal(await shelf.openingImage('call','v'),'https://cdn.example/avatar.jpg');
@@ -79,7 +79,7 @@ test('opening on this picture preserves its shape and excludes invented opening 
  assert.equal(calls[0].at(-1),url);
  assert.equal(calls[0][calls[0].indexOf('--aspect-ratio')+1],'1:1');
  assert.equal(calls[0][2],'保持原构图，篮球开始转动');
- shelf.begin('call',{command:"makaron edit --image-model gemini-2.1 '另一幅画'"});
+ shelf.begin('call',{command:"makaron edit --image-model gpt-image-2.6-flare '另一幅画'"});
  assert.equal(await shelf.openingImage('call','current'),'');
 });
 

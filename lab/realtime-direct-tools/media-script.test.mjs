@@ -65,8 +65,8 @@ test('the script is put back into the very command it came from, and the executo
  assert.equal(again[again.indexOf('--script')+1],script,'quotes in the script survive');
  assert.equal(validateMediaArgv(again).flags.image,A+' '+B);
  assert.deepEqual(again.filter((_,index)=>again[index-1]!=='--script'),argv.filter((_,index)=>argv[index-1]!=='--script'));
- assert.equal(scriptOf(mediaArgv("makaron edit --image-model gemini-2.1 '一只猫'")),null);
- assert.equal(withScript(mediaArgv("makaron edit --image-model gemini-2.1 '一只猫'"),'x'),null);
+ assert.equal(scriptOf(mediaArgv("makaron edit --image-model gpt-image-2.6-flare '一只猫'")),null);
+ assert.equal(withScript(mediaArgv("makaron edit --image-model gpt-image-2.6-flare '一只猫'"),'x'),null);
 });
 
 test('a request in English is written in English',async()=>{

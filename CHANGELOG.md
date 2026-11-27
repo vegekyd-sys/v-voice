@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-28 — Call images back on GPT Image 2.6 Flare (`voice-call-images-flare.20261128.1`)
+
+- Images made in the call (asked for, edited, and a lesson's drawn pictures) use Makaron `gpt-image-2.6-flare` again instead of `gemini-2.1` (Nano Banana 2.1). The model is named once (`CALL_IMAGE_MODEL` in `media-cli-policy.mjs`): the voice instructions, the executor guard (which accepts only it) and the lesson picture maker read it.
+- Up to 15 `--ref` pictures besides the base (Flare takes 16 inputs in all, per Makaron's image model capabilities; Nano Banana 2.1 took 14).
+- The live broadcast's own frames are made by the Makaron Director with its own models and are not changed here; a broadcast opening on a call picture opens on a Flare picture.
+
 ## 2026-11-28 — Typed messages and pictures reach both models (`voice-typed-input.20261128.1`)
 
 - Doubao (Seeduplex) answers speech only: a text item is history and is never answered, and `response.create` is an unknown event that ends its session (probed on its endpoint). A typed message is now said in a voice that is not V's (Seed TTS 2.0, same key) and committed as the caller's own turn (`input_audio_buffer.commit`), with the exact words beside it as a documented history pair; Doubao answers in its own words with all of the call's tools. Doubao reads history added mid-call only from the turn after next (probed: a fact added and then asked about was unknown, asked again it was known), so an empty turn is committed first (answered with nothing, ~1.2 s); the message's turn then reads its exact words and a picture's description.

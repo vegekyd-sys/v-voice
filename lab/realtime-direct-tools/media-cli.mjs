@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {mediaAccountFailure} from './media-accounts.mjs';
+import {CALL_IMAGE_MODEL} from './media-cli-policy.mjs';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 
@@ -27,8 +28,8 @@ export function mediaArgv(command) {
 const specs={edit:['image-model','aspect','image','ref'],create:['image','title'],'video create':['video-model','duration','video-resolution','script','image'], 'video status':[]};
 // The pictures a thing is made from may be several (two characters in one frame need a picture of each):
 // one base picture and further references for an image, several pictures for a reference video.
-// (As many as the models take: Nano Banana 2.1 takes fourteen pictures in all, FAL H3 Max nine images.)
-const repeats={edit:{ref:13},'video create':{image:9}};
+// (As many as the models take: the call's image model as CALL_IMAGE_MODEL says, FAL H3 Max nine images.)
+const repeats={edit:{ref:CALL_IMAGE_MODEL.references},'video create':{image:9}};
 const https=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
 export function validateMediaArgv(argv) {
   const verb=argv[0]==='video'?argv.slice(0,2).join(' '):argv[0];
@@ -43,7 +44,7 @@ export function validateMediaArgv(argv) {
     }else positionals.push(v);
   }
   if(positionals.length!==(['edit','video status'].includes(verb)?1:0))throw Error('创作参数不完整');
-  if(verb==='edit'&&flags['image-model']!=='gemini-2.1'||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
+  if(verb==='edit'&&flags['image-model']!==CALL_IMAGE_MODEL.id||verb==='video create'&&flags['video-model']!=='fal-h3-max')throw Error('必须使用本次指定的创作模型');
   if(flags.aspect&&!/^\d{1,2}:\d{1,2}$/u.test(flags.aspect))throw Error('无效画幅');
   // (A length it cannot make is said so, so the caller can be told what it can: "三十秒" is asked for often.)
   if(verb==='video create'&&flags.script&&!/^([5-9]|1[0-5])$/u.test(flags.duration??'5'))throw Error('本地校验未提交、未扣费：这里一条视频只能做 5 到 15 的整数秒，最长 15 秒。用户要更长的，用 delegate_to_v 交后台去拼（告诉用户要多等一会儿）；用户同意先看 15 秒的，再按 15 秒重新提交。不到 5 秒的按 5 秒做。');

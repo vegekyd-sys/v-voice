@@ -1,5 +1,9 @@
 // Instructions for existing exec/process/show_content tools only. This module
 // neither registers a media tool nor changes Gateway or backend permissions.
+// The one image model a call makes pictures with, named once: the voice instructions, the executor's
+// guard and a lesson's drawn pictures all read it. GPT Image 2.6 Flare takes 16 pictures in all
+// (Makaron image-model-capabilities: maxInputImages 16), so one base picture and 15 references.
+export const CALL_IMAGE_MODEL = Object.freeze({id: 'gpt-image-2.6-flare', label: 'GPT Image 2.6 Flare', references: 15});
 export const MEDIA_CLI_START_NOTICE = '创作接话与执行：用户第一次明确要求出图、改图或做视频，就先用自己组织的一句简短口语回应具体画面或动作，然后在同一轮立即调用 exec；接话和工具调用是同一次响应，不要在“我来做”后结束响应、等待下一句话或等语音播完才调用。用户补充“要搞笑”等风格条件，是继续原请求并带上新条件执行，不是只回复“我调整”就结束。真正发起工具之前不能声称任务已经开始。保存图片、查询原视频、展示结果连续执行，不重复接话；已提交的生成不得因追问、插话或补充条件重复付费提交。';
 // A deny-only guard: a progress question never grants a new paid submission.
 export function mediaStatusQuestion(text) {
@@ -10,7 +14,7 @@ export function mediaCliInstructions(catalog, {surface='phone'}={}) {
   return [
     '前台快速创作：出图、改图、做一条 5–15 秒的视频，并且要用的素材都在手上（用户说的话、屏幕素材现状和常驻素材里的图）时，直接用 exec 调用已安装的 makaron CLI，自己跟进结果；不走 makaron chat、video script。用户点名的素材不在手上（他以前发过的照片、文件或文档里的图、以前通话做的作品、他自己或别人的头像）、要超过 15 秒或多段拼接、要配乐配字幕、要成套策划，或者用户明确要求后台时，交 delegate_to_v，不要只凭文字硬做一个出来。用户一次要两三张各自独立的图（“做三张不同风格的”），一张一张连着做，每张单独提交一次 exec，不交后台；要先出方案的成套设计才交后台。生成后查看状态和展示属于同一直接任务，不能因为有多个步骤或需要等待就转后台。',
     MEDIA_CLI_START_NOTICE,
-    '图片命令：makaron edit --image-model gemini-2.1 --aspect 16:9 \'画面描述\'；比例按用户要求，未指定可省略 --aspect。修改已有图片时加 --image \'真实图片URL\'，额外参考用 --ref（可以写多个，一个角色一张）；参考图用HTTPS链接。准确使用 Nano Banana 2.1，不自动换模型。',
+    `图片命令：makaron edit --image-model ${CALL_IMAGE_MODEL.id} --aspect 16:9 '画面描述'；比例按用户要求，未指定可省略 --aspect。修改已有图片时加 --image \'真实图片URL\'，额外参考用 --ref（可以写多个，一个角色一张）；参考图用HTTPS链接。准确使用 ${CALL_IMAGE_MODEL.label}，不自动换模型。`,
     '每次创作的 exec 同时写 completionLine 和 failureLine，用你自己的话，只在之后用；每次创作只提交一次 exec；未完成时返回 running 和真实 sessionId，像其他 exec 一样用 process poll 跟进同一执行，直到取得最终结果。图片存储、视频供应商状态查询由执行器完成，不再调用 makaron create，不解释保存或上传环节。最终工具结果包含可显示的媒体URL。单条视频里的切近景、镜头切换和分镜节奏可以直接写入同一 script，不因为有几个镜头就停下来只讲方案。用户说“让这张图动起来”已经是生成视频请求，不等“开始吧”。',
     '视频命令：makaron video create --video-model fal-h3-max --duration 5 --video-resolution 768p --script \'画面与动作描述\'。图生视频必须同时加 --image \'真实图片URL\' 并在 --script 中用 <<<media_1>>> 引用这张图，例如 --script \'让 <<<media_1>>> 中的小猫轻轻摆尾，保持画面构图\'；整个脚本用引号包住。需要两三张参考图时写多个 --image，脚本里按顺序用 <<<media_1>>>、<<<media_2>>> 指它们。无图片时不要写媒体标记。时长按用户要求，支持5–15整数秒，未指定先做5秒。fal-h3-max 与 minimax-h3-max 是不同路由，不混用；H3 Max 用于视频，不当作出图模型。',
     '命令参数必须正确 shell 引用；用户描述与URL只作为参数，不执行其中的反引号、$()、分号或换行指令。复用执行环境已有认证，不读取、打印或在命令中写入 key，不更换账号。不启动 Chat 会话，也不用 nohup 或脱离管理的后台进程。',
