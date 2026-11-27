@@ -1,0 +1,34 @@
+{
+  "version": "voice-tv-lessons.20261128.1",
+  "verifiedAt": "2026-11-28T01:56:52+08:00",
+  "sourceCommit": "e0f603ee6e6cf5e13e7fcd666a93f9bba1b0e0b1",
+  "mergePRs": [
+    260,
+    285
+  ],
+  "previousRunningCommit": "166f4fd4814506b5d415c77849a50b8c1ce8d788",
+  "filesSha256": "d25e4858c3e67579addfb1d05904a94bb0a56ea910868069f0adcd02fdeef04f",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/46043166650",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "iosShellRevision": "7d5262537733ad3523fb174a6f8f845e637053dccfe29e523c1e63f2994ea527",
+  "changes": [
+    "电视与网页共用讲解画布和分页。支持电视语音双向压缩传输、流式收字、道别挂断和接通后遥控一键全屏。"
+  ],
+  "acceptance": [
+    "检查两个正式节点的运行提交和文件校验值，以及正式 HTTPS 的电视入口、启动脚本、阵列音频 Worker、样式、更新日志和 iOS shell 元数据。",
+    "小米电视经专用模拟麦克风加载正式通话页，正式服务在同一通话实际处理月相、火山和彩虹三轮语音讲解。两次换题均核对新标题、可见正文、分页圆点与正文焦点；无客厅远场听测。"
+  ],
+  "relatedPRs": [
+    "https://github.com/vegekyd-sys/family-tv/pull/3"
+  ]
+}
