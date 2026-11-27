@@ -116,7 +116,7 @@ export const NARRATION_DEFAULTS=Object.freeze({firstMs:8000,settleMs:2000,stageG
 
 // Conversation records Seeduplex refused, by session: {hash, until}.
 const refusedRecords=new Map();
-export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
+export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=GROK_VOICE_MODEL,grokSpeed=1,grokExpressiveTags=false,audit=()=>{},onOutputAudio=()=>{},loadContext=async()=>'',toolEnvironment={},calendar,larkRead,larkForActor,mediaCli,contentAckTimeoutMs=2500,backendPollMs=1000,speakerRouting,nativeInterrupt,nativePlaybackPolicy='courtesy',playbackEchoGuard=true,nativeFarewellDelayMs=2000,nativeFarewellTimeoutMs=10000,idleHangup=IDLE_HANGUP_DEFAULTS,toolProgressClips=null,narration,searchAcknowledgment='off',lookupRecovery={},nativeRuntimePolicy=DEFAULT_NATIVE_RUNTIME_POLICY,deviceOperations={},backendDeviceBundle=null,backendDeviceBundleProbe=probeBackendDeviceBundle,lesson=null,lessonStream=false,lessonStreamPageMs=0,assets=null,videoScript=null,materialCheck=null,gptLive=null,relayPingMs=5000,speechYield={decisionMs:3000,addressedMs:10000,minRemainingMs:2000,judgeMs:3000},floorJudge=null}) {
   const NARRATION={...NARRATION_DEFAULTS,...narration};
   grokModel=grokVoiceModel(grokModel);
   grokSpeed=grokVoiceSpeed(grokSpeed);
@@ -975,13 +975,36 @@ export function createDirectVoiceService({gateway,wsModule,apiKeys={},grokModel=
               catch(error){audit({type:'lesson.research-failed',voiceSessionId:s.id,callId:call.callId,name:lookup.name,message:String(error?.message??error).slice(0,120)});}
             }
             let script=null;
-            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)&&!asksOnlyToFind(s.latestUserTurn?.text)}:{})});
+            // (VOICE_LESSON_STREAM) Each line is spoken as soon as it is written, after V's own short
+            // line has finished, instead of waiting for the whole script: a voice that reads host speech
+            // (`readLines`) begins the lesson a few seconds sooner, and still says it word for word.
+            let reader=null,opening=null;const waiting=[],lessonStarted=Date.now();
+            const onLines=lessonStream&&typeof ownerBridge.readLines==='function'?(lines,{at}={})=>{
+              if(!current(s)||s.epoch!==epoch||controller.signal.aborted)return;
+              audit({type:'lesson.stream-lines',voiceSessionId:s.id,callId:call.callId,count:lines.length,writtenMs:at});
+              if(reader){for(const line of lines)reader.line(line);return;}
+              waiting.push(...lines);
+              opening??=(async()=>{
+                const ready=Date.now();
+                await quiet(s,8000);
+                // The first line waits a moment for its page's first piece, so the caller sees what V is about to explain.
+                while(lessonStreamPageMs>0&&!lesson.pageStarted?.(s.id)&&Date.now()-ready<lessonStreamPageMs&&current(s)&&!controller.signal.aborted)await new Promise(resolve=>setTimeout(resolve,100));
+                if(!current(s)||s.epoch!==epoch||controller.signal.aborted)return;
+                reader=ownerBridge.readLines();
+                audit({type:'lesson.stream-start',voiceSessionId:s.id,callId:call.callId,ok:Boolean(reader),lines:waiting.length,sinceCallMs:Date.now()-lessonStarted,page:Boolean(lesson.pageStarted?.(s.id))});
+                for(const line of waiting.splice(0))reader?.line(line);
+              })();
+            }:null;
+            try{script=await lesson.prepare({quiet:Boolean(s.unidentified||s.publicVoice||s.actorScoped),owner:s.id,topic:call.args.topic,audience:call.args.audience,ask:s.latestUserTurn?.text,reference,signal:controller.signal,...(onLines?{onLines}:{}),...(shelfFor(s)?{assets:assets.digest(s.id),make:assets.canMake(s.id)&&!asksOnlyToFind(s.latestUserTurn?.text)}:{})});
+              if(opening)await opening;
               // V finishes the line it is on ("好，我想想怎么讲") before the lesson starts: cut off mid-sentence it sounded like two people.
-              if(script)await quiet(s,8000);}
+              else if(script)await quiet(s,8000);}
             catch(error){audit({type:'lesson.failed',voiceSessionId:s.id,callId:call.callId,message:String(error?.message??error).slice(0,160)});}
-            finally{if(s.lessonPending===call.callId)s.lessonPending=null;}
+            finally{if(s.lessonPending===call.callId)s.lessonPending=null;reader?.end();}
             if(current(s)&&s.epoch===epoch){
-              if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});
+              // A reading under way is already being heard: the session's history gets the script, nothing is spoken again.
+              if(reader)ownerBridge.completeBackgroundTool(call.callId,{result:script?.say??''},{spokenText:script?.say??'',speak:()=>{}});
+              else if(script)ownerBridge.completeBackgroundTool(call.callId,{result:script.say},{spokenText:script.say,displayedFullResult:true});
               else{
                 // No script: V answers the question itself (it used to say "the picture is not ready" and stop,
                 // and the caller had to ask again: call 83315f5d). The page is drawn from what it then says.

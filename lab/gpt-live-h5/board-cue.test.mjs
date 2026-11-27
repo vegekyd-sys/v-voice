@@ -135,6 +135,32 @@ test('the writer hands its first lines to the illustrator while it is still writ
   assert.ok(Number.isFinite(lesson.earlyMs));
 });
 
+test('with onLines each line of the script is handed over once, as soon as it is written, and the lesson is what was handed over', async () => {
+  const {createLessonWriter} = await import('./board-lesson.mjs');
+  const text = JSON.stringify({title: '电车和油车', lines: [{say: '电车在家充一晚就满。', show: 'versus：电车/油车'}, {say: '油车三分钟加满。', show: '加一行 补能'}, {say: '你平时市区开吗？', show: ''}]});
+  const handed = [], records = [];
+  let wrote = 0;
+  const complete = async function* () { for (const piece of text.match(/[\s\S]{1,7}/gu)) { wrote += piece.length; yield piece; await new Promise(resolve => setTimeout(resolve, 1)); } };
+  const director = {streams: true, expect() {}, note() {}};
+  const writer = createLessonWriter({complete, director, record: event => records.push(event), early: 2});
+  const made = await writer.prepare({owner: 'o', topic: '电车和油车', onLines: lines => handed.push({lines, at: wrote})});
+  assert.deepEqual(handed.flatMap(item => item.lines), ['电车在家充一晚就满。', '油车三分钟加满。', '你平时市区开吗？']);
+  assert.ok(handed[0].at < text.indexOf('油车三分钟'), 'the first line before the second is written');
+  assert.deepEqual(made.sentences, ['电车在家充一晚就满。', '油车三分钟加满。', '你平时市区开吗？']);
+  assert.equal(records.find(event => event.type === 'board.lesson').streamed, 3);
+});
+
+test('a reply cut short after two lines were handed over is not written again: what was spoken stands', async () => {
+  const {createLessonWriter} = await import('./board-lesson.mjs');
+  const text = JSON.stringify({title: '灯塔', lines: [{say: '灯塔每晚把光扫过海面。', show: 'photo：灯塔'}, {say: '船看到光就知道离岸多远。', show: ''}]}).slice(0, -2);
+  let calls = 0;
+  const complete = async function* () { calls++; yield text; };
+  const writer = createLessonWriter({complete, director: {streams: true, expect() {}, note() {}}, early: 2});
+  const made = await writer.prepare({owner: 'o', topic: '灯塔', onLines: () => {}});
+  assert.equal(calls, 1);
+  assert.deepEqual(made.sentences, ['灯塔每晚把光扫过海面。', '船看到光就知道离岸多远。']);
+});
+
 test('a script\'s first lines and then the whole script are drawn one after the other on one page; a screen that joined sees both', async () => {
   const requests = [];
   let release;

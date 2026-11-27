@@ -163,6 +163,14 @@ export function createVoiceTranscriptLog({directory,now=Date.now,onError=()=>{},
         ...(event.playbackEcho===true?{playbackEcho:true}:{}),
         ...(typeof event.callId==='string'?{callId:event.callId}:{})});
     }
+    // A lesson read a line at a time (VOICE_LESSON_STREAM): when its lines were written and when V began.
+    if(['lesson.stream-lines','lesson.stream-start'].includes(event.type)){
+      const safe={};
+      if(typeof event.callId==='string')safe.callId=event.callId.slice(0,160);
+      for(const key of ['count','writtenMs','lines','sinceCallMs'])if(Number.isSafeInteger(event[key])&&event[key]>=0)safe[key]=event[key];
+      for(const key of ['ok','page'])if(typeof event[key]==='boolean')safe[key]=event[key];
+      return enqueue({...owner,type:event.type,...safe});
+    }
     // Whether something said over V's lesson was taken as said to V (floor-judge.mjs), and what came of it.
     if(event.type==='floor.judged'){
       if(!['cut','dropped','fallback','stale'].includes(event.outcome))return false;
