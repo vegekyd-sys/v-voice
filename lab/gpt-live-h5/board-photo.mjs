@@ -71,6 +71,8 @@ export function pagePicture(html, base, query) {
 // (an original of 1-2.5 MB) waits up to `graceMs` for a small one (the search's own thumbnail),
 // as it would take seconds more to reach a phone across the border (11/21).
 const SMALL_PICTURE = 400 * 1024;
+// A result none of whose files arrived (timed out, the network or their server failed).
+const UNREACHABLE = Symbol('unreachable');
 const firstPicture = (ways, graceMs = 1200) => new Promise(resolve => {
   let left = ways.length, best = null, timer = null;
   if (!left) return resolve(null);
@@ -173,7 +175,7 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
   };
   const get = async (url, signal, accept = '*/*') => {
     const response = await fetchImpl(url, {signal, headers: {'user-agent': userAgent, accept}, redirect: 'follow', credentials: 'omit'});
-    if (!response.ok) throw Error('HTTP ' + response.status);
+    if (!response.ok) throw Object.assign(Error('HTTP ' + response.status), {status: response.status});
     return response;
   };
   async function picture(url, signal, source, title) {
@@ -251,12 +253,19 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     return results.map((item, index) => ({item, score: rankPicture(item, query), index})).filter(entry => entry.score > 0)
       .sort((a, b) => (b.score - b.index * .2) - (a.score - a.index * .2)).slice(0, 9);
   }
+  // `{value}` with the picture, or `{value: null, why, transient}`: why nothing came, and whether that
+  // is an answer ("no picture of it") or only "not just now" (its files did not arrive in time, or the
+  // server holding them failed). The second must not be kept as an answer: on a call of 11/25 a
+  // picture of 珠江夜景 came back "none" after 5 s, the page took that as final and left the item
+  // without its picture, and the same search found it in a second afterwards.
   async function brave(query, signal, begin = () => {}) {
-    if (!braveKey) return null;
+    if (!braveKey) return {value: null, why: 'no-search'};
+    let why = 'no-results', transient = false;
     // A search that finds nothing worth fetching is tried plainer, twice at most.
     for (const words of [query, ...plainerSearches(query)]) {
-      const ranked = worth(await braveSearch(words, signal, begin), query);
-      if (!ranked.length) continue;
+      const results = await braveSearch(words, signal, begin), ranked = worth(results, query);
+      if (!ranked.length) { if (results.length && why === 'no-results') why = 'unranked'; continue; }
+      why = 'no-file';
       // Three at a time are fetched at once (one slow file used to hold the others up for seven
       // seconds); the best-ranked usable one wins. When none of three can be fetched, the next
       // three are tried (轰鸣月: the three best were on a site that refuses other sites, 11/21).
@@ -271,17 +280,30 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
           // The search's own thumbnail and the picture where it lives are asked
           // together: from this server one of the two is often seconds faster.
           const original = typeof item.properties?.url === 'string' ? await publicHttps(item.properties.url, {lookup}) : null;
-          const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])];
-          return firstPicture(ways);
-        })().catch(() => null));
-        let fetched = false;
-        for (const attempt of tried) { const found = await attempt; if (found) fetched = true; if (found && own(found, query)) return found; }
-        // (A picture fetched but taken by another thing: the next three would be the same site's.)
-        if (fetched) return null;
+          // (A file that did not arrive, or whose server failed, says nothing about the thing: one that
+          // arrived and is no picture (an icon, a page) or that its site refuses (403, 404) does.)
+          let unreachable = 0;
+          const fetchOne = way => way.catch(error => { if (!(error?.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429)) unreachable++; return null; });
+          const ways = [picture(thumbnail.href, signal, 'Brave 图片搜索', item.title), ...(original ? [picture(original.href, signal, item.source || original.hostname, item.title)] : [])].map(fetchOne);
+          const found = await firstPicture(ways);
+          return found ?? (unreachable === ways.length ? UNREACHABLE : null);
+        })().catch(() => UNREACHABLE));
+        for (const attempt of tried) {
+          const found = await attempt;
+          if (found === UNREACHABLE) { transient = true; continue; }
+          if (!found) continue;
+          if (own(found, query)) return {value: found};
+          // A picture another thing already has (a site's logo for two Pokemon, or one view of 广州塔
+          // and 珠江 for both): not this thing's. The next results are other files, and each of them
+          // passes the same test, so they are tried rather than the thing going without a picture.
+          why = 'taken';
+        }
       }
-      return null;
+      // (Results were ranked and none could be used: a plainer search would rank the same files.)
+      break;
     }
-    return null;
+    if (signal?.aborted) transient = true;
+    return {value: null, why: transient ? 'unreachable' : why, transient};
   }
   // The same file for two different things is a site picture (a franchise
   // logo came back for two different Pokemon), not a picture of either.
@@ -342,13 +364,18 @@ export function createPhotoFinder({fetchImpl = fetch, search = null, braveKey = 
     const encyclopedia = async () => { try { value = await wikipedia(key, signal); } catch { failed = true; } };
     const crowded = Boolean(braveKey) && bravePerSecond < 5 && braveQueue.length + (bravePumping ? 1 : 0) >= 2;
     if (crowded) { begin(); await encyclopedia(); }
-    if (!value) { try { value = await brave(key, signal, begin); } catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); } }
+    if (!value) {
+      try { const got = await brave(key, signal, begin); value = got.value; if (!value) { why = got.why; if (got.transient) failed = true; } }
+      catch (error) { failed = true; why = String(error?.message ?? error).slice(0, 80); }
+    }
     begin();
     if (!value && !crowded) await encyclopedia();
     // Scraping the pages V's search finds is the last resort of a service without an image search:
     // it is slow, and it is where site logos and unrelated pictures came from.
     if (!value && !braveKey) { try { value = await web(key, signal, searchNow); } catch { failed = true; } }
-    observe({type: 'board.photo', query: key, found: Boolean(value), ...(why && !value ? {why} : {}), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
+    // (`why` and `settled`: why there is none, and whether that is the answer or only "not just now".)
+    if (!value && failed && !why) why = signal.aborted ? 'timeout' : 'unavailable';
+    observe({type: 'board.photo', query: key, found: Boolean(value), ...(!value ? {why: why || 'none', settled: !failed} : {}), source: value?.source ?? null, bytes: value?.bytes.length ?? 0, durationMs: now() - started});
     // "No such picture" is worth remembering; "could not ask" is not.
     if (value) keep(key, value);
     if (value || !failed) { cache.delete(key); cache.set(key, {at: now(), value}); while (cache.size > maxEntries) cache.delete(cache.keys().next().value); }

@@ -1105,7 +1105,10 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // Only a photograph the director has put on this call's board.
         const query = typeof params.query === 'string' ? params.query : '';
         // (Any page of this call's canvas: earlier pages stay on it.)
-        if (!scenePictures(board.scene(params.voiceSessionId)).has(query)&&!(board.canvas?.(params.voiceSessionId).zones??[]).some(zone=>scenePictures(zone).has(query))) return json(res,404,{error:'画面上没有这张照片'});
+        // (Each picture the page is refused is logged with why, not with what it is of: a page that is
+        // told "none" leaves the picture out for the rest of the call.)
+        const refused = (status, reason) => { board.log?.({type: 'board.image', voiceSessionId: params.voiceSessionId, status, reason}); return json(res, status, {error: {'not-on-board': '画面上没有这张照片', 'not-found': '没有找到照片', unavailable: '暂时找不到照片', 'too-large': '照片太大'}[reason]}); };
+        if (!scenePictures(board.scene(params.voiceSessionId)).has(query)&&!(board.canvas?.(params.voiceSessionId).zones??[]).some(zone=>scenePictures(zone).has(query))) return refused(404, 'not-on-board');
         // V's own web search, in this call's session, for things Wikipedia has no picture of.
         const active = context.active;
         const search = text => (active.gateway??gateway).request('tools.invoke',{agentId:binding.agentId??'makaron',sessionKey:active.sessionKey,name:'web_search',args:{query:text,count:5}},{timeoutMs:12000});
@@ -1113,11 +1116,11 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         // 404: there is no such picture. 503: it could not be looked for just now (the image
         // search refused or timed out), so the page may ask again (11/20: a "show me more"
         // gallery lost pictures that were found the second time).
-        if (!found) return boardPhotos.settled?.(query) === false ? json(res,503,{error:'暂时找不到照片'}) : json(res,404,{error:'没有找到照片'});
+        if (!found) return boardPhotos.settled?.(query) === false ? refused(503, 'unavailable') : refused(404, 'not-found');
         // On the caller's screen from now on: V can name it as the picture to work from (board-assets.mjs).
         if (boardAssets) { const state = board.state?.(params.voiceSessionId); boardAssets.found(params.voiceSessionId, {query, name: pictureName([state?.scene, ...(state?.canvas?.zones ?? [])], query)}); }
         // (`inline`: for the iOS app's native bridge, which passes JSON only.)
-        if (params.inline === true) return found.bytes.length <= 1400*1024 ? json(res,200,{type:found.type,data:Buffer.from(found.bytes).toString('base64')}) : json(res,404,{error:'照片太大'});
+        if (params.inline === true) return found.bytes.length <= 1400*1024 ? json(res,200,{type:found.type,data:Buffer.from(found.bytes).toString('base64')}) : refused(404, 'too-large');
         res.writeHead(200,{'content-type':found.type,'cache-control':'no-store','content-length':found.bytes.length});
         res.end(found.bytes);return;
       }

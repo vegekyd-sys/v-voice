@@ -545,10 +545,12 @@ async function saveBoardPicture(item) {
 // A photograph on the board: fetched once per call through the Voice service
 // and handed to the page as a local object URL (null when there is none).
 // "There is none" (404) is kept for the call. A lookup that could not be made
-// (503: the image search refused or timed out; or the network) is tried once
-// more after a pause, and if it still fails it is not kept, so the next time
-// the page asks for it (a gallery drawn again) it is looked for again.
-const BOARD_PHOTO_RETRY_MS = 2500;
+// (503: the image search refused or timed out, or the picture's files did not
+// arrive in time; or the network) is tried again after a pause, twice, and if
+// it still fails it is not kept, so the next time the page asks for it (a
+// gallery drawn again) it is looked for again. (One more try after 2.5 s used
+// to give up while the picture would have come a few seconds later.)
+const BOARD_PHOTO_RETRY_MS = [2500, 6000];
 function loadBoardPhoto(query) {
   const active = call;
   if (!active?.board || typeof query !== 'string') return Promise.resolve(null);
@@ -559,8 +561,10 @@ function loadBoardPhoto(query) {
       headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voiceSessionId: active.voiceSessionId, query }) })
       .then(async response => response.ok ? {url: URL.createObjectURL(await response.blob())} : {none: response.status === 404})
       .catch(() => ({none: false}));
+    const patient = (result, waits) => result.url || result.none || call !== active || !waits.length ? result
+      : new Promise(resolve => setTimeout(resolve, waits[0])).then(() => call === active ? ask().then(next => patient(next, waits.slice(1))) : result);
     const pending = ask()
-      .then(result => result.url || result.none || call !== active ? result : new Promise(resolve => setTimeout(resolve, BOARD_PHOTO_RETRY_MS)).then(() => call === active ? ask() : result))
+      .then(result => patient(result, BOARD_PHOTO_RETRY_MS))
       .then(result => {
         // (A photograph the page now has is on the call's shelf: the shelf is asked again so it can be picked and saved.)
         if (result.url) { active.boardAssets?.poke(); return result.url; }

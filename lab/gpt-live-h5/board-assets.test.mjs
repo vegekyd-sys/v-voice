@@ -235,6 +235,54 @@ test('a lesson\'s script may ask for one picture to be drawn, where the call can
   assert.equal(made.length, 1);
 });
 
+test('a lesson draws a picture only for a page with no photographs, and only where it has room', async () => {
+  // (11/21–27: nine of the ten pictures drawn for the owner's lessons went up beside one to six photographs;
+  // two more were made for a page already full and never shown.)
+  const script = '叶子要吃阳光。它还要喝水。你可以把叶子想成一座小工厂，阳光是电，水和空气是原料，做出来的是糖。';
+  const draw = '{"op":"put","block":{"id":"w1","t":"work","make":"一片叶子里的小工厂，水彩","caption":"叶子工厂","cue":2}}';
+  const lines = show => [{say: '叶子要吃阳光。', show}, {say: '你可以把叶子想成一座小工厂', show: '现画：一片叶子里的小工厂，水彩'}];
+  const attempt = async ({show, page}) => {
+    const made = [], asked = [];
+    const board = createBoardDirector({complete: async function* ({messages}) { asked.push(JSON.parse(messages.at(-1).content)); yield `{"op":"scene","title":"光合作用"}\n${page}\n${draw}\n`; },
+      stream: {instructions: CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true}});
+    const shelf = shelfOn(board);
+    shelf.attach('call', async ({prompt}) => { made.push(prompt); return image(POSTER); });
+    board.note('call', {title: '光合作用', ask: '讲讲光合作用', script, lines: lines(show)});
+    await new Promise(resolve => setTimeout(resolve, 20));
+    return {made, offered: asked.some(request => request.make === true), types: board.scene('call').blocks.map(block => block.t)};
+  };
+  const words = '{"op":"put","block":{"id":"l1","t":"list","items":[{"id":"i1","h":"阳光","cue":0}]}}';
+  // Nothing to show but words: the script's picture is drawn.
+  const bare = await attempt({show: 'list：阳光', page: words});
+  assert.deepEqual([bare.made.length, bare.offered, bare.types], [1, true, ['list', 'work']]);
+  // The script shows a photograph or a pictured item: no picture is drawn, and the illustrator is not told it may.
+  for (const show of ['photo：太阳', 'list 带图：加一项 阳光（配图 太阳）', '图集：几片叶子']) {
+    const pictured = await attempt({show, page: words});
+    assert.deepEqual([pictured.made.length, pictured.offered], [0, false], show);
+  }
+  // The illustrator put a photograph up on its own: the page has something to show, nothing is drawn.
+  const photo = await attempt({show: 'list：阳光', page: '{"op":"put","block":{"id":"l1","t":"list","items":[{"id":"i1","h":"太阳","img":"太阳","cue":0}]}}'});
+  assert.equal(photo.made.length, 0);
+  // A print put up on the caller's question, before there was a script, is not the lesson's photograph: a story
+  // told in drawn scenes still gets its picture.
+  {
+    const made = [];
+    const board = createBoardDirector({complete: async function* ({messages}) {
+      const request = JSON.parse(messages.at(-1).content);
+      yield request.notes ? `${words}\n${draw}\n` : '{"op":"scene","title":"小恐龙"}\n{"op":"put","block":{"id":"p1","t":"photo","query":"小恐龙"}}\n';
+    }, stream: {instructions: CUE_INSTRUCTIONS, refine: refineCueOp, turns: cueTurns, cue: true}});
+    const shelf = shelfOn(board);
+    shelf.attach('call', async ({prompt}) => { made.push(prompt); return image(POSTER); });
+    await board.run({owner: 'call', trigger: 'user', turns: [{role: 'user', text: '讲个小恐龙的睡前故事'}]});
+    board.note('call', {title: '小恐龙', ask: '讲个小恐龙的睡前故事', script, lines: lines('list：阳光')});
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(made.length, 1, 'the opening print does not count');
+  }
+  // A page already holding four blocks: the picture would never be shown, so it is not made.
+  const full = await attempt({show: 'list：阳光', page: ['s1', 's2', 's3', 's4'].map((id, n) => `{"op":"put","block":{"id":"${id}","t":"sticky","text":"第${n + 1}条","cue":0}}`).join('\n')});
+  assert.deepEqual([full.made.length, full.types.length], [0, 4]);
+});
+
 test('a work block is an id on the shelf or words to draw from, and nothing else', () => {
   assert.deepEqual(normalizeOp({op: 'put', block: {id: 'w1', t: 'work', asset: 'a12', url: 'https://x/y.png'}}), {op: 'put', block: {id: 'w1', t: 'work', asset: 'a12'}});
   assert.deepEqual(normalizeOp({op: 'put', block: {id: 'w1', t: 'work', make: ' 一只猫 ', caption: '猫'}}), {op: 'put', block: {id: 'w1', t: 'work', make: '一只猫', caption: '猫'}});
