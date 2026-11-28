@@ -1,0 +1,78 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "电脑 · 需要你操作"
+    },
+    "template": "blue"
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "img",
+        "img_key": "/home/openclaw/w/desktop/v-desktop-handoff-h_1a2b.jpg",
+        "alt": {
+          "tag": "plain_text",
+          "content": "V 的电脑"
+        }
+      },
+      {
+        "tag": "markdown",
+        "content": "登录页需要扫码，请接管 V 的电脑完成。"
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "接管电脑"
+        },
+        "type": "primary_filled",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "open_url",
+            "default_url": "https://desk.example/h_1a2b"
+          }
+        ]
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "我完成了"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "command",
+              "command": "/v-handback h_1a2b"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "跳过"
+        },
+        "type": "default",
+        "width": "fill",
+        "behaviors": [
+          {
+            "type": "callback",
+            "value": {
+              "kind": "command",
+              "command": "/v-skip h_1a2b"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

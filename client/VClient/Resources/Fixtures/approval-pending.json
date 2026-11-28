@@ -1,0 +1,19 @@
+{
+  "schema": "2.0",
+  "config": { "update_multi": true, "width_mode": "fill" },
+  "header": { "title": { "tag": "plain_text", "content": "需要你审批：命令" }, "template": "blue" },
+  "body": {
+    "elements": [
+      { "tag": "markdown", "content": "V 想在 **V 主机** 上执行：\n```\nsudo systemctl restart openclaw-gateway\n```\n原因：配置热重载后 worker 池为 0，需要重启恢复。" },
+      { "tag": "markdown", "content": "<font color='grey'>agent：main · 来自飞书私聊 · 2 分钟前</font>", "text_size": "notation" },
+      {
+        "tag": "column_set", "flex_mode": "flow", "horizontal_spacing": "8px",
+        "columns": [
+          { "tag": "column", "width": "auto", "elements": [ { "tag": "button", "text": { "tag": "plain_text", "content": "允许一次" }, "type": "primary_filled", "behaviors": [ { "type": "callback", "value": { "kind": "approval", "decision": "allow-once" } } ] } ] },
+          { "tag": "column", "width": "auto", "elements": [ { "tag": "button", "text": { "tag": "plain_text", "content": "总是允许" }, "type": "default", "behaviors": [ { "type": "callback", "value": { "kind": "approval", "decision": "allow-always" } } ] } ] },
+          { "tag": "column", "width": "auto", "elements": [ { "tag": "button", "text": { "tag": "plain_text", "content": "拒绝" }, "type": "danger", "behaviors": [ { "type": "callback", "value": { "kind": "approval", "decision": "deny" } } ] } ] }
+        ]
+      }
+    ]
+  }
+}

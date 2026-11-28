@@ -1,0 +1,13 @@
+{
+  "schema": "2.0",
+  "v_card": 1,
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "这一轮已停止。",
+        "text_size": "notation"
+      }
+    ]
+  }
+}

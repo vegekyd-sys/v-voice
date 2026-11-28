@@ -1,0 +1,429 @@
+import Foundation
+import os
+import UIKit
+
+struct GatewayError: LocalizedError, Sendable {
+    var code: String
+    var message: String
+    var detailCode: String?
+
+    var errorDescription: String? { message }
+
+    var isPairingPending: Bool {
+        let text = [code, detailCode ?? "", message].joined(separator: " ").lowercased()
+        return text.contains("pairing") || text.contains("not paired") || text.contains("pending approval")
+    }
+
+    var isAuthRejected: Bool {
+        guard let detailCode else { return false }
+        return detailCode.hasPrefix("AUTH_") || detailCode.hasPrefix("DEVICE_AUTH")
+    }
+
+    static let timeout = GatewayError(code: "TIMEOUT", message: "V 没有及时响应")
+    static let disconnected = GatewayError(code: "DISCONNECTED", message: "和 V 的连接断开了")
+}
+
+/// One operator WebSocket to the Gateway, protocol 4: wait for
+/// `connect.challenge`, answer with a signed `connect`, then request/response
+/// frames plus pushed events. Reconnects on its own until `stop()`.
+@MainActor
+final class GatewayConnection {
+    enum State: Equatable {
+        case idle
+        case connecting
+        case awaitingApproval
+        case connected
+        case failed(String)
+    }
+
+    struct Hello: Sendable {
+        var serverVersion: String
+        var methods: Set<String>
+        var events: Set<String>
+        var scopes: [String]
+    }
+
+    static let clientId = "openclaw-ios"
+    static let clientMode = "ui"
+    static let role = "operator"
+    static let scopes = ["operator.approvals", "operator.questions", "operator.read", "operator.write"]
+
+    private(set) var state: State = .idle { didSet { if state != oldValue { onState?(state) } } }
+    private(set) var hello: Hello?
+    var onState: ((State) -> Void)?
+    var onEvent: ((String, JSONValue) -> Void)?
+    var onConnected: (() -> Void)?
+    /// The device token arrived or was revoked.
+    var onEndpointChange: ((GatewayEndpoint) -> Void)?
+
+    private(set) var endpoint: GatewayEndpoint
+    private let identity: DeviceIdentity
+    private let session: URLSession
+    private var socket: URLSessionWebSocketTask?
+    private var generation = 0
+    private var pending: [String: CheckedContinuation<JSONValue, Error>] = [:]
+    private var nextId = 0
+    private var retryDelay: Duration = .seconds(1)
+    private var stopped = true
+    private var reconnectTask: Task<Void, Never>?
+
+    init(endpoint: GatewayEndpoint, identity: DeviceIdentity = .loadOrCreate()) {
+        self.endpoint = endpoint
+        self.identity = identity
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 30
+        session = URLSession(configuration: configuration)
+    }
+
+    func start() {
+        stopped = false
+        open()
+    }
+
+    func stop() {
+        stopped = true
+        reconnectTask?.cancel()
+        close(error: .disconnected)
+        state = .idle
+    }
+
+    /// Reconnect now (app came to the foreground, network came back). A socket
+    /// that says it is connected is asked to prove it: after the app was
+    /// suspended it can be dead with nothing here having noticed, and then every
+    /// request waits out its timeout and no event arrives.
+    func reconnectIfNeeded() {
+        guard !stopped, state != .connecting else { return }
+        if state == .connected {
+            Task { await checkAlive() }
+            return
+        }
+        reconnectTask?.cancel()
+        open()
+    }
+
+    /// When any frame last came in.
+    private var lastFrame: Date = .distantPast
+    private var probe: Task<Bool, Never>?
+    /// How long V has to answer a ping (or send anything at all).
+    static let pongWait: Duration = .seconds(4)
+
+    /// Whether V still answers on this socket. One that does not is dropped,
+    /// which reconnects. False as well while not connected.
+    @discardableResult
+    func checkAlive() async -> Bool {
+        guard state == .connected, let socket else { return false }
+        if let probe { return await probe.value }
+        let current = generation
+        let asked = Date.now
+        let task = Task { [weak self] in
+            let pong = await Self.pong(from: socket, within: Self.pongWait)
+            guard let self, self.generation == current, self.state == .connected else { return false }
+            // A proxy on the way may answer pings itself or swallow them; a frame
+            // from V since the question is as good as a pong.
+            let alive = pong || self.lastFrame > asked
+            Log.transport.info("probe: \(alive ? "alive" : "no answer, reconnecting", privacy: .public)")
+            if !alive { self.dropped(error: GatewayError.timeout) }
+            return alive
+        }
+        probe = task
+        let alive = await task.value
+        probe = nil
+        return alive
+    }
+
+    nonisolated private static func pong(from socket: URLSessionWebSocketTask, within limit: Duration) async -> Bool {
+        let once = Once()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            socket.sendPing { error in
+                if once.claim() { continuation.resume(returning: error == nil) }
+            }
+            Task {
+                try? await Task.sleep(for: limit)
+                if once.claim() { continuation.resume(returning: false) }
+            }
+        }
+    }
+
+    /// The pong and the timeout race; whichever is first answers.
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var claimed = false
+        func claim() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if claimed { return false }
+            claimed = true
+            return true
+        }
+    }
+
+    func supports(_ method: String) -> Bool { hello?.methods.contains(method) ?? false }
+
+    func request(_ method: String, _ params: JSONValue = [:], timeout: Duration = .seconds(30)) async throws -> JSONValue {
+        guard state == .connected else { throw GatewayError.disconnected }
+        return try await send(method, params, timeout: timeout)
+    }
+
+    // MARK: Socket lifecycle
+
+    private func open() {
+        close(error: .disconnected)
+        let current = generation
+        // While it keeps failing, the reason stays up between attempts.
+        if failures < 2 || state == .awaitingApproval { state = .connecting }
+        var request = URLRequest(url: endpoint.url)
+        request.timeoutInterval = 20
+        let socket = session.webSocketTask(with: request)
+        socket.maximumMessageSize = 64 * 1024 * 1024
+        self.socket = socket
+        socket.resume()
+        Task { await self.receiveLoop(socket, generation: current) }
+        // A socket that opens but never completes the handshake would otherwise hang forever.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard let self, self.generation == current, self.hello == nil, self.state == .connecting else { return }
+            self.dropped(error: GatewayError.timeout)
+        }
+    }
+
+    private func close(error: GatewayError) {
+        // A new generation makes the old receive loop exit quietly.
+        generation += 1
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
+        let waiting = pending
+        pending.removeAll()
+        for continuation in waiting.values { continuation.resume(throwing: error) }
+    }
+
+    private func receiveLoop(_ socket: URLSessionWebSocketTask, generation current: Int) async {
+        while current == generation {
+            let message: URLSessionWebSocketTask.Message
+            do {
+                message = try await socket.receive()
+            } catch {
+                guard current == generation else { return }
+                dropped(error: error)
+                return
+            }
+            guard current == generation else { return }
+            lastFrame = .now
+            let data: Data
+            switch message {
+            case .string(let text): data = Data(text.utf8)
+            case .data(let bytes): data = bytes
+            @unknown default: continue
+            }
+            // A transcript or session list can be megabytes; never decode those on the main thread.
+            let parsed: JSONValue? = data.count < 32 * 1024
+                ? try? JSONValue.parse(data)
+                : await Task.detached(priority: .userInitiated) { try? JSONValue.parse(data) }.value
+            guard current == generation, let frame = parsed else { continue }
+            handle(frame)
+        }
+    }
+
+    /// Attempts since the last good connection; after a second failure the
+    /// app says why instead of "connecting" forever, and keeps retrying.
+    private var failures = 0
+
+    private func dropped(error: Error) {
+        let wasConnected = state == .connected
+        close(error: .disconnected)
+        hello = nil
+        guard !stopped else { return }
+        failures += 1
+        // Only what kind of failure: an error's text can carry the address.
+        let kind = (error as? URLError).map { "url \($0.code.rawValue)" } ?? (error as? GatewayError)?.code ?? "\((error as NSError).domain) \((error as NSError).code)"
+        Log.transport.info("socket dropped: \(kind, privacy: .public), was connected=\(wasConnected), failures=\(self.failures)")
+        if state != .awaitingApproval {
+            state = failures >= 2 ? .failed(Self.explain(error, host: endpoint.url.host() ?? "")) : .connecting
+        }
+        scheduleReconnect()
+    }
+
+    /// What a person can do about it.
+    nonisolated static func explain(_ error: Error, host: String) -> String {
+        let tailnet = host.hasSuffix(".ts.net") || host.hasPrefix("100.")
+        let unreachable = tailnet ? "连不上 V，请确认手机的 Tailscale 已打开" : "连不上 V，请检查网络"
+        if let gateway = error as? GatewayError, gateway.code == "TIMEOUT" { return unreachable }
+        switch (error as? URLError)?.code {
+        case .notConnectedToInternet, .dataNotAllowed: return "手机没有联网"
+        case .cannotFindHost, .dnsLookupFailed: return tailnet ? unreachable : "找不到 V 的地址，请检查网络"
+        case .timedOut, .cannotConnectToHost, .networkConnectionLost: return unreachable
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate: return "和 V 的安全连接失败，请检查网络"
+        default: return unreachable
+        }
+    }
+
+    private func scheduleReconnect(after delay: Duration? = nil) {
+        reconnectTask?.cancel()
+        let wait = delay ?? retryDelay
+        retryDelay = min(retryDelay * 2, .seconds(15))
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: wait)
+            guard !Task.isCancelled, let self, !self.stopped else { return }
+            self.open()
+        }
+    }
+
+    private func handle(_ frame: JSONValue) {
+        switch frame["type"]?.string {
+        case "res":
+            guard let id = frame["id"]?.string, let continuation = pending.removeValue(forKey: id) else { return }
+            if frame["ok"]?.bool == true {
+                continuation.resume(returning: frame["payload"] ?? .null)
+            } else {
+                let error = frame["error"]
+                continuation.resume(throwing: GatewayError(
+                    code: error?["code"]?.string ?? "ERROR",
+                    message: error?["message"]?.string ?? "请求失败",
+                    detailCode: error?["details"]?["code"]?.string))
+            }
+        case "event":
+            guard let name = frame["event"]?.string else { return }
+            let payload = frame["payload"] ?? .null
+            if name == "connect.challenge" {
+                Task { await self.answerChallenge(payload) }
+            } else {
+                onEvent?(name, payload)
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: Handshake
+
+    private func answerChallenge(_ challenge: JSONValue) async {
+        let nonce = challenge["nonce"]?.string ?? ""
+        let signedAt = challenge["ts"]?.int ?? Int(Date().timeIntervalSince1970 * 1000)
+        let device = UIDevice.current
+        let family = device.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+        // Prefer the issued device token; the bootstrap or shared token only pairs.
+        var auth: [String: JSONValue] = [:]
+        let signatureToken: String?
+        if let token = endpoint.deviceToken {
+            auth["deviceToken"] = .string(token)
+            signatureToken = token
+        } else if let token = endpoint.bootstrapToken {
+            auth["bootstrapToken"] = .string(token)
+            signatureToken = token
+        } else if let token = endpoint.gatewayToken {
+            auth["token"] = .string(token)
+            signatureToken = token
+        } else {
+            signatureToken = nil
+        }
+        let scopes = Self.scopes
+        let payload = DeviceIdentity.authPayload(
+            deviceId: identity.deviceId, clientId: Self.clientId, clientMode: Self.clientMode, role: Self.role,
+            scopes: scopes, signedAtMs: signedAt, token: signatureToken, nonce: nonce,
+            platform: "ios", deviceFamily: family)
+        guard let signature = try? identity.sign(payload) else {
+            state = .failed("无法签名设备身份")
+            return
+        }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+        let params: JSONValue = [
+            "minProtocol": 4,
+            "maxProtocol": 4,
+            "client": [
+                "id": .string(Self.clientId),
+                "displayName": .string("V · \(device.name)"),
+                "version": .string(version),
+                "platform": "ios",
+                "deviceFamily": .string(family),
+                "timeZone": .string(TimeZone.current.identifier),
+                "mode": .string(Self.clientMode),
+                "instanceId": .string(identity.deviceId.prefix(16).description),
+            ],
+            "caps": ["tool-events"],
+            "role": .string(Self.role),
+            "scopes": .array(scopes.map(JSONValue.string)),
+            "auth": .object(auth),
+            "device": [
+                "id": .string(identity.deviceId),
+                "publicKey": .string(identity.publicKeyBase64URL),
+                "signature": .string(signature),
+                "signedAt": .number(Double(signedAt)),
+                "nonce": .string(nonce),
+            ],
+            "locale": .string(Locale.preferredLanguages.first ?? "zh-Hans"),
+        ]
+        do {
+            let hello = try await send("connect", params, timeout: .seconds(20))
+            accept(hello)
+        } catch let error as GatewayError {
+            rejected(error)
+        } catch {
+            rejected(GatewayError(code: "CONNECT", message: error.localizedDescription))
+        }
+    }
+
+    private func accept(_ payload: JSONValue) {
+        let auth = payload["auth"]
+        if let token = auth?["deviceToken"]?.string {
+            endpoint.deviceToken = token
+            endpoint.deviceTokenScopes = auth?["scopes"]?.array.compactMap(\.string)
+            endpoint.bootstrapToken = nil
+            endpoint.save()
+            onEndpointChange?(endpoint)
+        }
+        hello = Hello(
+            serverVersion: payload["server"]?["version"]?.string ?? "",
+            methods: Set(payload["features"]?["methods"]?.array.compactMap(\.string) ?? []),
+            events: Set(payload["features"]?["events"]?.array.compactMap(\.string) ?? []),
+            scopes: auth?["scopes"]?.array.compactMap(\.string) ?? [])
+        retryDelay = .seconds(1)
+        failures = 0
+        Log.transport.info("socket connected")
+        state = .connected
+        onConnected?()
+    }
+
+    private func rejected(_ error: GatewayError) {
+        close(error: error)
+        if error.isPairingPending {
+            state = .awaitingApproval
+            scheduleReconnect(after: .seconds(4))
+        } else if error.detailCode == "AUTH_DEVICE_TOKEN_MISMATCH", endpoint.deviceToken != nil {
+            // The Gateway revoked or rotated this device; fall back to pairing again.
+            endpoint.deviceToken = nil
+            endpoint.save()
+            onEndpointChange?(endpoint)
+            state = .failed("这台设备的授权已失效，需要重新配对")
+        } else if error.isAuthRejected {
+            stopped = true
+            state = .failed(error.message)
+        } else {
+            state = .failed(error.message)
+            scheduleReconnect()
+        }
+    }
+
+    // MARK: Frames
+
+    private func send(_ method: String, _ params: JSONValue, timeout: Duration) async throws -> JSONValue {
+        guard let socket else { throw GatewayError.disconnected }
+        nextId += 1
+        let id = "c\(nextId)"
+        let frame: JSONValue = ["type": "req", "id": .string(id), "method": .string(method), "params": params]
+        let text = String(decoding: try frame.data(), as: UTF8.self)
+        return try await withCheckedThrowingContinuation { continuation in
+            pending[id] = continuation
+            Task {
+                do {
+                    try await socket.send(.string(text))
+                } catch {
+                    self.pending.removeValue(forKey: id)?.resume(throwing: GatewayError.disconnected)
+                }
+            }
+            Task {
+                try? await Task.sleep(for: timeout)
+                self.pending.removeValue(forKey: id)?.resume(throwing: GatewayError.timeout)
+            }
+        }
+    }
+}

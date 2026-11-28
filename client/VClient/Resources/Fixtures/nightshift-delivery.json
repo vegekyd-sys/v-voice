@@ -1,0 +1,25 @@
+{
+  "schema": "2.0",
+  "header": {
+    "title": { "tag": "plain_text", "content": "夜班交付：秋季新品 6 条短视频" },
+    "template": "green",
+    "text_tag_list": [ { "tag": "text_tag", "text": { "tag": "plain_text", "content": "已完成" }, "color": "green" } ]
+  },
+  "body": {
+    "elements": [
+      { "tag": "div", "fields": [
+        { "is_short": true, "text": { "tag": "lark_md", "content": "**成片**\n6 / 6" } },
+        { "is_short": true, "text": { "tag": "lark_md", "content": "**质检**\n18 项全部通过" } },
+        { "is_short": true, "text": { "tag": "lark_md", "content": "**用时**\n3 小时 12 分" } },
+        { "is_short": true, "text": { "tag": "lark_md", "content": "**花费**\n¥ 41.60" } }
+      ] },
+      { "tag": "hr" },
+      { "tag": "collapsible_panel", "expanded": false,
+        "header": { "title": { "tag": "markdown", "content": "查看每条成片" } },
+        "elements": [
+          { "tag": "markdown", "content": "1. 风衣 · 街拍 15s ✅\n2. 针织衫 · 室内 12s ✅\n3. 牛仔外套 · 夜景 15s ✅\n4. 围巾 · 特写 8s ✅\n5. 短靴 · 走秀 10s ✅\n6. 全系列 · 合集 30s ✅" }
+        ] },
+      { "tag": "button", "text": { "tag": "plain_text", "content": "打开交付页" }, "type": "primary_filled", "behaviors": [ { "type": "open_url", "default_url": "https://openclaw.tianyi.live/deliver/" } ] }
+    ]
+  }
+}
