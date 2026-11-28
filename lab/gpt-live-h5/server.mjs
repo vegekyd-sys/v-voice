@@ -226,11 +226,12 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
     return issued;
   };
   const conversationPresentation=binding=>{const context=voiceAccessContext(binding,{publicEnabled:iosPublicEntry,publicTools});return {name:context.conversationLabel,kind:binding.kind,replySync:binding.replySync,accountLabel:context.accountLabel,entryKind:context.entryKind,scopeNote:context.scopeNote};};
+  const referenceAllowed = binding => binding.permissionProfile === 'personal-tianyi' && director?.uploadReference && boardAssets && boardAllowed(binding);
   const improvAllowed = binding => Boolean(director) && binding.permissionProfile === 'personal-tianyi';
   const entrySnapshot=(binding,req)=>({ready:backendReady(),preview,defaultModel,
     ...(directVoice?.attach?{nativeDialVersion:1,webDialVersion:2,dialGreeting:true,tvDialStandby:hosted}:{}),conversation:conversationPresentation(binding),iosBindingAvailable:hosted,
     ...(speakerRouting?{speakerRouting:true,phoneInputPolicy}:{}),...(listening?{comparisonAvailable:true}:{}),
-    models:phoneModels(),...entryPresentation(binding,req),...(improvAllowed(binding)?{improvLive:true,...(director.uploadReference && boardAssets && boardAllowed(binding) ? {referenceUpload:true} : {})}:{}),...(boardAllowed(binding)?{board:true}:{})});
+    models:phoneModels(),...entryPresentation(binding,req),...(improvAllowed(binding)?{improvLive:true,...(referenceAllowed(binding) ? {referenceUpload:true} : {})}:{}),...(boardAllowed(binding)?{board:true}:{})});
   const visual = createAvatarReactionSelector({evaluate:avatarEvaluate});
   // The board sends lookup results to its own text model, so it stays on the
   // owner's fixed entry until other callers have agreed to that.
@@ -817,7 +818,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         ["/events.mjs", [join(here, "events.mjs"), "text/javascript; charset=utf-8"]],
         ["/duplex-playback.mjs", [join(here, "duplex-playback.mjs"), "text/javascript; charset=utf-8"]],
         ["/speaker-routing.mjs", [join(here, "../speaker-native/client.mjs"), "text/javascript; charset=utf-8"]],
-        ...["device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "improv-player.mjs", "board-client.mjs", "board-assets-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "upload-backpressure.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
+        ...["camera-photo.mjs", "device-location.mjs", "caller-context.mjs", "ui-bundle.mjs", "call-view.mjs", "improv-player.mjs", "board-client.mjs", "board-assets-client.mjs", "board-scene.mjs", "board-sketch.mjs", "media-references.mjs", "screen-wake-lock.mjs", "content-view.mjs", "microphone-capture.mjs", "microphone-session.mjs", "transcript-presentation.mjs", "call-sounds.mjs", "relay-audio.mjs", "upload-backpressure.mjs", "avatar.mjs", "avatar-state.mjs", "avatar-catalog.mjs", "avatar-approved-reactions.mjs", "avatar-reactions.mjs", "avatar-telemetry.mjs"].map((name) => [`/${name}`, [join(here, name), "text/javascript; charset=utf-8"]]),
         ["/styles.css", [join(here, "styles.css"), "text/css; charset=utf-8"]],
         ["/changelog.mjs", [join(here, "changelog.mjs"), "text/javascript; charset=utf-8"]],
         ["/assets/v-voice-icon.svg", [join(here, "assets/v-voice-icon.svg"), "image/svg+xml"]],
@@ -949,7 +950,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         releaseReadiness: releaseReadiness(),
         ...(listening?{comparisonAvailable:true}:{}), model: "gpt-live-1-codex", activeCall: Boolean(context.active), creatingSession: context.creatingSession,
         models:phoneModels(),...entryPresentation(binding,req),
-        ...(improvAllowed(binding)?{improvLive:true,...(director.uploadReference && boardAssets && boardAllowed(binding) ? {referenceUpload:true} : {})}:{}),
+        ...(improvAllowed(binding)?{improvLive:true,...(referenceAllowed(binding) ? {referenceUpload:true} : {})}:{}),
         ...(boardAllowed(binding)?{board:true}:{}),
       });
       if(req.method==='GET'&&pathname==='/api/comparison')return listening?json(res,200,listening.manifest):json(res,404,{error:'当前没有试听样本'});
@@ -992,7 +993,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
       if (req.method !== "POST") return json(res, 404, { error: "没有这个入口" });
       if (pathname === '/api/reference-image') {
         const active = context.active;
-        if (!active?.improv || !improvAllowed(binding) || !boardAllowed(binding) || !boardAssets || !director?.uploadReference ||
+        if (!active?.direct || !referenceAllowed(binding) ||
             active.reservation.voiceSessionId !== url.searchParams.get('call')) return json(res,409,{error:'参考图需要当前通话'});
         const type = req.headers['content-type'], chunks = [];
         let size = 0;
@@ -1007,6 +1008,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
           type==='image/png' ? bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) :
           bytes.toString('ascii',0,4)==='RIFF' && bytes.toString('ascii',8,12)==='WEBP';
         if (!matches) return json(res,415,{error:'文件内容和图片格式不一致'});
+        if (context.active !== active) return json(res,409,{error:'这通电话已结束'});
         const link = await director.uploadReference(bytes,type);
         if (context.active !== active) return json(res,409,{error:'这通电话已结束'});
         const owner=active.reservation.voiceSessionId;
@@ -1135,7 +1137,7 @@ export function createLiveH5Server({ gateway, offer, directVoice, listening, spe
         if(Array.isArray(params.visible))boardAssets.visible?.(owner,params.visible);
         if (Array.isArray(params.seen)) boardAssets.seen(owner, params.seen.filter(id => typeof id === 'string' && SHELF_ID.test(id)),params.shapes);
         const state = board.state(owner);
-        return json(res,200,{...boardAssets.page(owner),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&(params.rev!==state.scene.rev||typeof params.call==='string'&&params.call!==owner.slice(0,8))?{sync:state}:{})});
+        return json(res,200,{...boardAssets.page(owner),...(context.active.direct && referenceAllowed(binding) ? {referenceUpload:true} : {}),rev:state.scene.rev,...(address?{address}:{}),...(Number.isSafeInteger(params.rev)&&(params.rev!==state.scene.rev||typeof params.call==='string'&&params.call!==owner.slice(0,8))?{sync:state}:{})});
       }
       if (context.active.direct) {
         if (pathname === '/api/close') { await close(context); return json(res,200,{ok:true}); }

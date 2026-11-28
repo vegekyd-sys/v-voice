@@ -1,3 +1,4 @@
+import {photoJpeg} from '../../lab/gpt-live-h5/camera-photo.mjs';
 // Transport adapter only. The page, React UI, CSS, Markdown, reader and Reaction
 // behavior are imported from the owning H5 implementation without restyling.
 import {createCallView} from '../../lab/gpt-live-h5/call-view.mjs';
@@ -49,6 +50,34 @@ mountCallUi(document,view,{
     redial:()=>void send('redial').catch(()=>{}),resume:()=>void send('resume').catch(()=>{}),
     mute:()=>void send('mute').catch(()=>{}),
     composerOpen:()=>view.get().composer.open,compose:open=>view.set(s=>({composer:{...s.composer,open}})),
+    async uploadReference(file, question) {
+      const callID = owner;
+      const live = () => current?.active && owner === callID;
+      try {
+        view.message('正在添加图片');
+        const jpeg = await photoJpeg(file);
+        const encoded = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = () => reject(Error('无法读取照片，请重试。'));
+          reader.readAsDataURL(jpeg);
+        });
+        if (!live()) return false;
+        await post('uploadReference', {jpeg: encoded}, callID);
+        if (!live()) return false;
+        boardAssets?.poke();
+        if (question) {
+          const receipt = await post('steer', {text: question}, callID);
+          if (!live()) return false;
+          view.set(s => ({composer: {...s.composer, open: false}}));
+          view.message(receipt.message, 'success');
+        } else view.message('参考图已放到画布上', 'success');
+        return true;
+      } catch (error) {
+        if (live()) view.message(error.message || '添加图片失败，请重试。', 'problem');
+        return false;
+      }
+    },
     async steer(text){try{const receipt=await send('steer',{text});view.set(s=>({composer:{...s.composer,open:false}}));view.message(receipt.message,'success');return true;}catch{return false;}},
     async cancelTasks(){try{await send('cancel');view.message('已请求取消后台任务。','success');}catch{}},
     chooseModel:id=>void send('model',{id}).catch(()=>{}),chooseGrokVoice:id=>void send('voice',{id}).catch(()=>{}),
@@ -83,7 +112,7 @@ function stopVisuals(){film.stop();reactions?.dispose();reactions=null;telemetry
 const pageRequests=()=>current?.capabilities?.pageRequests>=1;
 const page=(name,body,callID)=>post('service',{route:'page/'+name,body},callID);
 // The call board.
-function stopBoard(){board?.dispose();board=null;boardAssets?.dispose();boardAssets=null;boardTasks='';clearInterval(boardTimer);boardTimer=null;boardFollow=null;boardPhotos.clear();view.set({board:null,boardCanvas:null,boardSpoken:null,boardAssets:null});}
+function stopBoard(){board?.dispose();board=null;boardAssets?.dispose();boardAssets=null;boardTasks='';clearInterval(boardTimer);boardTimer=null;boardFollow=null;boardPhotos.clear();view.set({referenceUpload:false,board:null,boardCanvas:null,boardSpoken:null,boardAssets:null});}
 function loadBoardPhoto(query){
   const callID=owner;
   if(!board||typeof query!=='string')return Promise.resolve(null);
@@ -124,7 +153,11 @@ function startBoard(callID){
   });
   // The call's shelf of made things (board-assets.mjs), through the same page-feature relay.
   boardAssets=createAssetsClient({isCurrent:()=>owner===callID&&current?.active,rev:()=>board?.scene.rev??0,
-    onChange:shelf=>{if(owner===callID)view.set({boardAssets:shelf});},onSync:value=>board?.sync(value),request:body=>page('board-assets',body,callID)});
+    onChange:shelf=>{if(owner===callID)view.set({boardAssets:shelf});},onSync:value=>board?.sync(value),request:async body=>{
+      const reply=await page('board-assets',body,callID);
+      if(owner===callID && current?.active) view.set({referenceUpload:current.capabilities?.photoUpload===1 && reply.referenceUpload===true});
+      return reply;
+    }});
   boardTimer=setInterval(()=>{if(!boardFollow||owner!==callID)return;
     if(current?.capabilities?.audioProgress>=1&&view.get().voice==='speaking')void post('audioProgress',{},callID).then(value=>{if(Number.isFinite(value?.outputBytes)&&Number.isFinite(value?.queuedBytes))audio=value;}).catch(()=>{});const spoken=boardFollow();if(JSON.stringify(view.get().boardSpoken)!==JSON.stringify(spoken))view.set({boardSpoken:spoken});},400);
 }

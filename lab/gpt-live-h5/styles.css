@@ -2356,3 +2356,10 @@ html[data-tv-entering="true"] .call-page .avatar{visibility:hidden!important}
 /* Focus the entire sheet when reading. Its controls use the usual TV focus ring. */
 .board[data-tv-board]:has(.board-scroll:focus) { background-color: #fffaf0; }
 html[data-tv="true"] .board[data-tv-board] .board-scroll:focus { outline: none; }
+
+.photo-camera { width: min(92vw, 540px); padding: 12px; border: 0; border-radius: 20px; background: #fffafb; color: var(--ink); }
+.photo-camera::backdrop { background: #20152499; }
+.photo-camera video { width: 100%; max-height: 60vh; border-radius: 12px; background: #211d24; }
+.photo-camera > div { display: flex; justify-content: space-between; padding-top: 8px; }
+.photo-camera button { padding: 10px 16px; border-radius: 24px; }
+.photo-camera button:last-child { color: white; background: #645074; }

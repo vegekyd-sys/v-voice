@@ -229,6 +229,11 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-camera-question.20261128.1',date:'2026-11-28',
+    title:'通话中拍照问 V',
+    items:['打开键盘，点相机拍照。V 会回答输入框里的问题，留空就问“这是什么？”。相册仍可从旁边的图片按钮打开。'],
+  },
+  {
     version:'voice-tv-reply-audio.20261128.1',date:'2026-11-28',
     title:'电视讲解时语音播放更连贯',
     items:['电视会把已收到的回复提前交给音频播放器，画面忙时也能继续播。首声仍按原来的时机开始。'],

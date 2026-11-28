@@ -370,6 +370,19 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, URLSessionWebS
             return try await raw(route, record: renewed, body: body)
         }
     }
+    func uploadReference(_ jpeg: Data, voiceID: String) async throws -> [String: Any] {
+        guard let record else { throw VoiceError.unbound }
+        var req = request("reference-image", binding: record.binding, cookie: record.cookie)
+        req.url?.append(queryItems: [URLQueryItem(name: "call", value: voiceID)])
+        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        req.httpMethod = "POST"
+        let (data, response) = try await session.upload(for: req, from: jpeg)
+        guard let http = response as? HTTPURLResponse else { throw VoiceError.connection }
+        try validate(http.statusCode, data: data)
+        guard data.count < 32_000, let result = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = result["id"] as? String else { throw VoiceError.protocolMismatch }
+        return ["id": id]
+    }
     func comparisonAudio(_ id: String) async throws -> Data {
         guard id.range(of: #"^[a-z0-9-]{1,100}$"#, options: .regularExpression) != nil, let saved = record else { throw VoiceError.protocolMismatch }
         let req = request("comparison/audio/" + id, binding: saved.binding, cookie: saved.cookie)

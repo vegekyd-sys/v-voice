@@ -65,6 +65,12 @@
 
 **以后新增页面功能：服务端加一个 `page/<名字>`，`ios/H5/native-h5.mjs` 去调它，随网页发布即可，不需要新 App。** 需要流式推送、二进制大文件、后台执行或新系统权限的，仍要原生改动。
 
+## 通话照片
+
+键盘内的相机使用 WebKit 系统拍照入口。页面将选中的照片重绘为长边最多 1600 像素、最多 1 MiB 的 JPEG。只有 App 声明 `capabilities.photoUpload: 1` 且当前通话的画布返回 `referenceUpload: true` 时才显示入口。
+
+专用命令 `uploadReference` 接收 JPEG，原生端校验页面与通话归属，使用当前绑定向 `/api/reference-image` 上传。服务端检查权限和通话 ID。页面收到图片回执后，通过既有 `steer` 发送问题。首次支持此能力需要更新 App。
+
 ## 开发与验证约定
 
 - 对话产品改动先做在 Web/服务，使用既有能力操作。除非新增原生执行能力，不添加 Swift 的 provider/source/中文关键词分支。

@@ -217,7 +217,7 @@ struct H5WebSurface: UIViewRepresentable {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping @MainActor (Any?, String?) -> Void) {
         guard Self.trusted(message.frameInfo.request.url, mainFrame: message.frameInfo.isMainFrame),
               let value = message.body as? [String: Any], value["pageID"] as? String == pageID, let action = value["action"] as? String,
-              let bytes = try? JSONSerialization.data(withJSONObject: value), bytes.count <= (action == "share" ? 220_000 : 32_000) else { replyHandler(nil, "不受支持的页面请求"); return }
+              let bytes = try? JSONSerialization.data(withJSONObject: value), bytes.count <= (action == "uploadReference" ? 3_000_000 : action == "share" ? 220_000 : 32_000) else { replyHandler(nil, "不受支持的页面请求"); return }
         let payload = value["payload"] as? [String: Any] ?? [:], owner = value["callID"] as? String ?? ""
         guard action == "ready" || ready else { replyHandler(nil, "界面正在更新，请稍后重试。"); return }
         let receivedPageID = pageID
@@ -285,6 +285,11 @@ struct H5WebSurface: UIViewRepresentable {
         case "service":
             guard let route = payload["route"] as? String, let body = payload["body"] as? [String: Any] else { throw VoiceError.protocolMismatch }
             return try await call.pageRequest(route, body: body, owner: owner)
+        case "uploadReference":
+            guard owned, foreground, let jpeg = payload["jpeg"] as? String, jpeg.utf8.count <= 1_398_104,
+                  let bytes = Data(base64Encoded: jpeg), bytes.count <= 1024 * 1024,
+                  bytes.starts(with: [0xff, 0xd8, 0xff]) else { throw VoiceError.protocolMismatch }
+            return try await call.uploadReference(bytes, owner: owner)
         case "saveMedia":
             guard owned, let text = payload["url"] as? String, let url = URL(string: text), let kind = payload["kind"] as? String else { throw VoiceError.protocolMismatch }
             try await MediaLibrarySaver.save(url: url, kind: kind)

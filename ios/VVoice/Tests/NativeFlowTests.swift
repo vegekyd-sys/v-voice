@@ -231,6 +231,47 @@ import VVoiceCore
         XCTAssertEqual((snapshot["acknowledgements"] as? [String])?.count, 0)
         await call.end()
     }
+    func testCameraPhotoUsesCurrentCallBeforeAskingQuestion() async throws {
+        let call = try await client()
+        try await fixture("board-mode")
+        call.model = .seeduplex
+        try await call.startOrContinue()
+        let host = H5WebHost(call: call, onError: { XCTFail($0) })
+        host.latest = H5Snapshot.make(call, visible: true)
+        let web = host.makeWebView()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIViewController()
+        window.makeKeyAndVisible()
+        window.rootViewController!.view.addSubview(web)
+        web.frame = window.bounds
+        defer { window.isHidden = true; previous?.makeKeyAndVisible(); host.dispose() }
+        try await until { host.ready }
+        _ = try await web.evaluateJavaScript("document.querySelector('#textToggle').click()")
+        try await until {
+            try await web.evaluateJavaScript("Boolean(document.querySelector('input[capture=environment]')?.offsetWidth)") as? Bool == true
+        }
+        // The Simulator has no rear camera. Deliver a still through WebKit's actual file input.
+        _ = try await web.callAsyncJavaScript("""
+            const canvas = document.createElement('canvas');
+            canvas.width = 640; canvas.height = 480;
+            const paint = canvas.getContext('2d');
+            paint.fillStyle = 'orange'; paint.fillRect(40, 40, 240, 160);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            const files = new DataTransfer();
+            files.items.add(new File([blob], 'sample.png', {type: 'image/png'}));
+            const camera = document.querySelector('input[capture=environment]');
+            camera.files = files.files;
+            camera.dispatchEvent(new Event('change', {bubbles: true}));
+            return true;
+            """, arguments: [:], in: nil, in: .page)
+        try await until { !(try await self.stats()["supplements"] as? [[String: Any]] ?? []).isEmpty }
+        let result = try await stats()
+        XCTAssertGreaterThan(result["uploadedPhotoBytes"] as? Int ?? 0, 0)
+        XCTAssertEqual((result["supplements"] as? [[String: String]])?.map { $0["text"] }, ["这是什么？"])
+        await call.end()
+    }
     func testCallBoardReachesThePageThroughTheBridge() async throws {
         let call = try await client()
         try await fixture("board-mode")
