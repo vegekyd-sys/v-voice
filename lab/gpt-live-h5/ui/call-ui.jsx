@@ -7,6 +7,7 @@ import {createPortal, flushSync} from 'react-dom';
 import {clock, resolveStatus, splitTurns, voiceChoice} from '../call-view.mjs';
 import {openAppWithFallback, refreshBindingOnExpiry} from '../app-handoff.mjs';
 import {Board} from './board.jsx';
+import {Camera} from './camera.jsx';
 import {emptyScene} from '../board-scene.mjs';
 const liveOnlyScene = emptyScene();
 import {boardNowLine} from '../board-client.mjs';
@@ -18,6 +19,7 @@ const SPEAKER_OFF='M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6';
 const HANG = 'M3 11.8c5.1-4.4 12.9-4.4 18 0v3.7l-4.5.5-.7-3.2a12.3 12.3 0 0 0-7.6 0l-.7 3.2-4.5-.5v-3.7Z';
 const SPARK = 'M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1';
 const GEAR = <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></Icon>;
+const CAMERA_ICON = <Icon><path d="M3 8a2 2 0 0 1 2-2h3l2-3h4l2 3h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12.5" r="3.5"/></Icon>;
 const WAVE = 'M4 10v4m4-7v10m4-13v16m4-12v8m4-6v4';
 const ACTIVITY_ICON = {
   web: <Icon><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" /></Icon>,
@@ -164,6 +166,27 @@ function Conversation({state, options, history, setHistory, onOverflow, wide}) {
 
 function Controls({state, actions, onHeight}) {
   const input = useRef(null), box = useRef(null);
+  const [camera, setCamera] = useState(false), [adding, setAdding] = useState(null);
+  const pendingPhoto = useRef(null), sending = useRef(false);
+  // Mobile browsers and the App use the system camera. Desktops use a video-only preview.
+  const systemCamera = state.nativeSettings || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  async function addPhoto(file, ask = false) {
+    if (!file || pendingPhoto.current || !input.current) return;
+    const field = input.current, draft = field.value;
+    const upload = actions.uploadReference(file, ask ? draft.trim() || '这是什么？' : undefined);
+    pendingPhoto.current = {upload, ask};
+    setAdding(ask ? 'camera' : 'gallery');
+    try {
+      const sent = await upload;
+      if (ask && sent && field.value === draft) field.value = '';
+    } finally { pendingPhoto.current = null; setAdding(null); }
+  }
+  const pick = ask => event => {
+    const [file] = event.target.files;
+    event.target.value = '';
+    void addPhoto(file, ask);
+  };
   // The page floats these controls over the conversation and reserves their
   // height below the latest line, so text scrolls behind the glass.
   const report = () => { if (onHeight && box.current) onHeight(box.current.getBoundingClientRect().height); };
@@ -186,22 +209,32 @@ function Controls({state, actions, onHeight}) {
   };
   const submit = async event => {
     event.preventDefault();
-    const text = input.current.value.trim();
-    if (!text) return;
-    if (await actions.steer(text)) input.current.value = '';
+    const field = input.current, text = field.value.trim(), photo = pendingPhoto.current;
+    if (!text || photo?.ask || sending.current) return;
+    sending.current = true;
+    try {
+      if (photo && !await photo.upload) return;
+      if (input.current === field && await actions.steer(text) && field.value.trim() === text) field.value = '';
+    } finally { sending.current = false; }
   };
   return (
     <div className="controls" ref={box}>
       <form id="steerForm" className="composer" data-open={String(open && active)} onSubmit={submit}
         onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); actions.compose(false); } }}>
-        {/* A picture to make things from goes with what is typed: it lands on the board as the caller's own. */}
-        {state.referenceUpload && state.model !== 'gpt-live' && <label className="reference-picker" title="添加图片">
-          <input aria-label="添加图片" type="file" accept="image/jpeg,image/png,image/webp" disabled={!enabled} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void actions.uploadReference(file);}}/>
-          <Icon><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="m4 18 5-5 3 3 4-6 4 6"/></Icon>
-        </label>}
+        {state.referenceUpload && state.model !== 'gpt-live' && <>
+          <label className="reference-picker" title="添加图片">
+            <input aria-label="添加图片" type="file" accept="image/jpeg,image/png,image/webp" disabled={!enabled || adding} onChange={pick(false)}/>
+            <Icon><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="m4 18 5-5 3 3 4-6 4 6"/></Icon>
+          </label>
+          {systemCamera ? <label className="reference-picker" title="拍照提问">
+            <input aria-label="拍照提问" type="file" accept="image/*" capture="environment" disabled={!enabled || adding} onChange={pick(true)}/>
+            {CAMERA_ICON}
+          </label> : <button type="button" className="reference-picker" aria-label="拍照提问" title="拍照提问" disabled={!enabled || adding} onClick={() => setCamera(true)}>{CAMERA_ICON}</button>}
+          {camera && open && enabled && <Camera onPhoto={photo => void addPhoto(photo, true)} onClose={() => setCamera(false)}/>}
+        </>}
         <label className="sr-only" htmlFor="steerText">补充内容</label>
         <input id="steerText" ref={input} placeholder="补充给 V 的文字…" maxLength={2000} autoComplete="off" disabled={!enabled} />
-        <button id="steer" type="submit" aria-label="发送补充内容" disabled={!enabled}><Icon d="m3 3 19 8-9 3-3 9-7-20Zm9 10L22 3" /></button>
+        <button id="steer" type="submit" aria-label="发送补充内容" disabled={!enabled || adding === 'camera'}><Icon d="m3 3 19 8-9 3-3 9-7-20Zm9 10L22 3" /></button>
       </form>
       <div id="callPill" className="pill" aria-label="通话控制">
         {active && (
@@ -620,7 +653,7 @@ function CallPage({view, actions, options}) {
   const dock = (
     <>
       {inCall && <StatusLine status={status} onTask={openTasks} actions={actions} />}
-      {inCall && <Controls state={state} actions={actions} />}
+      {inCall && <Controls key={state.callStartedAt} state={state} actions={actions} />}
     </>
   );
   return (
@@ -682,7 +715,7 @@ function CallPage({view, actions, options}) {
               // A phone with a cue page: the page is the subject; under it only what V is saying now. Tap for the whole conversation.
               ? <button type="button" className="board-now" data-who={nowLine.who} onClick={() => setHistory(true)} aria-label="查看全部对话">{nowLine.text}</button>
               : <Conversation state={state} options={options} history={wide || history} setHistory={setHistory} onOverflow={latchOverflow} wide={wide} />}
-            {!state.reading && <Controls state={state} actions={actions} onHeight={setControlsHeight} />}
+            {!state.reading && <Controls key={state.callStartedAt} state={state} actions={actions} onHeight={setControlsHeight} />}
           </aside>
         )}
       </main>

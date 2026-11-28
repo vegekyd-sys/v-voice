@@ -151,7 +151,7 @@ async function fixture(t, options = {}) {
     AudioContext,
     EventSource,
     MediaStream: class { constructor(tracks) { Object.assign(this, stream(tracks)); } },
-    Blob,
+    Blob, File,
     ...(options.URL ? {URL: options.URL} : {}),
     fetch: async (url, init) => {
       const route = String(url).split("?")[0].split("/").at(-1);
@@ -1371,4 +1371,24 @@ test('a message typed while a picture is still uploading is sent once the pictur
   const routes = f.requests.map(row => row.route);
   assert(routes.indexOf('steer') > routes.indexOf('reference-image'));
   assert.equal(f.requests.find(row => row.route === 'steer').payload.text, '我刚发的图里有什么？');
+});
+
+for (const outcome of ['failed', 'redial']) test(`a camera question is withheld after a ${outcome} upload`, async t => {
+  const upload = deferred();
+  let actions;
+  const f = await fixture(t, {
+    URL: class extends URL { constructor(path, base = 'https://voice.test/') { super(path, base); } },
+    contentView: {reset() {}, render() {}},
+    mountCallUi: (_document, _view, ui) => { actions = ui.actions; },
+    api: (route, _body, fallback) => route === 'reference-image' ? upload.promise : fallback,
+  });
+  await f.context.startCall();
+  const asking = actions.uploadReference(new Blob(['frame'], {type: 'image/jpeg'}), '这是什么？');
+  if (outcome === 'redial') {
+    await f.context.stopCall();
+    await f.context.startCall();
+    upload.resolve({id: 'a1'});
+  } else upload.reject(Error('图片上传失败'));
+  assert.equal(await asking, false);
+  assert.equal(f.requests.filter(row => row.route === 'steer').length, 0);
 });

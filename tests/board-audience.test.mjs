@@ -11,21 +11,21 @@ import {feishuConversationPhone} from '../lib/feishu-conversation-directory.mjs'
 // guest and browser Public. Default ("owner") keeps it to the owner's entry, as before.
 const fixed={id:'fixed-office',agentId:'makaron',accountId:'fixture-account',callerId:'tianyi',permissionProfile:'personal-tianyi',sessionKey:'agent:makaron:feishu:group:oc_fixed',kind:'group',displayName:'固定工作会话',accountLabel:'工作账号',accessToken:'f'.repeat(40)};
 const dynamic=feishuConversationPhone('fixture-account','oc_dynamic');
-async function fixture(t,audience,voice={}){
+async function fixture(t,audience,voice={},media={}){
  const dir=await mkdtemp(join(tmpdir(),'voice-board-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const calls=[],runs=[];
  const board={available:true,run:async args=>{runs.push(args);args.onOp({op:'sync',scene:{serial:1,rev:1,title:'t',blocks:[]}});return {reason:'drawn',rev:1,durationMs:1};},
   scene:()=>({serial:1,rev:1,title:'t',blocks:[{id:'p',t:'photo',query:'故宫'}]}),canvas:()=>({zones:[],active:''}),forget:()=>{}};
  const bridge=createLiveH5Server({enableGrok:true,basePath:'/voice',publicOrigin:'https://voice.example',accessToken:'p'.repeat(40),iosBindingsFile:join(dir,'grants.json'),iosPublicEntry:true,publicTools:true,conversationEntries:[fixed],
-  board,boardAudience:audience,boardPhotos:{find:async()=>({type:'image/jpeg',bytes:Buffer.from('fixture')})},
+  ...media,board,boardAudience:audience,boardPhotos:{find:async()=>({type:'image/jpeg',bytes:Buffer.from('fixture')})},
   feishuLogin:{conversations:true,allowUnidentified:true,appId:'cli_fixture',appSecret:'fixture-secret',accountId:'fixture-account',actors:[]},
   gateway:{ready:true,request:async(method,params)=>{if(method==='tools.catalog')return {groups:[{tools:[{id:'web_search'},{id:'memory_search'},{id:'exec'}]}]};if(method==='sessions.describe')return {session:{key:params.key,agentId:'makaron'}};return {ok:true};}},
   directVoice:{models:()=>[{id:'seeduplex',available:true}],reserve:async args=>{calls.push(args);return {voiceSessionId:'fixture-'+calls.length,relayTicket:'fixture',provider:args.model};},close:async()=>{},dispose:async()=>{},...voice}});
  await new Promise(r=>bridge.server.listen(0,'127.0.0.1',r));t.after(()=>bridge.dispose());
- const send=(path,{body,cookie=''}={})=>new Promise((resolve,reject)=>{
-  const req=httpRequest({host:'127.0.0.1',port:bridge.server.address().port,path:'/voice'+path,method:body===undefined?'GET':'POST',headers:{host:'voice.example',origin:'https://voice.example',cookie,'content-type':'application/json'}},res=>{
+ const send=(path,{body,cookie='',type='application/json'}={})=>new Promise((resolve,reject)=>{
+  const req=httpRequest({host:'127.0.0.1',port:bridge.server.address().port,path:'/voice'+path,method:body===undefined?'GET':'POST',headers:{host:'voice.example',origin:'https://voice.example',cookie,'content-type':type}},res=>{
    let text='';res.on('data',b=>text+=b);res.on('end',()=>resolve({status:res.statusCode,text,json:()=>JSON.parse(text),cookie:(res.headers['set-cookie']??[]).map(v=>v.split(';')[0]).join('; ')}));
-  });req.on('error',reject);req.end(body===undefined?undefined:JSON.stringify(body));
+  });req.on('error',reject);req.end(body===undefined || Buffer.isBuffer(body) ? body : JSON.stringify(body));
  });
  return {send,calls,runs};
 }
@@ -77,4 +77,29 @@ test('page features: only the ones the service names exist, and each keeps its o
  // An avatar request is an avatar request: nothing rides on it.
  const avatar=await f.send('/api/avatar?phone='+phone,{cookie,body:{voiceSessionId:call.json().voiceSessionId,revision:1,turns:[],board:drawRequest('x')}});
  assert.equal(avatar.json().ops,undefined);
+});
+
+test('only an authorized current relay call can add a camera still, including the native App without live broadcast', async t => {
+  const picked = [];
+  const f = await fixture(t, 'all', {}, {
+    director: Object.assign(async () => {}, {uploadReference: async () => 'https://example.test/photo.jpg'}),
+    boardAssets: {add: () => ({id: 'a1'}), pick: (call, id) => picked.push([call, id])},
+  });
+  for (const [name, open] of Object.entries(entries)) {
+    const {phone, cookie} = await open(f);
+    const call = await f.send('/api/session?phone=' + phone, {cookie, body: {model: 'seeduplex', nativeRuntimeVersion: 1}});
+    const id = call.json().voiceSessionId;
+    assert.equal(call.status, 200, call.text);
+    const upload = (owner, type) => f.send(`/api/reference-image?phone=${phone}&call=${owner}`, {
+      cookie, type, body: Buffer.from([255, 216, 255, 217]),
+    });
+    assert.notEqual((await upload('another-call', 'image/jpeg')).status, 200);
+    if (name === 'owner') {
+      assert.equal((await upload(id, 'image/png')).status, 415);
+      assert.deepEqual((await upload(id, 'image/jpeg')).json(), {id: 'a1'});
+      assert.deepEqual(picked, [[id, 'a1']]);
+    } else assert.notEqual((await upload(id, 'image/jpeg')).status, 200);
+    assert.equal((await f.send('/api/close?phone=' + phone, {cookie, body: {voiceSessionId: id}})).status, 200);
+  }
+  assert.equal(picked.length, 1);
 });

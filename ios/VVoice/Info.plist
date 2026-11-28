@@ -36,7 +36,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>V Voice 当前仅提供语音通话，不使用相机，也不会主动请求相机权限。</string>
+	<string>拍照提问时使用相机，把你确认的照片交给当前通话中的 V。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>仅在你要求使用当前位置时获取一次定位，提供给当前 V 通话用于附近查询或确认上车点。不会持续追踪。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

@@ -1,3 +1,4 @@
+import { photoJpeg } from "./camera-photo.mjs";
 import {warmTvOpus} from "./tv-opus.mjs";
 import {createImprovPlayer} from "./improv-player.mjs";
 import {phoneModelOptions} from "./model-options.mjs";
@@ -48,22 +49,35 @@ if (document.querySelector) mountCallUi(document, view, {
   // The call's shelf of made things: the caller's tap on one, and a picture reported as on screen.
   boardWorks: {visible: ids=>call?.boardAssets?.visible(ids), pick: (id, hold) => call?.boardAssets?.pick(id, hold), shown: (id, ratio) => call?.boardAssets?.shown(id, ratio), save: item => saveBoardPicture(item)},
   actions: {
-    uploadReference: async file => {
-      const active=call;
-      if (!active?.voiceSessionId || !file) return;
-      if (file.size>8*1024*1024) return setStatus('请选择小于 8 MB 的图片',{tone:'problem'});
-      setStatus('正在添加参考图');
-      // (A message typed meanwhile waits for this: a question about the picture is asked once it is there.)
-      const upload=(async()=>{try {
-        const url=new URL(apiUrl('reference-image'),document.baseURI);
-        url.searchParams.set('call',active.voiceSessionId);
-        const response=await fetch(url,{method:'POST',body:file,headers:{'content-type':file.type}});
-        if (!response.ok) throw Error((await response.json()).error);
-        if(call===active){active.boardAssets?.poke?.();setStatus('参考图已放到画布上',{tone:'success'});}
-      } catch(error){if(call===active)setStatus(error.message||'添加参考图失败',{tone:'problem'});}})();
-      active.referenceUpload=upload;
-      await upload;
-      if(active.referenceUpload===upload)active.referenceUpload=null;
+    uploadReference: async (file, question) => {
+      const active = call;
+      if (!active?.voiceSessionId || !file || active.referenceUpload) return false;
+      setStatus('正在添加图片');
+      const upload = (async () => {
+        // The desktop shutter already returns a bounded JPEG. System pickers return a File.
+        const photo = question && file instanceof File ? await photoJpeg(file) : file;
+        if (photo.size > 8 * 1024 * 1024) throw Error('请选择小于 8 MB 的图片');
+        if (call !== active) return false;
+        const url = new URL(apiUrl('reference-image'), document.baseURI);
+        url.searchParams.set('call', active.voiceSessionId);
+        const response = await fetch(url, {method: 'POST', body: photo, headers: {'content-type': photo.type}});
+        const receipt = await response.json();
+        if (!response.ok || !receipt?.id) throw Error(receipt?.error || '添加图片失败');
+        if (call !== active) return false;
+        active.boardAssets?.poke?.();
+        setStatus(question ? '照片已添加，正在提问' : '参考图已放到画布上', {tone: 'success'});
+        return true;
+      })().catch(error => {
+        if (call === active) setStatus(error.message || '添加图片失败', {tone: 'problem'});
+        return false;
+      });
+      active.referenceUpload = upload;
+      try {
+        if (!await upload || call !== active) return false;
+        return question ? await sendSteer(question) : true;
+      } finally {
+        if (active.referenceUpload === upload) active.referenceUpload = null;
+      }
     },
     toggleImprovSound: () => call?.improv?.toggleSound(),
     endImprov: () => call?.improv?.finish(),
@@ -1192,7 +1206,7 @@ async function sendSteer(value) {
   const text = String(value ?? "").trim(); if (!text || !call) return false;
   const active = call;
   try {
-    if (active.referenceUpload) await Promise.race([active.referenceUpload, new Promise(resolve => setTimeout(resolve, 15000))]);
+    if (active.referenceUpload && !await active.referenceUpload) return false;
     if (call !== active) return false;
     const receipt = await api("steer", { voiceSessionId: active.voiceSessionId, text, mode: "steer" });
     if (call !== active) return false;

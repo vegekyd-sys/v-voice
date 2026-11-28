@@ -48,7 +48,7 @@ names.push('lab/realtime-direct-tools/typed-speech.mjs');
 names.push('lab/realtime-direct-tools/playback-echo.mjs');
 names.push('lab/realtime-direct-tools/floor-judge.mjs','lab/realtime-direct-tools/playback-position.mjs');
 names.push('lab/gpt-live-h5/upload-backpressure.mjs');
-names.push('lab/gpt-live-h5/assets/v-avatar.jpg','lab/gpt-live-h5/board-assets.mjs','lab/gpt-live-h5/board-assets-client.mjs','lab/gpt-live-h5/board-picture-size.mjs','lab/realtime-direct-tools/media-script.mjs','lab/realtime-direct-tools/material-check.mjs','lab/gpt-live-h5/board-scene.mjs','lab/gpt-live-h5/board-director.mjs','lab/gpt-live-h5/board-client.mjs','lab/gpt-live-h5/board-sketch.mjs','lab/gpt-live-h5/board-photo.mjs','lab/gpt-live-h5/board-lesson.mjs','lab/gpt-live-h5/board-cue.mjs','lab/gpt-live-h5/board-clause.mjs','lab/gpt-live-h5/board-eye.mjs');
+names.push('lab/gpt-live-h5/camera-photo.mjs','lab/gpt-live-h5/assets/v-avatar.jpg','lab/gpt-live-h5/board-assets.mjs','lab/gpt-live-h5/board-assets-client.mjs','lab/gpt-live-h5/board-picture-size.mjs','lab/realtime-direct-tools/media-script.mjs','lab/realtime-direct-tools/material-check.mjs','lab/gpt-live-h5/board-scene.mjs','lab/gpt-live-h5/board-director.mjs','lab/gpt-live-h5/board-client.mjs','lab/gpt-live-h5/board-sketch.mjs','lab/gpt-live-h5/board-photo.mjs','lab/gpt-live-h5/board-lesson.mjs','lab/gpt-live-h5/board-cue.mjs','lab/gpt-live-h5/board-clause.mjs','lab/gpt-live-h5/board-eye.mjs');
 // Every relative import of a packaged module must itself be packaged, so a
 // new file can never ship as a release that fails to start.
 // Browser URL aliases served by server.mjs: /voice/speaker-routing.mjs is

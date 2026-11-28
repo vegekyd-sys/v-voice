@@ -1316,6 +1316,12 @@ import VVoiceCore
         if route == "avatar", fromH5 { response["revision"] = body["revision"] }
         return response
     }
+    func uploadReference(_ jpeg: Data, owner: String) async throws -> [String: Any] {
+        guard active, presentationID == owner, let voiceID else { throw VoiceError.connection }
+        let result = try await api.uploadReference(jpeg, voiceID: voiceID)
+        guard active, presentationID == owner, self.voiceID == voiceID else { throw CancellationError() }
+        return result
+    }
     /// One page feature, `/api/page/<name>` on the bound service, for the page that owns this call (or the idle page).
     /// Bounded: a short lowercase name, a JSON body under 256 KB; the reply is limited by the API client (2 MB).
     func pageRequest(_ route: String, body: [String: Any], owner: String) async throws -> [String: Any] {
