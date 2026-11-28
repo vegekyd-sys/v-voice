@@ -229,6 +229,11 @@ export const GPT_LIVE_11_CANDIDATE_UPDATE = {
 };
 export const VOICE_UPDATES = [
   {
+    version:'voice-tv-reply-audio.20261128.1',date:'2026-11-28',
+    title:'电视讲解时语音播放更连贯',
+    items:['电视会把已收到的回复提前交给音频播放器，画面忙时也能继续播。首声仍按原来的时机开始。'],
+  },
+  {
     version:'voice-gpt-live-screen.20261128.1',date:'2026-11-28',
     title:'GPT Live 1.1 能改刚画好的图了',
     items:[
