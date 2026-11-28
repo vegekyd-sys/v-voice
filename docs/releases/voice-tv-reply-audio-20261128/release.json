@@ -1,0 +1,50 @@
+{
+  "version": "voice-tv-reply-audio.20261128.1",
+  "verifiedAt": "2026-11-28T22:23:58+08:00",
+  "sourceCommit": "7e4e69016fc3df6850e4f63bc352d1add57f5c83",
+  "mergePRs": [
+    294
+  ],
+  "previousRunningCommit": "ee2bc5369d82eeaaa1efe6b3ffafba92a56577a4",
+  "filesSha256": "e0169612b806eeaa9fa9c7b3f418a453d7f623edc9d9bdc7a2776320ed6cfa29",
+  "mainCI": "https://github.com/vegekyd-sys/v-voice/actions/runs/46152384946",
+  "gatewayIdentityPreserved": true,
+  "nodes": {
+    "web": {
+      "ready": true,
+      "admissionHeld": false
+    },
+    "devices": {
+      "ready": true,
+      "admissionHeld": false
+    }
+  },
+  "verifiedHttpsAssets": [
+    "tv-entry.bundle.mjs",
+    "tv-startup.bundle.mjs",
+    "tv-array-worker.js",
+    "changelog.mjs",
+    "styles.css",
+    "ios-shell-release.json"
+  ],
+  "tv": {
+    "entry": "/voice/",
+    "model": "1.2.6.1",
+    "nativeDuplex": true,
+    "lessonToolCalls": 1,
+    "dialToFirstRenderMs": 2543,
+    "outputAudioSeconds": 44.2,
+    "playbackStatsSamples": 69,
+    "observedUnderflows": 0,
+    "nativePauses": 0,
+    "nativeResumes": 0,
+    "close": "client-closed:1005",
+    "devicePage": {
+      "page": true,
+      "topic": true
+    },
+    "lessonTitle": "月相是怎么来的",
+    "input": "电视麦克风未完整识别模拟提问，同一通话内通过电视文字输入触发月相讲解。"
+  },
+  "scope": "正式入口小米电视单通讲解，播放连续性由电视端采样。现场扬声器听感由此前同一修复候选的用户试听覆盖。"
+}
