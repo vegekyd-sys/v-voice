@@ -95,7 +95,7 @@ class Mic extends AudioWorkletProcessor {
 registerProcessor('v-direct-speaker',Speaker);registerProcessor('v-direct-mic',Mic);`;}
 // Some Android TV WebViews intermittently run AudioWorklet output at ~0.62x
 // wall time. AudioBufferSource uses the browser's native renderer instead.
-// Schedule only a short horizon; reclaim precisely the unplayed samples on
+// Schedule received PCM ahead on the audio clock; reclaim unplayed samples on
 // pause/hold. Policy (turns, interruption, mute) remains in the shared relay.
 export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=prefillMs}={}){
   const output=context.createGain(),disconnect=output.disconnect.bind(output);
@@ -103,7 +103,10 @@ export function createBufferedPcmSpeaker(context,{prefillMs=120,growMs=0,maxMs=p
   let paused=false,held=false,complete=false,muted=false,ducked=false,closed=false,underflows=0,starved=false,lastPlayedAt=null;
   let firstAudibleAt=null,reportedFirstRender=false;
   const level=()=>{if(muted)output.gain.value=0;else output.gain.setTargetAtTime?.(ducked?DUCK_GAIN:1,context.currentTime,.02)??(output.gain.value=ducked?DUCK_GAIN:1);};
-  const rate=24000,blockFrames=2400,lead=.72;
+  // Lesson rendering can delay the TV WebView for several seconds. Hand off
+  // available speech without waiting to fill this window before the first word.
+  // Quarter-second buffers bound the number of native nodes for a queued reply.
+  const rate=24000,blockFrames=rate/4,lead=4;
   const port={onmessage:null,postMessage:command,close:dispose};output.port=port;
   const futureFrames=(block,now)=>Math.max(0,block.pcm.length-Math.max(0,Math.min(block.pcm.length,Math.floor((now-block.at)*rate+1e-5))));
   function trim(now){scheduled=scheduled.filter(b=>b.at+b.pcm.length/rate>now);}

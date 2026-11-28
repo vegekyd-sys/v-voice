@@ -32,8 +32,22 @@ test('playback metrics follow output time rather than the scheduling cursor and 
 });
 
 test('a missed scheduling deadline is counted even when completed PCM is still queued',t=>{
- const f=fixture(t);f.send({type:'audio',buffer:new Int16Array(24000).fill(100).buffer});f.send({type:'done'});f.tick(0);
- assert.equal(f.tick(.9).underflows,1);f.s.disconnect();
+ const f=fixture(t);f.send({type:'audio',buffer:new Int16Array(24000*6).fill(100).buffer});f.send({type:'done'});f.tick(0);
+ assert.equal(f.tick(5).underflows,1);f.s.disconnect();
+});
+
+test('TV keeps received speech on the native clock during a 3.3 s UI stall',t=>{
+ const f=fixture(t),rate=24000;
+ f.send({type:'audio',buffer:new Int16Array(6*rate).fill(100).buffer});
+ f.tick(0);
+ assert.equal(f.sources[0].at,.12,'initial streaming prefill is unchanged');
+ const m=f.tick(3.3);
+ assert.equal(m.underflows,0);
+ assert.equal(m.consumed,Math.round((3.3-.12)*rate));
+ const scheduled=f.sources.slice();
+ f.send({type:'clear',epoch:1});
+ assert.ok(scheduled.filter(s=>s.at+s.buffer.length/rate>3.3).every(s=>s.stoppedAt===3.3));
+ f.s.disconnect();
 });
 
 test('a 650 ms UI delay plays through on the native renderer',t=>{

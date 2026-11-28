@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-28 — 电视回复连续播放（voice-tv-reply-audio.20261128.1）
+
+- 在电视原生音频时钟上提前排入已收到的语音，减少 WebView 忙于更新讲解和聊天时的断音。
+
 ## 2026-11-28 — GPT Live 1.1 edits the picture on the screen (`voice-gpt-live-screen.20261128.1`)
 
 - GPT Live's router writes the tool arguments but was never told what is on the screen, so "把刚才这张改成夜晚" became an edit command with no picture, which the executor's material check refused before submitting (nothing charged).
